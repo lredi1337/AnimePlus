@@ -23,6 +23,8 @@
         shiki_auto_mark_completed: true,
         shiki_sync_episodes: true,
         shiki_show_toasts: true,
+        notif_enabled: true,
+        notif_interval_min: 30,
         auto_select_voice: true,
         voice_priority_list: [
             "Anilibria",

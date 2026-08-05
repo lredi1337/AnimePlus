@@ -82,18 +82,17 @@
     };
 
     window.agNormalizePosterUrl = function (rawUrl) {
-        if (!rawUrl || typeof rawUrl !== 'string') return null;
+        if (!rawUrl || typeof rawUrl !== 'string') return chrome.runtime.getURL('icons/icon128.png');
         let url = rawUrl.trim();
-        if (!url || url.includes('missing') || url.includes('404') || url.includes('no-poster') || url.includes('no-image') || url.includes('stub')) {
-            return null;
+        if (!url || url.includes('missing') || url.includes('stub') || url.includes('no-poster') || url.includes('no-image')) {
+            return chrome.runtime.getURL('icons/icon128.png');
         }
 
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        if (url.includes('/system/animes/')) {
+            const idx = url.indexOf('/system/animes/');
+            url = 'https://shikimori.one' + url.substring(idx);
+        } else if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('chrome-extension://')) {
             url = `https://shikimori.one${url.startsWith('/') ? '' : '/'}${url}`;
-        }
-
-        if (url.includes('desu.shikimori.one') || url.includes('moe.shikimori.one')) {
-            return url;
         }
 
         return url;
@@ -104,33 +103,16 @@
         const step = parseInt(img.dataset.agErrorHandled || '0') + 1;
         img.dataset.agErrorHandled = step.toString();
 
-        if (step > 3) {
-            const title = altTitle || ruTitle || enTitle || 'Аниме';
-            const safeTitle = window.agEscapeHtml(title);
-            img.outerHTML = `<div class="ag-top-poster-fallback"><span>🎬</span><small>${safeTitle}</small></div>`;
-            return;
-        }
-
         let curSrc = img.src || '';
 
         if (step === 1) {
-            if (curSrc.includes('shikimori.one')) {
-                img.src = curSrc.replace('shikimori.one', 'shikimori.me');
-                return;
-            } else if (curSrc.includes('shikimori.io')) {
-                img.src = curSrc.replace('shikimori.io', 'shikimori.one');
+            if (curSrc.includes('shikimori.one') && !curSrc.includes('desu.shikimori.one')) {
+                img.src = curSrc.replace('shikimori.one', 'desu.shikimori.one');
                 return;
             }
         }
 
-        if (step === 2) {
-            if (!curSrc.includes('shikimori.io')) {
-                img.src = curSrc.replace(/shikimori\.(one|me)/, 'shikimori.io');
-                return;
-            }
-        }
-
-        if (step === 3 && (shikiId || ruTitle || enTitle)) {
+        if (step === 2 && (shikiId || ruTitle || altTitle)) {
             try {
                 chrome.runtime.sendMessage({
                     action: "resolve_jutsu_cover",
@@ -141,20 +123,123 @@
                     const fallbackUrl = response ? (response.poster || response.url) : null;
                     if (fallbackUrl && img && img.parentNode) {
                         img.src = fallbackUrl;
-                    } else if (img && img.parentNode) {
-                        const title = altTitle || ruTitle || enTitle || 'Аниме';
-                        const safeTitle = window.agEscapeHtml(title);
-                        img.outerHTML = `<div class="ag-top-poster-fallback"><span>🎬</span><small>${safeTitle}</small></div>`;
+                        return;
+                    }
+                    if (img && img.parentNode) {
+                        img.src = chrome.runtime.getURL('icons/icon128.png');
                     }
                 });
                 return;
             } catch (e) {}
         }
 
-        const title = altTitle || ruTitle || enTitle || 'Аниме';
-        const safeTitle = window.agEscapeHtml(title);
-        img.outerHTML = `<div class="ag-top-poster-fallback"><span>🎬</span><small>${safeTitle}</small></div>`;
+        if (img && img.parentNode) {
+            img.src = chrome.runtime.getURL('icons/icon128.png');
+        }
     };
+
+    window.showAgEpisodeNotification = function (data) {
+        if (!data || !data.title) return;
+        let notifContainer = document.getElementById('ag-ep-notif-container');
+        if (!notifContainer) {
+            notifContainer = document.createElement('div');
+            notifContainer.id = 'ag-ep-notif-container';
+            notifContainer.style.cssText = `
+                position: fixed;
+                top: 24px;
+                right: 24px;
+                z-index: 2147483647;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                pointer-events: none;
+            `;
+            (document.body || document.documentElement).appendChild(notifContainer);
+        }
+
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: linear-gradient(135deg, rgba(20, 20, 32, 0.96), rgba(28, 28, 44, 0.98));
+            color: #ffffff;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-family: ${window.AG_FONT};
+            box-shadow: 0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.12);
+            backdrop-filter: blur(16px);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 310px;
+            max-width: 390px;
+            transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            opacity: 0;
+            transform: translateX(40px) scale(0.95);
+            pointer-events: auto;
+            position: relative;
+            overflow: hidden;
+        `;
+
+        const posterUrl = data.poster || 'https://shikimori.one/favicons/favicon-192x192.png';
+        const title = window.agEscapeHtml(data.title || '');
+        const episode = window.agEscapeHtml(String(data.episode || ''));
+        const voiceovers = data.voiceovers ? window.agEscapeHtml(`🎤 ${data.voiceovers}`) : '';
+
+        let btnsHtml = '';
+        if (data.animegoUrl) {
+            btnsHtml += `<a href="${data.animegoUrl}" target="_blank" style="padding: 5px 11px; font-size: 10.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c); border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(239,68,68,0.4); transition: transform 0.15s ease;">▶ AnimeGO</a>`;
+        }
+        if (data.jutsuUrl) {
+            btnsHtml += `<a href="${data.jutsuUrl}" target="_blank" style="padding: 5px 11px; font-size: 10.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(59,130,246,0.4); transition: transform 0.15s ease;">▶ JUT-SU</a>`;
+        }
+
+        card.innerHTML = `
+            <div style="position: absolute; top:0; left:0; width: 4px; height: 100%; background: linear-gradient(180deg, #ef4444, #3b82f6);"></div>
+            <img src="${posterUrl}" style="width: 44px; height: 60px; object-fit: contain; background: rgba(0,0,0,0.3); border-radius: 6px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.5); margin-left: 2px;">
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 10px; font-weight: 800; color: #ff9800; background: rgba(255, 152, 0, 0.18); border: 1px solid rgba(255,152,0,0.3); padding: 1px 6px; border-radius: 4px;">🔥 ${episode} серия</span>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 700; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</div>
+                ${voiceovers ? `<div style="font-size: 10px; color: #9a99ab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${voiceovers}</div>` : ''}
+                <div style="display: flex; gap: 6px; margin-top: 4px;">${btnsHtml}</div>
+            </div>
+            <button class="ag-close-btn" style="position: absolute; top: 6px; right: 8px; background: none; border: none; color: #6f6e80; font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px;">✕</button>
+        `;
+
+        const closeBtn = card.querySelector('.ag-close-btn');
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateX(30px)';
+                setTimeout(() => card.remove(), 300);
+            };
+        }
+
+        notifContainer.appendChild(card);
+
+        requestAnimationFrame(() => {
+            card.style.opacity = '1';
+            card.style.transform = 'translateX(0) scale(1)';
+        });
+
+        setTimeout(() => {
+            if (card.parentNode) {
+                card.style.opacity = '0';
+                card.style.transform = 'translateX(30px)';
+                setTimeout(() => card.remove(), 300);
+            }
+        }, 12000);
+    };
+
+    try {
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+            chrome.runtime.onMessage.addListener((message) => {
+                if (message && message.action === 'SHOW_EPISODE_NOTIFICATION' && message.data) {
+                    window.showAgEpisodeNotification(message.data);
+                }
+            });
+        }
+    } catch (e) {}
 
     window.AnimePlus = window.AnimePlus || { Config: {}, UI: {}, Utils: {}, Modules: {} };
 
@@ -162,5 +247,7 @@
     window.AnimePlus.Utils.normalizePosterUrl = window.agNormalizePosterUrl;
     window.AnimePlus.UI.ensureAgLogoPlus = window.ensureAgLogoPlus;
     window.AnimePlus.UI.showAgToast = window.showAgToast;
+    window.AnimePlus.UI.showAgEpisodeNotification = window.showAgEpisodeNotification;
     window.AnimePlus.UI.handlePosterError = window.agHandlePosterError;
 })();
+

@@ -7,6 +7,20 @@ try {
 } catch (e) {}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "force_check_episodes") {
+        (async () => {
+            try {
+                if (typeof checkNewEpisodeNotifications === 'function') {
+                    await checkNewEpisodeNotifications(true);
+                }
+                sendResponse({ success: true });
+            } catch (e) {
+                sendResponse({ success: false, error: e.toString() });
+            }
+        })();
+        return true;
+    }
+
     if (message.action === "search_anime") {
         fetch(`https://animego.org/search/anime?q=${encodeURIComponent(message.query)}`)
             .then(res => res.text())

@@ -328,7 +328,7 @@ async function getShikiWatchingList(targetStatus = 'watching') {
                         const anime = animeMap.get(rate.target_id) || {};
                         let poster = anime.image ? (anime.image.original || anime.image.preview || '') : '';
                         if (poster && !poster.startsWith('http')) {
-                            poster = 'https://shikimori.one' + poster;
+                            poster = 'https://shikimori.one' + (poster.startsWith('/') ? '' : '/') + poster;
                         }
                         return {
                             rateId: rate.id,
@@ -489,6 +489,159 @@ async function addToWatchHistory(item) {
     }
 }
 
+async function checkKodikEpisodeAvailability(shikimoriId, targetEpisode) {
+    try {
+        if (!shikimoriId || !targetEpisode) return { available: false };
+        const res = await fetch(`https://kodikapi.com/search?shikimori_id=${shikimoriId}&with_material_data=true`);
+        if (!res.ok) return { available: false };
+        const data = await res.json();
+        if (!data || !Array.isArray(data.results) || data.results.length === 0) {
+            return { available: false };
+        }
+
+        const translations = new Set();
+        let isFound = false;
+        let posterUrl = null;
+
+        for (const item of data.results) {
+            if (!posterUrl && item.material_data) {
+                posterUrl = item.material_data.poster_url || item.material_data.shikimori_poster_url || null;
+            }
+            let epCount = item.last_episode || item.episodes_count || 0;
+            if (!epCount && item.seasons) {
+                for (const sKey in item.seasons) {
+                    const season = item.seasons[sKey];
+                    if (season && season.episodes) {
+                        for (const epKey in season.episodes) {
+                            const epNum = parseInt(epKey);
+                            if (epNum > epCount) epCount = epNum;
+                        }
+                    }
+                }
+            }
+
+            if (epCount >= targetEpisode) {
+                isFound = true;
+                if (item.translation && item.translation.title) {
+                    translations.add(item.translation.title);
+                }
+            }
+        }
+
+        return {
+            available: isFound,
+            translations: Array.from(translations),
+            posterUrl: posterUrl
+        };
+    } catch (e) {
+        console.warn('[Anime+] Error checking Kodik availability:', e);
+        return { available: false };
+    }
+}
+
+async function cleanupOldNotifications() {
+    try {
+        const storage = await chrome.storage.local.get(['notified_episodes_history', 'active_notifications_map']);
+        const history = Array.isArray(storage.notified_episodes_history) ? storage.notified_episodes_history : [];
+        const notifMap = storage.active_notifications_map || {};
+
+        const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 hours ago
+
+        const freshHistory = history.filter(item => item && item.timestamp && item.timestamp > cutoff);
+
+        for (const key in notifMap) {
+            if (notifMap[key] && notifMap[key].timestamp && notifMap[key].timestamp <= cutoff) {
+                delete notifMap[key];
+            }
+        }
+
+        await chrome.storage.local.set({
+            notified_episodes_history: freshHistory,
+            active_notifications_map: notifMap
+        });
+    } catch (e) {
+        console.warn('[Anime+] Error cleaning up notifications:', e);
+    }
+}
+
+async function checkEpisodeAvailabilityOnPortals(animeTitle, origTitle, animeId, targetEpisode) {
+    const res = {
+        available: false,
+        animegoUrl: null,
+        jutsuUrl: null,
+        voiceovers: [],
+        poster: null
+    };
+
+    let kodikHasEp = false;
+    try {
+        const kodikCheck = await checkKodikEpisodeAvailability(animeId, targetEpisode);
+        if (kodikCheck.available) {
+            kodikHasEp = true;
+            res.voiceovers = kodikCheck.translations || [];
+            res.poster = kodikCheck.posterUrl || null;
+        }
+    } catch (e) {}
+
+    try {
+        if (typeof findAnimeGoDirectUrl === 'function') {
+            res.animegoUrl = await findAnimeGoDirectUrl(animeTitle, origTitle);
+        }
+    } catch (e) {}
+
+    try {
+        if (typeof findJutsuDirectUrl === 'function') {
+            res.jutsuUrl = await findJutsuDirectUrl(animeTitle, origTitle);
+        }
+    } catch (e) {}
+
+    if (kodikHasEp && !res.animegoUrl) {
+        res.animegoUrl = `https://animego.me/search/anime?q=${encodeURIComponent(animeTitle || origTitle)}`;
+    }
+
+    res.available = Boolean(res.animegoUrl || res.jutsuUrl || kodikHasEp);
+    return res;
+}
+
+async function openNotificationTarget(notifId, buttonIndex = null) {
+    try {
+        const storage = await chrome.storage.local.get(['active_notifications_map']);
+        const notifMap = storage.active_notifications_map || {};
+        const notifInfo = notifMap[notifId];
+
+        let targetUrl = null;
+
+        if (notifInfo) {
+            if (buttonIndex !== null && Array.isArray(notifInfo.buttonsMap) && notifInfo.buttonsMap[buttonIndex]) {
+                targetUrl = notifInfo.buttonsMap[buttonIndex];
+            } else {
+                targetUrl = notifInfo.animegoUrl || notifInfo.jutsuUrl;
+            }
+        }
+
+        if (targetUrl) {
+            chrome.tabs.create({ url: targetUrl });
+        }
+
+        chrome.notifications.clear(notifId);
+    } catch (e) {
+        console.error('[Anime+] Error opening notification link:', e);
+    }
+}
+
+try {
+    chrome.notifications.onClicked.addListener((notifId) => {
+        if (notifId.startsWith('animeplus_notif_')) {
+            openNotificationTarget(notifId, null);
+        }
+    });
+    chrome.notifications.onButtonClicked.addListener((notifId, buttonIndex) => {
+        if (notifId.startsWith('animeplus_notif_')) {
+            openNotificationTarget(notifId, buttonIndex);
+        }
+    });
+} catch (e) {}
+
 try {
     chrome.alarms.create('check_new_episodes_alarm', { periodInMinutes: 30 });
     chrome.alarms.onAlarm.addListener((alarm) => {
@@ -498,8 +651,14 @@ try {
     });
 } catch (e) {}
 
-async function checkNewEpisodeNotifications() {
+async function checkNewEpisodeNotifications(isManual = false) {
     try {
+        const settingsRes = await chrome.storage.local.get(['ag_settings']);
+        const settings = settingsRes.ag_settings || {};
+        if (settings.notif_enabled === false) return;
+
+        await cleanupOldNotifications();
+
         const watchingRes = await getShikiWatchingList('watching');
         if (!watchingRes || !watchingRes.success || !Array.isArray(watchingRes.items)) return;
 
@@ -508,8 +667,11 @@ async function checkNewEpisodeNotifications() {
         const calendar = await calendarRes.json();
         if (!Array.isArray(calendar)) return;
 
-        const storageData = await chrome.storage.local.get(['notified_episodes']);
+        const storageData = await chrome.storage.local.get(['notified_episodes', 'notified_episodes_history', 'active_notifications_map']);
         const notifiedSet = new Set(Array.isArray(storageData.notified_episodes) ? storageData.notified_episodes : []);
+        let history = Array.isArray(storageData.notified_episodes_history) ? storageData.notified_episodes_history : [];
+        let notifMap = storageData.active_notifications_map || {};
+        const newNotifQueue = [];
 
         const watchingMap = new Map();
         watchingRes.items.forEach(item => watchingMap.set(item.animeId, item));
@@ -524,24 +686,175 @@ async function checkNewEpisodeNotifications() {
                 const notifKey = `ep_${animeId}_${nextEp}`;
 
                 if (!notifiedSet.has(notifKey)) {
+                    const title = userAnime.russian || calItem.anime.russian || calItem.anime.name;
+                    const origTitle = userAnime.name || calItem.anime.name || '';
+
+                    // Dual check availability on AnimeGO and JUT-SU
+                    const portalCheck = await checkEpisodeAvailabilityOnPortals(title, origTitle, animeId, nextEp);
+                    if (!portalCheck.available) {
+                        continue;
+                    }
+
                     notifiedSet.add(notifKey);
 
-                    const title = userAnime.russian || calItem.anime.russian || calItem.anime.name;
-                    const notifId = `animeplus_notif_${animeId}_${nextEp}`;
+                    let rawPoster = portalCheck.poster || (userAnime && userAnime.poster) || (calItem.anime && calItem.anime.image && (calItem.anime.image.original || calItem.anime.image.preview)) || 'icons/icon128.png';
+                    if (typeof rawPoster === 'string' && rawPoster.trim()) {
+                        rawPoster = rawPoster.trim();
+                        if (rawPoster.includes('/system/animes/')) {
+                            const idx = rawPoster.indexOf('/system/animes/');
+                            rawPoster = 'https://shikimori.one' + rawPoster.substring(idx);
+                        } else if (!rawPoster.startsWith('http://') && !rawPoster.startsWith('https://')) {
+                            rawPoster = `https://shikimori.one${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`;
+                        }
+                    } else {
+                        rawPoster = chrome.runtime.getURL('icons/icon128.png');
+                    }
+                    const poster = rawPoster;
+                    const notifId = `animeplus_notif_${animeId}_${nextEp}_${Date.now()}`;
 
-                    chrome.notifications.create(notifId, {
-                        type: 'basic',
-                        iconUrl: userAnime.poster || 'icons/icon128.png',
-                        title: `🔥 Вышла новая ${nextEp} серия!`,
-                        message: title,
-                        priority: 2
+                    const voiceList = portalCheck.voiceovers || [];
+                    const voiceStr = voiceList.length > 0 ? voiceList.slice(0, 3).join(', ') : '';
+
+                    let notifMessage = title;
+                    if (voiceStr) {
+                        notifMessage += `\nОзвучки: ${voiceStr}`;
+                    }
+
+                    const toastButtons = [];
+                    const buttonsMap = [];
+
+                    if (portalCheck.animegoUrl) {
+                        toastButtons.push({ title: '▶ AnimeGO' });
+                        buttonsMap.push(portalCheck.animegoUrl);
+                    }
+                    if (portalCheck.jutsuUrl) {
+                        toastButtons.push({ title: '▶ JUT-SU' });
+                        buttonsMap.push(portalCheck.jutsuUrl);
+                    }
+                    if (toastButtons.length === 0) {
+                        const fallbackUrl = `https://animego.me/search/anime?q=${encodeURIComponent(title)}`;
+                        toastButtons.push({ title: '▶ Смотреть' });
+                        buttonsMap.push(fallbackUrl);
+                    }
+
+                    const notifItem = {
+                        id: notifId,
+                        animeId: animeId,
+                        episode: nextEp,
+                        title: title,
+                        origTitle: origTitle,
+                        poster: poster,
+                        voiceovers: voiceStr,
+                        animegoUrl: portalCheck.animegoUrl,
+                        jutsuUrl: portalCheck.jutsuUrl,
+                        timestamp: Date.now()
+                    };
+
+                    history.unshift(notifItem);
+                    history = history.slice(0, 20);
+
+                    notifMap[notifId] = {
+                        russianName: title,
+                        origName: origTitle,
+                        animeId: animeId,
+                        episode: nextEp,
+                        animegoUrl: portalCheck.animegoUrl,
+                        jutsuUrl: portalCheck.jutsuUrl,
+                        buttonsMap: buttonsMap,
+                        poster: poster,
+                        voiceovers: voiceStr,
+                        timestamp: Date.now()
+                    };
+
+                    newNotifQueue.push({
+                        notifId,
+                        animeId,
+                        nextEp,
+                        title,
+                        poster,
+                        voiceStr,
+                        notifMessage,
+                        toastButtons,
+                        animegoUrl: portalCheck.animegoUrl,
+                        jutsuUrl: portalCheck.jutsuUrl
                     });
-
-                    await chrome.storage.local.set({ notified_episodes: Array.from(notifiedSet) });
                 }
             }
         }
+
+        // Save updated data to storage immediately
+        await chrome.storage.local.set({
+            notified_episodes: Array.from(notifiedSet),
+            notified_episodes_history: history,
+            active_notifications_map: notifMap
+        });
+
+        // Launch sequential desktop windows in background ONLY if check was NOT triggered manually from popup menu
+        if (!isManual && newNotifQueue.length > 0) {
+            setTimeout(async () => {
+                for (let i = 0; i < newNotifQueue.length; i++) {
+                    const item = newNotifQueue[i];
+
+                    try {
+                        const winWidth = 370;
+                        const winHeight = 155;
+                        chrome.windows.getCurrent((currWin) => {
+                            let left = 1000;
+                            let top = 600;
+                            if (currWin && currWin.width) {
+                                left = (currWin.left || 0) + currWin.width - winWidth - 30;
+                                top = (currWin.top || 0) + currWin.height - winHeight - 50;
+                            }
+                            chrome.windows.create({
+                                url: chrome.runtime.getURL(`notification.html?id=${encodeURIComponent(item.notifId)}`),
+                                type: 'popup',
+                                width: winWidth,
+                                height: winHeight,
+                                left: Math.max(0, left),
+                                top: Math.max(0, top),
+                                focused: true
+                            });
+                        });
+                    } catch (winErr) {
+                        chrome.notifications.create(item.notifId, {
+                            type: 'basic',
+                            iconUrl: item.poster,
+                            title: `🔥 Вышла ${item.nextEp} серия!`,
+                            message: item.notifMessage,
+                            buttons: item.toastButtons,
+                            priority: 2
+                        });
+                    }
+
+                    try {
+                        chrome.tabs.query({}, (tabs) => {
+                            tabs.forEach(tab => {
+                                if (tab.id) {
+                                    chrome.tabs.sendMessage(tab.id, {
+                                        action: 'SHOW_EPISODE_NOTIFICATION',
+                                        data: {
+                                            title: item.title,
+                                            episode: item.nextEp,
+                                            poster: item.poster,
+                                            voiceovers: item.voiceStr,
+                                            animegoUrl: item.animegoUrl,
+                                            jutsuUrl: item.jutsuUrl
+                                        }
+                                    }).catch(() => {});
+                                }
+                            });
+                        });
+                    } catch (e) {}
+
+                    if (i < newNotifQueue.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 7500));
+                    }
+                }
+            }, 0);
+        }
     } catch (e) {
-        console.warn('[Anime+] Error checking episode notifications:', e);
+        console.error('[Anime+] Error checking new episode notifications:', e);
     }
 }
+
+
