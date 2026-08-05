@@ -2,6 +2,8 @@
 credentials.js
 credentials*.js
 credentials/
+cloudflare-worker.js
+*worker*.js
 .env
 .env.local
 .env.*.local
