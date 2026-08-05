@@ -1,8 +1,12 @@
-# Private Credentials
+# Private Credentials & Secret Configs
 credentials.js
+credentials*.js
+credentials/
 .env
 .env.local
 .env.*.local
+*.secret
+*.key
 
 # Extension Keys & Build Bundles
 *.pem
@@ -11,6 +15,7 @@ credentials.js
 
 # Node & Dependencies
 node_modules/
+package-lock.json
 
 # OS Temp Files
 .DS_Store
@@ -43,6 +48,7 @@ logs/
 tmp/
 temp/
 
-# Agent Scratch Files
+# Agent Scratch & Cache Files
 .gemini/
 .agents/
+brain/
