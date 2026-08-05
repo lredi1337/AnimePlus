@@ -36,7 +36,7 @@ async function getShikiTokens() {
         'shiki_user'
     ]);
     if (!data.shiki_client_id || typeof data.shiki_client_id !== 'string' || !data.shiki_client_id.trim()) {
-        data.shiki_client_id = (globalThis.AG_CONSTANTS && globalThis.AG_CONSTANTS.DEFAULT_SHIKI_CLIENT_ID) || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo";
+        data.shiki_client_id = (globalThis.AG_CONSTANTS && globalThis.AG_CONSTANTS.DEFAULT_SHIKI_CLIENT_ID) || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
     }
     return data;
 }
@@ -160,7 +160,7 @@ async function refreshShikiToken(tokens) {
     try {
         const payload = {
             grant_type: 'refresh_token',
-            client_id: tokens.shiki_client_id || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo",
+            client_id: tokens.shiki_client_id || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
             refresh_token: tokens.shiki_refresh_token
         };
         if (tokens.shiki_client_secret) payload.client_secret = tokens.shiki_client_secret;
@@ -204,7 +204,7 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
 
     const promise = (async () => {
         const tokens = await getShikiTokens();
-        const cleanClientId = (clientId || tokens.shiki_client_id || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo").trim();
+        const cleanClientId = (clientId || tokens.shiki_client_id || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI").trim();
         const cleanClientSecret = (clientSecret || tokens.shiki_client_secret || "").trim();
 
         const payload = {

@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.runtime.sendMessage({ action: "shiki_get_status" }, (res) => {
             if (chrome.runtime.lastError || !res) return;
 
-            activeClientId = res.clientId || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo";
+            activeClientId = res.clientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
             activeClientSecret = res.clientSecret || "";
 
             if (res.clientId && shikiClientIdInput) shikiClientIdInput.value = res.clientId;
@@ -614,7 +614,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const customId = shikiClientIdInput ? shikiClientIdInput.value.trim() : "";
             const customSecret = shikiClientSecretInput ? shikiClientSecretInput.value.trim() : "";
 
-            const targetClientId = customId || activeClientId || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo";
+            const targetClientId = customId || activeClientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
 
             if (!targetClientId || targetClientId.includes('DefaultID')) {
                 shikiErrorMsg.style.display = 'block';

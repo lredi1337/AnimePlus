@@ -17,7 +17,7 @@
         random_kinds: ["tv", "movie", "ona", "ova", "special"],
         ongoing_types: ["TV", "ONA", "OVA"],
         shiki_enabled: true,
-        shiki_client_id: "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo",
+        shiki_client_id: "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
         shiki_worker_url: "",
         shiki_auto_mark_watching: true,
         shiki_auto_mark_completed: true,
@@ -52,7 +52,7 @@
 
     window.AG_CONSTANTS = {
         CACHE_TTL_MS: 7 * 24 * 60 * 60 * 1000,
-        DEFAULT_SHIKI_CLIENT_ID: "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo",
+        DEFAULT_SHIKI_CLIENT_ID: "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
         EPISODE_SWITCH_DEBOUNCE_MS: 800,
         AUTOPLAY_TIMEOUT_MS: 15000
     };

@@ -800,7 +800,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const tokens = await getShikiTokens();
                 const res = await exchangeShikiCode(
                     message.code,
-                    tokens.shiki_client_id || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo",
+                    tokens.shiki_client_id || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
                     tokens.shiki_client_secret || ""
                 );
                 sendResponse(res);
@@ -939,7 +939,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                 (async () => {
                     try {
                         const tokens = await getShikiTokens();
-                        const cleanClientId = tokens.shiki_client_id || "NschdT6XXv8H3IjrJ7DSzDPibY6I16hC_dBPxMs5vqo";
+                        const cleanClientId = tokens.shiki_client_id || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
                         const cleanClientSecret = tokens.shiki_client_secret || "";
                         const res = await exchangeShikiCode(code, cleanClientId, cleanClientSecret);
                         if (res && res.success) {
