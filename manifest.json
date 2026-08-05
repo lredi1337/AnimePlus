@@ -1,0 +1,207 @@
+{
+  "manifest_version": 3,
+  "name": "Anime+",
+  "version": "9.1.0",
+  "description": "Улучшает плеер на AnimeGO и Jut-Su: автовыбор озвучки, автоплей, псевдо-фуллскрин, пропуск опенингов, PiP и Топ Shikimori 🚀",
+  "homepage_url": "https://lredi1337.github.io/AnimeGoPlus/",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "windows",
+    "notifications",
+    "alarms"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "host_permissions": [
+    "https://animego.me/*",
+    "https://animego.org/*",
+    "https://*.kodik.info/*",
+    "https://kodik.info/*",
+    "https://*.kodikplayer.com/*",
+    "https://kodikplayer.com/*",
+    "https://*.kodikres.com/*",
+    "https://kodikres.com/*",
+    "https://*.dbcode.info/*",
+    "https://dbcode.info/*",
+    "https://*.kodik-storage.com/*",
+    "https://kodik-storage.com/*",
+    "https://*.cloud.kodik-storage.com/*",
+    "https://*.tube-storage.com/*",
+    "https://tube-storage.com/*",
+    "https://*.kodik.biz/*",
+    "https://kodik.biz/*",
+    "https://*.kodik.cc/*",
+    "https://kodik.cc/*",
+    "https://*.anivod.com/*",
+    "https://anivod.com/*",
+    "https://*.aniqizm.com/*",
+    "https://aniqizm.com/*",
+    "https://*.aniboom.one/*",
+    "https://aniboom.one/*",
+    "https://*.anifilm.top/*",
+    "https://anifilm.top/*",
+    "https://*.kombik.info/*",
+    "https://kombik.info/*",
+    "https://api.aniskip.com/*",
+    "https://shikimori.one/*",
+    "https://shikimori.io/*",
+    "https://shikimori.org/*",
+    "https://shikimori.me/*",
+    "https://myanimelist.net/*",
+    "https://api.animethemes.moe/*",
+    "https://kitsu.io/*",
+    "https://jut-su.net/*",
+    "https://*.jut-su.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://animego.me/*",
+        "https://animego.org/*"
+      ],
+      "js": [
+        "config.js",
+        "modules/ui-utils.js",
+        "modules/animego/ag-settings.js",
+        "modules/animego/ag-random.js",
+        "modules/animego/ag-schedule.js",
+        "modules/animego/ag-player.js",
+        "modules/animego/ag-shiki-widget.js",
+        "modules/animego/ag-top.js",
+        "modules/animego/ag-voice.js",
+        "modules/animego/ag-synthetic.js",
+        "modules/animego/ag-jutsu-search.js",
+        "content-animego.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://jut-su.net/*",
+        "https://*.jut-su.net/*"
+      ],
+      "js": [
+        "config.js",
+        "modules/ui-utils.js",
+        "modules/jutsu/jt-settings.js",
+        "modules/jutsu/jt-top.js",
+        "modules/jutsu/jt-random.js",
+        "modules/jutsu/jt-player.js",
+        "modules/jutsu/jt-shiki-widget.js",
+        "modules/jutsu/jt-voice.js",
+        "modules/jutsu/jt-covers.js",
+        "content-jutsu.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://*.kodik.info/*",
+        "https://kodik.info/*",
+        "https://*.kodikplayer.com/*",
+        "https://kodikplayer.com/*",
+        "https://*.kodikres.com/*",
+        "https://kodikres.com/*",
+        "https://*.dbcode.info/*",
+        "https://dbcode.info/*",
+        "https://*.kodik-storage.com/*",
+        "https://kodik-storage.com/*",
+        "https://*.cloud.kodik-storage.com/*",
+        "https://*.tube-storage.com/*",
+        "https://tube-storage.com/*",
+        "https://*.kodik.biz/*",
+        "https://kodik.biz/*",
+        "https://*.kodik.cc/*",
+        "https://kodik.cc/*",
+        "https://*.anivod.com/*",
+        "https://anivod.com/*",
+        "https://*.aniqizm.com/*",
+        "https://aniqizm.com/*",
+        "https://*.aniboom.one/*",
+        "https://aniboom.one/*",
+        "https://*.anifilm.top/*",
+        "https://anifilm.top/*",
+        "https://*.kombik.info/*",
+        "https://kombik.info/*"
+      ],
+      "js": [
+        "config.js",
+        "content-kodik.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://shikimori.one/animes/*",
+        "https://shikimori.one/anime/*",
+        "https://shikimori.io/animes/*",
+        "https://shikimori.io/anime/*",
+        "https://shikimori.org/animes/*",
+        "https://shikimori.org/anime/*",
+        "https://shikimori.me/anime/*"
+      ],
+      "js": [
+        "content-external.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://shikimori.one/oauth/authorize*",
+        "https://shikimori.io/oauth/authorize*",
+        "https://shikimori.me/oauth/authorize*",
+        "https://shikimori.org/oauth/authorize*"
+      ],
+      "css": [
+        "shiki-auth.css"
+      ],
+      "js": [
+        "content-shiki-auth.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/icon16.png",
+        "icons/icon48.png",
+        "icons/icon128.png",
+        "icon16.png",
+        "icon48.png"
+      ],
+      "matches": [
+        "https://animego.me/*",
+        "https://animego.org/*",
+        "https://*.jut-su.net/*",
+        "https://jut-su.net/*",
+        "https://shikimori.one/*",
+        "https://shikimori.io/*",
+        "https://shikimori.org/*",
+        "https://shikimori.me/*"
+      ]
+    }
+  ]
+}

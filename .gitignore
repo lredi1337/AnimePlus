@@ -1,0 +1,48 @@
+# Private Credentials
+credentials.js
+.env
+.env.local
+.env.*.local
+
+# Extension Keys & Build Bundles
+*.pem
+*.crx
+*.zip
+
+# Node & Dependencies
+node_modules/
+
+# OS Temp Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor Folders
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*~
+
+# Logs & Temp Directory
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+tmp/
+temp/
+
+# Agent Scratch Files
+.gemini/
+.agents/

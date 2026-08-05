@@ -1,0 +1,18 @@
+/* shiki-auth.css - Declarative CSS injected at document_start */
+html, body {
+    background-color: #0a0e17 !important;
+    background: #0a0e17 !important;
+    background-image: radial-gradient(circle at center, #161c2b 0%, #0a0e17 100%) !important;
+    color: #ffffff !important;
+    min-height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Hide raw Shikimori default page elements on OAuth pages so user never sees green pattern or raw code */
+body > *:not(#animeplus-autoauth-backdrop) {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}

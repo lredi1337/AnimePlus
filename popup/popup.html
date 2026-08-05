@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none';">
+    <title>Anime+</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="../config.js"></script>
+</head>
+
+<body>
+    <div class="popup" id="popupApp">
+
+        <!-- Header -->
+        <div class="header">
+            <div class="logo" id="popup-brand">ANIME<span>+</span></div>
+            <button class="toggle" id="extToggle" aria-label="Вкл/выкл расширение">
+                <div class="toggle-knob"></div>
+            </button>
+        </div>
+
+        <div id="extBody">
+
+            <!-- Site Row -->
+            <div class="site-row">
+                <div class="site-group" id="siteGroup">
+                    <button class="site-btn btn-animego active" id="btn-animego" data-site="AnimeGO">AnimeGO</button>
+                    <button class="site-btn btn-jutsu" id="btn-jutsu" data-site="JUT-SU">JUT-SU</button>
+                </div>
+                <div class="status-dot-row" id="status-box">
+                    <span class="dot" id="status-dot"></span>
+                    <span id="status-text">активно</span>
+                </div>
+            </div>
+            <div class="toast" id="siteToast"></div>
+
+            <!-- Shikimori Profile -->
+            <div class="profile" id="shiki-auth-box">
+                <!-- Logged out view -->
+                <div id="shiki-logged-out">
+                    <p class="hint-text" style="text-align: left; margin: 0 0 8px 0; font-size: 11px;">Автоматическая отметка серий в профиле:</p>
+                    <button class="btn btn-shiki-oauth" id="btn-shiki-login-link" style="width: 100%; padding: 8px 10px; font-size: 12px; font-weight: 700; margin-bottom: 6px;">🔑 Войти через Shikimori (1 клик)</button>
+                    <div style="font-size: 10px; color: var(--text-muted); text-align: center; margin-bottom: 4px;">Нажмите «Разрешить» на открывшейся странице — вход выполнится автоматически!</div>
+                    
+                    <div id="shiki-code-wrapper" style="margin-top: 6px; display: none;">
+                        <div style="font-size: 10.5px; color: var(--text-secondary); text-align: left; margin-bottom: 4px;">Ручной ввод кода (если авто-вход не сработал):</div>
+                        <div style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                            <input type="text" id="shiki-auth-code" placeholder="Вставьте код..." class="shiki-input" style="flex: 1; min-width: 0; height: 28px; font-size: 11px;">
+                            <button class="btn-shiki-submit" id="btn-shiki-submit-code" style="flex-shrink: 0; padding: 0 10px; height: 28px; font-size: 11px; white-space: nowrap;">Войти</button>
+                        </div>
+                    </div>
+                    <div id="shiki-error-msg" class="shiki-error" style="display: none;"></div>
+
+                    <div style="margin-top: 6px; text-align: left;">
+                        <span id="toggle-custom-credentials" style="font-size: 10px; color: var(--text-muted); cursor: pointer; text-decoration: underline;">⚙️ Свои ключи OAuth (опционально)</span>
+                        <div id="custom-credentials-wrapper" class="shiki-input-group" style="display: none; margin-top: 6px; flex-direction: column; gap: 4px;">
+                            <input type="text" id="shiki-client-id" placeholder="Свой Client ID" class="shiki-input" style="font-size: 10.5px; padding: 4px 8px;">
+                            <input type="password" id="shiki-client-secret" placeholder="Свой Client Secret" class="shiki-input" style="font-size: 10.5px; padding: 4px 8px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logged in view -->
+                <div id="shiki-logged-in" style="display: none;">
+                    <div class="profile-row">
+                        <img id="shiki-user-avatar" class="avatar" src="" alt="Avatar">
+                        <div style="min-width: 0; flex: 1;">
+                            <div class="profile-name" id="shiki-user-name">Пользователь</div>
+                            <div class="profile-sub" id="shiki-status-text">Shikimori · подключено</div>
+                        </div>
+                        <div class="profile-stat">
+                            <div class="profile-stat-num" id="shiki-today-count">0</div>
+                            <div class="profile-stat-label">серий сегодня</div>
+                        </div>
+                        <button id="btn-shiki-logout" class="btn-shiki-logout" style="margin-left: 6px; padding: 3px 6px; font-size: 10px;">Выйти</button>
+                    </div>
+                    <div class="status-group" id="statusGroup">
+                        <button class="status-btn" id="btn-tab-watching">📋 Смотрю</button>
+                        <button class="status-btn" id="btn-tab-rewatching">🔄 Пересматриваю</button>
+                    </div>
+                    <div id="history-wrapper" style="display: none; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px;">
+                        <div style="font-size: 10px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">🕒 Недавно просмотрено:</div>
+                        <div id="history-items" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Filters -->
+            <div id="shiki-search-wrapper" style="display: none;">
+                <div class="search-wrap">
+                    <input type="text" id="shiki-list-search" placeholder="Поиск в списке...">
+                </div>
+                <div class="filter-group" id="shiki-filter-pills">
+                    <button class="filter-btn filter-pill active" data-kind="all">Все</button>
+                    <button class="filter-btn filter-pill" data-kind="tv">TV</button>
+                    <button class="filter-btn filter-pill" data-kind="movie">Фильмы</button>
+                    <button class="filter-btn filter-pill" data-kind="ova">OVA/ONA</button>
+                </div>
+                <div class="filter-note" id="filterNote"></div>
+            </div>
+
+            <!-- Title List -->
+            <div class="list" id="shiki-watching-list" style="display: none;">
+                <div class="loading-text" id="shiki-watching-loading">Загрузка списка...</div>
+            </div>
+            <div class="toast" id="playToast"></div>
+
+            <!-- Bottom Accordion Tabs -->
+            <div class="bottom-tabs">
+                <button class="bottom-tab" id="btnMusic">♪ Музыка</button>
+                <button class="bottom-tab" id="btnPlayer">⚙ Плеер</button>
+            </div>
+            <div class="bottom-panel" id="panelMusic">
+                <div id="anime-info-header" class="anime-info-header" style="display: none; margin-bottom: 6px; font-size: 11px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">
+                    <strong>Аниме:</strong> <span id="detected-anime-title">-</span><br>
+                    <strong>Серия:</strong> <span id="detected-anime-episode">-</span>
+                </div>
+                <div class="loading-text" id="music-loading">Откройте страницу аниме...</div>
+                <div id="music-content" style="display: none;">
+                    <div class="track-list" id="op-list"></div>
+                    <div class="track-list" id="ed-list"></div>
+                </div>
+            </div>
+            <div class="bottom-panel" id="panelPlayer">
+                <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 6px;">Кликни, если кнопки пропуска не появились:</div>
+                <button id="btn-activate-player" style="background: var(--accent-bg); color: var(--accent); border-color: var(--accent);">🔧 Активировать вручную</button>
+                <div class="config-tools" style="margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px;">
+                    <button class="btn-config-tool" id="btn-export-settings">💾 Экспорт настроек</button>
+                    <button class="btn-config-tool" id="btn-import-settings">📥 Импорт настроек</button>
+                    <input type="file" id="input-import-settings" accept=".json" style="display: none;">
+                </div>
+            </div>
+
+            <div class="footer">
+                <button class="tracker-link" id="btn-shiki">🍃 Shikimori</button>
+            </div>
+            <div class="toast" id="trackerToast" style="text-align:center;"></div>
+
+        </div>
+        <div id="extOffNote" style="display:none; padding:24px 14px; text-align:center; font-size:13px; color:var(--text-muted);">Расширение выключено</div>
+
+        <!-- Custom In-Popup Confirmation Modal -->
+        <div class="modal-overlay" id="customModalOverlay" style="display: none;">
+            <div class="modal-card">
+                <div class="modal-title">⚠️ Сбросить счётчик?</div>
+                <div class="modal-desc">Вы действительно хотите сбросить число серий за сегодня до 0?</div>
+                <div class="modal-btns">
+                    <button class="modal-btn modal-btn-cancel" id="btnModalCancel">Отмена</button>
+                    <button class="modal-btn modal-btn-confirm" id="btnModalConfirm">Сбросить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
