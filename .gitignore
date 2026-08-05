@@ -1,9 +1,8 @@
-# Private Credentials & Secret Configs
-credentials.js
-credentials*.js
-credentials/
+# Cloudflare Worker Backend Scripts (Not used in extension bundle)
 cloudflare-worker.js
 *worker*.js
+
+# Secret Keys & Environment Files
 .env
 .env.local
 .env.*.local
