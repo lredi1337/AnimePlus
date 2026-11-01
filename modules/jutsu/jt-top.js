@@ -6,8 +6,7 @@
 
     let topCurrentType = 'shikimori';
     let topCurrentKind = '';
-    let topCurrentPage = 1;
-    let topIsLoading = false;
+    let renderToken = 0;
 
     // Инъекция CSS стилей для Топ-100 на Jut-Su
     const injectTopStyles = () => {
@@ -48,82 +47,6 @@
 
     const renderSpinner = () => `<div class="ag-spinner-container"><div class="ag-spinner"></div><div class="ag-spinner-text">Загрузка топа...</div></div>`;
 
-    const fetchFallbackCover = async (title) => {
-        if (!title) return null;
-        try {
-            const searchResponse = await new Promise((resolve) => {
-                try {
-                    chrome.runtime.sendMessage({
-                        action: "fetch_shikimori",
-                        url: `https://kitsu.io/api/edge/anime?filter[text]=${encodeURIComponent(title)}&page[limit]=1`
-                    }, (response) => {
-                        if (chrome.runtime.lastError) resolve(null);
-                        else resolve(response);
-                    });
-                } catch (err) {
-                    resolve(null);
-                }
-            });
-            const resJson = searchResponse && searchResponse.data ? searchResponse.data : {};
-            if (resJson.data && resJson.data[0] && resJson.data[0].attributes && resJson.data[0].attributes.posterImage) {
-                return resJson.data[0].attributes.posterImage.original || resJson.data[0].attributes.posterImage.medium;
-            }
-        } catch (e) {
-            console.error("Error fetching fallback cover:", e);
-        }
-        return null;
-    };
-
-    let coverResolveQueue = [];
-    let isResolvingCovers = false;
-
-    const startCoverResolver = () => {
-        if (isResolvingCovers || coverResolveQueue.length === 0) return;
-        isResolvingCovers = true;
-
-        const processNext = async () => {
-            if (coverResolveQueue.length === 0) {
-                isResolvingCovers = false;
-                return;
-            }
-            const query = coverResolveQueue.shift();
-            try {
-                const form = new FormData();
-                form.append('do', 'search');
-                form.append('subaction', 'search');
-                form.append('story', query);
-
-                const res = await fetch('/index.php?do=search', { method: 'POST', body: form });
-                const text = await res.text();
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(text, 'text/html');
-                const firstItem = doc.querySelector('.jutsu-item');
-                if (firstItem) {
-                    const imgEl = firstItem.querySelector('.jutsu-item__img img');
-                    if (imgEl) {
-                        let coverUrl = imgEl.getAttribute('src');
-                        if (coverUrl) {
-                            chrome.storage.local.get(['ag_native_covers'], (res) => {
-                                const cache = res.ag_native_covers || {};
-                                cache[query.toLowerCase()] = coverUrl;
-                                chrome.storage.local.set({ ag_native_covers: cache });
-                            });
-                            const docImgs = document.querySelectorAll(`img[data-ag-title="${query.toLowerCase()}"]`);
-                            docImgs.forEach(img => {
-                                img.src = coverUrl;
-                            });
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("Error resolving cover for:", query, err);
-            }
-            setTimeout(processNext, 300);
-        };
-
-        processNext();
-    };
-
     const renderAnimeCard = (anime, rank, nativeCovers) => {
         const title = anime.russian || anime.name;
         const score = anime.score || '?';
@@ -132,30 +55,25 @@
         const episodesText = anime.episodes ? (anime.episodes + ' эп.') : type;
 
         const queryTitle = title.split('/')[0].split('[')[0].trim();
-        let rawPoster = cachedCover || anime.ag_resolved_poster || (anime.image ? (anime.image.original || anime.image.preview) : '');
-        let posterUrl = (window.agNormalizePosterUrl && rawPoster) ? window.agNormalizePosterUrl(rawPoster) : rawPoster;
-
-        if (!cachedCover) {
-            if (!coverResolveQueue.includes(queryTitle)) {
-                coverResolveQueue.push(queryTitle);
-            }
-        }
-
-        const safeTitleStr = (title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const safeRuStr = (anime.russian || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const safeEnStr = (anime.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        // Сначала постер Shikimori; обложка, найденная ранее на самом Jut-Su (кэш ag_native_covers), —
+        // только запасной вариант в цепочке agBindPoster. Раньше её ставили первой и массово искали
+        // обложки на Jut-Su для всех 100 тайтлов, подменяя корректные постеры Shikimori.
+        const nativeCover = nativeCovers ? (nativeCovers[queryTitle.toLowerCase()] || '') : '';
+        const rawPoster = anime.ag_resolved_poster || (anime.image ? (anime.image.original || anime.image.preview) : '');
+        const posterUrl = window.agIsPlaceholderPoster(rawPoster) ? '' : window.agNormalizePosterUrl(rawPoster);
+        const esc = window.agEscapeHtml;
 
         return `
             <div class="jutsu-item jutsu-item--short p-relative cd-exp-link grid-item has-overlay-on-img" style="cursor: pointer;">
                 <div class="jutsu-item__img cd-img ar-2-3 icon icon-play has-overlay-on-img__trg">
-                    <img src="${posterUrl}" alt="${title}" loading="lazy" data-ag-title="${queryTitle.toLowerCase()}" onerror="if(window.agHandlePosterError) window.agHandlePosterError(this, '${safeTitleStr}', ${anime.id || 'null'}, '${safeRuStr}', '${safeEnStr}');">
+                    <img src="${esc(posterUrl)}" alt="${esc(title)}" decoding="async" referrerpolicy="no-referrer" data-ag-title="${esc(queryTitle.toLowerCase())}" data-ag-poster-id="${anime.id || ''}" data-ag-poster-ru="${esc(anime.russian || title || '')}" data-ag-poster-en="${esc(anime.name || '')}" data-ag-poster-native="${esc(nativeCover)}">
                 </div>
                 <div class="jutsu-item__desc">
-                    <a class="jutsu-item__title cd-exp-link__trg ag-top-link" href="#" data-query="${queryTitle}" data-orig="${anime.name || ''}" data-year="${year}" data-type="${type}">${title}</a>
+                    <a class="jutsu-item__title cd-exp-link__trg ag-top-link" href="#" data-query="${esc(queryTitle)}" data-orig="${esc(anime.name || '')}" data-year="${esc(year)}" data-type="${esc(type)}">${esc(title)}</a>
                 </div>
                 <div class="jutsu-item__meta ar-2-3 d-flex fd-column jc-space-between ai-flex-start">
-                    <div class="jutsu-item__label jutsu-item__label-rating cd-flex jc-center">★ ${score}</div>
-                    <div class="jutsu-item__label jutsu-item__label-series cd-flex">${episodesText}</div>
+                    <div class="jutsu-item__label jutsu-item__label-rating cd-flex jc-center">★ ${esc(score)}</div>
+                    <div class="jutsu-item__label jutsu-item__label-series cd-flex">${esc(episodesText)}</div>
                 </div>
             </div>
         `;
@@ -184,46 +102,23 @@
                     name: origTitle,
                     year: targetYear,
                     kind: targetType,
-                    fallbackUrl: `/?do=search&subaction=search&story=${encodeURIComponent(query)}`
+                    fallbackUrl: `/?do=search&subaction=search&story=${encodeURIComponent(query)}&ag_from=animeplus`
                 }, (res) => {
                     if (res && res.url) {
                         window.location.href = res.url;
                     } else {
-                        window.location.href = `/?do=search&subaction=search&story=${encodeURIComponent(query)}`;
+                        window.location.href = `/?do=search&subaction=search&story=${encodeURIComponent(query)}&ag_from=animeplus`;
                     }
                 });
             });
         });
     };
 
-    const resolveFallbackCoversAsync = (items) => {
-        items.forEach(async (item) => {
-            let pUrl = item.image ? ('https://shikimori.io' + (item.image.preview || item.image.original || '')) : '';
-            const isPlaceholder = !pUrl || pUrl.includes('/assets/') || pUrl.includes('missing') || pUrl.includes('404');
-            if (isPlaceholder) {
-                chrome.runtime.sendMessage({
-                    action: "resolve_jutsu_cover",
-                    id: item.id,
-                    russian: item.russian || item.name,
-                    name: item.name
-                }, (res) => {
-                    const realUrl = res ? (res.poster || res.url) : null;
-                    if (realUrl) {
-                        item.ag_resolved_poster = realUrl;
-                        const queryTitle = (item.russian || item.name || '').split('/')[0].split('[')[0].trim();
-                        const imgs = document.querySelectorAll(`img[data-ag-title="${queryTitle.toLowerCase()}"]`);
-                        imgs.forEach(img => {
-                            img.src = realUrl;
-                        });
-                    }
-                });
-            }
-        });
-    };
-
     const loadTopPage = async (container) => {
-        if (topIsLoading) return;
-        topIsLoading = true;
+        // Токен вместо флага загрузки: клик по вкладке во время загрузки больше не теряется,
+        // а устаревший ответ просто отбрасывается
+        const token = ++renderToken;
+        const isStale = () => token !== renderToken || !container.isConnected;
 
         injectTopStyles();
 
@@ -259,7 +154,6 @@
                 const newKind = btn.getAttribute('data-kind');
                 if (topCurrentKind !== newKind) {
                     topCurrentKind = newKind;
-                    topCurrentPage = 1;
                     loadTopPage(container);
                 }
             };
@@ -274,7 +168,7 @@
                 try {
                     chrome.runtime.sendMessage({
                         action: "fetch_shikimori",
-                        url: `https://shikimori.one/api/animes?limit=50&order=ranked&page=1${kindParam}`
+                        url: `https://shikimori.io/api/animes?limit=50&order=ranked&page=1${kindParam}`
                     }, (response) => {
                         if (chrome.runtime.lastError) resolve(null);
                         else resolve(response);
@@ -284,7 +178,8 @@
                 }
             });
 
-            const data1 = shikiResponse1 && shikiResponse1.data ? shikiResponse1.data : [];
+            if (isStale()) return;
+            const data1 = shikiResponse1 && Array.isArray(shikiResponse1.data) ? shikiResponse1.data : [];
             const grid = container.querySelector('#ag-top-grid');
             if (grid) grid.innerHTML = '';
 
@@ -300,19 +195,18 @@
             }
 
             renderCardBatch(data1, 0, grid, nativeCovers);
-            resolveFallbackCoversAsync(data1);
-            startCoverResolver();
+            window.agBindPostersIn(grid);
 
             if (data1.length === 50) {
                 chrome.runtime.sendMessage({
                     action: "fetch_shikimori",
-                    url: `https://shikimori.one/api/animes?limit=50&order=ranked&page=2${kindParam}`
+                    url: `https://shikimori.io/api/animes?limit=50&order=ranked&page=2${kindParam}`
                 }, (shikiResponse2) => {
-                    const data2 = shikiResponse2 && shikiResponse2.data ? shikiResponse2.data : [];
+                    if (isStale()) return;
+                    const data2 = shikiResponse2 && Array.isArray(shikiResponse2.data) ? shikiResponse2.data : [];
                     if (data2 && data2.length > 0 && grid) {
                         renderCardBatch(data2, 50, grid, nativeCovers);
-                        resolveFallbackCoversAsync(data2);
-                        startCoverResolver();
+                        window.agBindPostersIn(grid);
                     }
 
                     const msg = document.createElement('div');
@@ -335,20 +229,22 @@
 
         } catch (e) {
             console.error("Top load error:", e);
-        } finally {
-            topIsLoading = false;
+            const grid = container.querySelector('#ag-top-grid');
+            if (grid && !isStale()) grid.innerHTML = '<div class="ag-load-more-btn" style="background: transparent; cursor: default; grid-column: 1 / -1;">Ошибка загрузки Топа. Обновите страницу.</div>';
         }
     };
 
     const handleNavigation = (urlPath) => {
         if (urlPath === '/top-shikimori') {
             topCurrentType = 'shikimori';
-            topCurrentPage = 1;
 
-            const contentContainer = document.querySelector('.jutsu-content');
+            const contentContainer = window.agFind('jutsu', 'content');
             if (!contentContainer) {
-                window.location.replace('/?show_ag_top=' + topCurrentType);
-                return true;
+                // Встроиться некуда. С текущей страницы переходим обычной навигацией (return false),
+                // а если мы уже на /top-shikimori без разметки — открываем Топ поверх главной.
+                // Раньше здесь был location.replace с return true, и следующий pushState отменял переход
+                if (location.pathname === urlPath) window.location.replace('/?show_ag_top=' + topCurrentType);
+                return false;
             }
 
             document.body.classList.add('ag-top-active');
@@ -385,10 +281,12 @@
 
         if (!window.jtTopClickListenerBound) {
             window.jtTopClickListenerBound = true;
-            document.body.addEventListener('click', (e) => {
-                const link = e.target.closest('a[href="/top-shikimori"]');
-                if (link) {
+            // capture-фаза: срабатываем раньше скриптов меню сайта; Ctrl/Shift-клик открывает вкладку как обычно
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest && e.target.closest('a[href="/top-shikimori"]');
+                if (link && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
                     e.preventDefault();
+                    e.stopPropagation();
                     const path = link.getAttribute('href');
                     if (window.location.pathname !== path) {
                         if (handleNavigation(path)) {
@@ -398,7 +296,7 @@
                         }
                     }
                 }
-            });
+            }, true);
         }
     };
 
@@ -435,7 +333,6 @@
 
         const targetKind = urlParams.get('ag_kind') || '';
         const fallbackQuery = urlParams.get('ag_query') || '';
-        const targetYear = urlParams.get('ag_year') || '';
 
         const lockKey = `ag_rank_opened_${targetKind}_${targetRank}`;
         if (sessionStorage.getItem(lockKey)) return;
@@ -450,7 +347,7 @@
                 kindParam = `&kind=${targetKind}`;
             }
 
-            const shikiUrl = `https://shikimori.one/api/animes?limit=50&order=ranked&page=${shikiPage}${kindParam}`;
+            const shikiUrl = `https://shikimori.io/api/animes?limit=50&order=ranked&page=${shikiPage}${kindParam}`;
 
             const shikiRes = await new Promise((resolve) => {
                 chrome.runtime.sendMessage({
@@ -463,11 +360,9 @@
             const targetItem = data[indexInPage];
 
             let queryTitle = fallbackQuery;
-            let itemYear = targetYear;
 
             if (targetItem) {
                 queryTitle = (targetItem.russian || targetItem.name || fallbackQuery).split('/')[0].split('[')[0].trim();
-                itemYear = targetItem.aired_on ? targetItem.aired_on.split('-')[0] : targetYear;
             }
 
             const form = new FormData();
@@ -491,44 +386,56 @@
             if (bestMatchUrl) {
                 window.location.href = bestMatchUrl;
             } else {
-                window.location.href = `/?do=search&subaction=search&story=${encodeURIComponent(queryTitle)}`;
+                window.location.href = `/?do=search&subaction=search&story=${encodeURIComponent(queryTitle)}&ag_from=animeplus`;
             }
         } catch (err) {
             console.error("Error processing Shikimori index N fallback", err);
         }
     };
 
+    // Автопереход со страницы поиска Jut-Su на страницу тайтла, если поиск открыло само расширение
+    // (параметры ag_from / ag_russian). Раньше переход срабатывал только при ровно одном блоке выдачи,
+    // а Jut-Su выводит каждую карточку дважды — переход не происходил никогда.
     window.handleJutsuSearch = async function () {
-        if (!window.location.search.includes('story=') && !window.location.search.includes('do=search') && !window.location.pathname.includes('/search')) return;
-
         const urlParams = new URLSearchParams(window.location.search);
         const searchQuery = urlParams.get('story') || urlParams.get('q');
         if (!searchQuery) return;
 
-        const agRussian = urlParams.get('ag_russian') || searchQuery;
-        const agName = urlParams.get('ag_name') || '';
-        const agYear = urlParams.get('ag_year') || '';
+        const fromExtension = urlParams.has('ag_from') || urlParams.has('ag_russian') || urlParams.has('ag_name');
+        if (!fromExtension) return; // обычный поиск пользователя не трогаем
 
-        const getCandidatesFromDoc = (doc) => {
-            const candidates = [];
-            const blocks = Array.from(doc.querySelectorAll('.all_anime_global, .all_anime_content, .jutsu-item, .short-story, .b-card, div[class*="all_anime"]'));
-            for (const block of blocks) {
-                const linkEl = block.querySelector('a.all_anime_title, .all_anime_title a, .jutsu-item__title a, a.jutsu-item__title, a.short-link') || block.querySelector('a[href]');
-                if (!linkEl) continue;
+        // Защита от зацикливания при возврате кнопкой «Назад»
+        const lockKey = `ag_search_redirect_${searchQuery}`;
+        if (sessionStorage.getItem(lockKey)) return;
 
-                let href = linkEl.getAttribute('href') || '';
-                if (!href || href.includes('privacy') || href.includes('rules') || href.includes('user/') || href.includes('do=search') || href.includes('subaction=')) continue;
-                if (href.startsWith('/')) href = 'https://jut-su.net' + href;
+        const titles = [urlParams.get('ag_russian'), urlParams.get('ag_name'), searchQuery].filter(Boolean);
+        const targetYear = urlParams.get('ag_year') || '';
 
-                const titleText = linkEl.textContent.trim();
-                candidates.push({ titleText, href });
-            }
-            return candidates;
+        const collectCards = () => {
+            const cards = new Map();
+            document.querySelectorAll('.jutsu-item').forEach(item => {
+                const link = item.querySelector('a.jutsu-item__title, .jutsu-item__title a, a[href$=".html"]');
+                const href = link && link.getAttribute('href');
+                if (!href || !/\.html$/.test(href) || /do=search|subaction=/.test(href)) return;
+                const abs = new URL(href, location.origin).href;
+                if (cards.has(abs)) return; // дубликаты карточек (две сетки в разметке)
+                cards.set(abs, {
+                    href: abs,
+                    title: link.textContent.trim(),
+                    year: (item.querySelector('.jutsu-item__subtitle')?.textContent.match(/\d{4}/) || [''])[0]
+                });
+            });
+            return [...cards.values()];
         };
 
-        const candidates = getCandidatesFromDoc(document);
-        if (candidates.length === 1) {
-            window.location.replace(candidates[0].href);
+        const cards = collectCards();
+        if (cards.length === 0) return;
+
+        // Общая логика сравнения названий (modules/shared/title-match.js): текст, сезон, год
+        const best = window.AgTitleMatch.pickBest(cards, { titles, year: targetYear }, { minScore: 250 });
+        if (best) {
+            sessionStorage.setItem(lockKey, '1');
+            window.location.replace(best.href);
         }
     };
 })();

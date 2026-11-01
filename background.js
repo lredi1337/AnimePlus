@@ -1,12 +1,35 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
-importScripts('./credentials.js', './modules/bg-cache.js', './modules/bg-shiki.js');
+importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js');
 
 try {
     const workerUrl = (globalThis.SHIKI_CREDENTIALS && globalThis.SHIKI_CREDENTIALS.worker_url) || "https://animeplus.ruscadred.workers.dev";
     chrome.storage.local.set({ shiki_worker_url: workerUrl });
 } catch (e) {}
 
+const EXTENSION_VERSION = chrome.runtime.getManifest().version;
+const EXTENSION_USER_AGENT = `AnimePlus/${EXTENSION_VERSION} (Browser Extension)`;
+
+// Хосты, к которым content-скрипты могут обращаться через fetch_shikimori.
+// Без белого списка обработчик был открытым прокси с правами расширения на любой URL
+const PROXY_ALLOWED_HOSTS = /^(?:[a-z0-9-]+\.)*(?:shikimori\.(?:io|one|me|org)|api\.animethemes\.moe|kitsu\.io)$/i;
+
+function isAllowedProxyUrl(urlStr) {
+    try {
+        const url = new URL(urlStr);
+        return url.protocol === 'https:' && PROXY_ALLOWED_HOSTS.test(url.hostname);
+    } catch (e) {
+        return false;
+    }
+}
+
+// Кэш обложек в памяти service worker. Раньше Map создавалась внутри обработчика заново на каждое сообщение
+const scheduleCoverMemoryCache = new Map();
+const saveScheduleCover = (key, url) => updateStorageObject('ag_schedule_covers_cache', c => { c[key] = url; }, { maxEntries: 1500 });
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Принимаем сообщения только от собственных контекстов расширения
+    if (!sender || sender.id !== chrome.runtime.id || !message || typeof message.action !== 'string') return false;
+
     if (message.action === "force_check_episodes") {
         (async () => {
             try {
@@ -29,23 +52,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // --- Сайты из реестра (modules/bg-sites.js) ---
+    if (message.action === "resolve_site_url") {
+        resolveSiteUrl(message.siteId, message)
+            .then(url => sendResponse({ url }))
+            .catch(() => sendResponse({ url: null }));
+        return true;
+    }
+
+    if (message.action === "resolve_all_sites") {
+        resolveAllSites(message, { siteIds: message.siteIds })
+            .then(results => sendResponse({ results }))
+            .catch(() => sendResponse({ results: [] }));
+        return true;
+    }
+
+    if (message.action === "resolve_shiki_id_redirect") {
+        resolveShikiIdFromRedirect(message.url)
+            .then(id => sendResponse({ id }))
+            .catch(() => sendResponse({ id: null }));
+        return true;
+    }
+
+    if (message.action === "resolve_shiki_posters") {
+        getShikiPosters(message.ids || [])
+            .then(posters => sendResponse({ posters }))
+            .catch(() => sendResponse({ posters: {} }));
+        return true;
+    }
+
+    if (message.action === "resolve_shikimori_id") {
+        resolveShikimoriId(message)
+            .then(data => sendResponse(data || { id: null }))
+            .catch(err => sendResponse({ id: null, error: err.message }));
+        return true;
+    }
+
     if (message.action === "get_native_page_template") {
-        (async () => {
-            try {
-                const catalogRes = await fetch('https://animego.me/anime', { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
-                const catalogHtml = await catalogRes.text();
-                const detailMatch = catalogHtml.match(/href="(\/anime\/[a-z0-9\-]+\-\d+)"/i);
-                if (detailMatch && detailMatch[1]) {
-                    const detailRes = await fetch('https://animego.me' + detailMatch[1], { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
-                    const detailHtml = await detailRes.text();
-                    sendResponse({ html: detailHtml });
-                    return;
-                }
-            } catch(e) {
-                console.error('[AnimeGO+] Error fetching native template:', e);
-            }
-            sendResponse({ html: null });
-        })();
+        getNativePageTemplate(message.origin)
+            .then(html => sendResponse({ html }))
+            .catch(err => {
+                console.error('[AnimeGO+] Error fetching native template:', err);
+                sendResponse({ html: null });
+            });
         return true;
     }
 
@@ -57,10 +106,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     return sendResponse({ error: 'No URL provided', status: 400 });
                 }
 
-                urlStr = urlStr.replace('shikimori.one', 'shikimori.io').replace('shikimori.me', 'shikimori.io');
+                urlStr = toShikiApiUrl(urlStr);
+                if (!isAllowedProxyUrl(urlStr)) {
+                    console.warn('[Anime+] fetch_shikimori: blocked URL', urlStr);
+                    return sendResponse({ error: 'URL not allowed', status: 403, data: null });
+                }
 
                 const headers = {
-                    'User-Agent': 'AnimePlus/9.1.0 (Browser Extension)',
+                    'User-Agent': EXTENSION_USER_AGENT,
                     'Accept': 'application/json, text/plain, */*'
                 };
 
@@ -100,69 +153,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    if (message.action === "search_both_portals") {
-        (async () => {
-            try {
-                let { queryTitle, origTitle, targetYear } = message;
-                let searchRu = queryTitle || '';
-                let searchEn = origTitle || '';
-
-                const hasCyrillic = (s) => /[\u0400-\u04FF]/.test(s || '');
-
-                if ((!hasCyrillic(searchRu) && !hasCyrillic(searchEn)) || !searchRu) {
-                    const lookupTerm = searchRu || searchEn;
-                    if (lookupTerm) {
-                        try {
-                            const shikiResp = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(lookupTerm)}&limit=1`, {
-                                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
-                            });
-                            if (shikiResp.ok) {
-                                const data = await shikiResp.json();
-                                if (Array.isArray(data) && data[0]) {
-                                    if (data[0].russian) searchRu = data[0].russian;
-                                    if (data[0].name) searchEn = data[0].name;
-                                }
-                            }
-                        } catch (e) {
-                            console.warn("Title resolution error:", e);
-                        }
-                    }
-                }
-
-                const [jutsuDirect, animegoDirect] = await Promise.all([
-                    findJutsuDirectUrl(searchRu, searchEn, targetYear),
-                    findAnimeGoDirectUrl(searchRu, searchEn, targetYear)
-                ]);
-
-                const fallbackJutsu = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchRu || searchEn || '')}`;
-                const fallbackAnimeGo = `https://animego.me/search/anime?q=${encodeURIComponent(searchRu || searchEn || '')}`;
-
-                const chosenUrl = jutsuDirect || animegoDirect || fallbackJutsu;
-                addToWatchHistory({
-                    russian: searchRu || searchEn,
-                    name: searchEn || searchRu,
-                    url: chosenUrl
-                });
-
-                sendResponse({
-                    jutsu: {
-                        url: jutsuDirect || fallbackJutsu,
-                        isDirect: !!jutsuDirect
-                    },
-                    animego: {
-                        url: animegoDirect || fallbackAnimeGo,
-                        isDirect: !!animegoDirect
-                    }
-                });
-            } catch (err) {
-                console.error("Error in search_both_portals:", err);
-                const fallbackJutsu = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(message.queryTitle || '')}`;
-                sendResponse({
-                    jutsu: { url: fallbackJutsu, isDirect: false },
-                    animego: { url: null, isDirect: false }
-                });
-            }
-        })();
+    if (message.action === "add_watch_history") {
+        addToWatchHistory(message.item)
+            .then(() => sendResponse({ success: true }))
+            .catch(() => sendResponse({ success: false }));
         return true;
     }
 
@@ -175,7 +169,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     return;
                 }
 
-                const shikiResp = await fetch(`https://shikimori.one/api/animes?search=${encodeURIComponent(query.trim())}&limit=12`, {
+                const shikiResp = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(query.trim())}&limit=12`, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
                 });
                 if (!shikiResp.ok) {
@@ -212,7 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     }
 
                     const targetSearchQuery = russian || origTitle;
-                    const fallbackJutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(targetSearchQuery)}&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(origTitle)}&ag_year=${encodeURIComponent(year || '')}&ag_kind=${encodeURIComponent(item.kind || '')}`;
+                    const fallbackJutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(targetSearchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(origTitle)}&ag_year=${encodeURIComponent(year || '')}&ag_kind=${encodeURIComponent(item.kind || '')}`;
 
                     const cacheKey = getCacheKey(russian, origTitle, year);
                     const cachedDirect = await getDirectUrlFromCache(cacheKey);
@@ -242,6 +236,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const timeoutTask = new Promise(resolve => setTimeout(resolve, 200));
                 await Promise.race([preResolveTask, timeoutTask]);
 
+                await fillShikiPosters(results);
                 sendResponse({ results });
             } catch (err) {
                 console.error("Error in search_fallback_anime:", err);
@@ -251,7 +246,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    const scheduleCoverMemoryCache = new Map();
 
     if (message.action === "resolve_jutsu_cover") {
         (async () => {
@@ -275,19 +269,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     return sendResponse({ poster: diskCache[cacheKey], url: diskCache[cacheKey] });
                 }
 
+                // 1. Настоящий постер Shikimori из GraphQL (REST часто отдаёт заглушку «лису»)
+                if (id) {
+                    const gqlPoster = (await getShikiPosters([id]))[parseInt(id, 10)];
+                    if (gqlPoster) {
+                        scheduleCoverMemoryCache.set(cacheKey, gqlPoster);
+                        diskCache[cacheKey] = gqlPoster;
+                        saveScheduleCover(cacheKey, gqlPoster);
+                        return sendResponse({ poster: gqlPoster, url: gqlPoster });
+                    }
+                }
+
                 if (id) {
                     try {
                         const shikiRes = await fetch(`https://shikimori.io/api/animes/${id}`, {
-                            headers: { 'User-Agent': 'AnimePlus/9.1.0 (Browser Extension)', 'Accept': 'application/json' }
+                            headers: { 'User-Agent': EXTENSION_USER_AGENT, 'Accept': 'application/json' }
                         });
                         if (shikiRes.ok) {
                             const shikiData = await shikiRes.json();
                             let p = shikiData?.image?.preview || shikiData?.image?.original;
                             if (p && !p.includes('missing') && !p.includes('404')) {
-                                if (!p.startsWith('http')) p = 'https://shikimori.one' + (p.startsWith('/') ? '' : '/') + p;
+                                p = absoluteShikiUrl(p);
                                 scheduleCoverMemoryCache.set(cacheKey, p);
                                 diskCache[cacheKey] = p;
-                                chrome.storage.local.set({ ag_schedule_covers_cache: diskCache });
+                                saveScheduleCover(cacheKey, p);
                                 return sendResponse({ poster: p, url: p });
                             }
                         }
@@ -341,7 +346,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (finalPoster) {
                     scheduleCoverMemoryCache.set(cacheKey, finalPoster);
                     diskCache[cacheKey] = finalPoster;
-                    chrome.storage.local.set({ ag_schedule_covers_cache: diskCache });
+                    saveScheduleCover(cacheKey, finalPoster);
                     return sendResponse({ poster: finalPoster, url: finalPoster });
                 }
 
@@ -374,7 +379,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     try {
                         const resp = await fetch('https://shikimori.io/api/calendar', {
                             headers: {
-                                'User-Agent': 'AnimePlus/9.1.0 (Browser Extension)',
+                                'User-Agent': EXTENSION_USER_AGENT,
                                 'Accept': 'application/json'
                             }
                         });
@@ -444,7 +449,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     }
 
                     const targetSearchQuery = russian || origTitle;
-                    const fallbackJutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(targetSearchQuery)}&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(origTitle)}&ag_year=${encodeURIComponent(year || '')}&ag_kind=${encodeURIComponent(kind || '')}`;
+                    const fallbackJutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(targetSearchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(origTitle)}&ag_year=${encodeURIComponent(year || '')}&ag_kind=${encodeURIComponent(kind || '')}`;
 
                     const cacheKey = getCacheKey(russian, origTitle, year);
                     const cachedDirect = await getDirectUrlFromCache(cacheKey);
@@ -465,6 +470,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
                 const resolvedSchedule = await Promise.all(schedulePromises);
                 const schedule = resolvedSchedule.filter(Boolean);
+                await fillShikiPosters(schedule);
 
                 sendResponse({ schedule });
             } catch (err) {
@@ -484,7 +490,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (!directUrl && name) {
                     directUrl = await findJutsuDirectUrl(name, russian, parsedYear, kind);
                 }
-                const targetUrl = directUrl || fallbackUrl || `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(name || russian)}`;
+                const targetUrl = directUrl || fallbackUrl || `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(name || russian)}&ag_from=animeplus`;
                 sendResponse({ url: targetUrl });
             } catch (err) {
                 sendResponse({ url: message.fallbackUrl });
@@ -563,8 +569,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 let kindUrlParam = '';
-                if (kindsArr.length === 1) {
-                    kindUrlParam = `&kind=${kindsArr[0]}`;
+                if (kindsArr.length > 0 && kindsArr.length < 5) {
+                    kindUrlParam = '&kind=' + kindsArr.join(',');
                 }
 
                 const pagePromises = pagesToFetch.map(page => {
@@ -582,13 +588,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     }
                 });
 
-                if (candidates.length > 0) {
-                    chosen = candidates[Math.floor(Math.random() * candidates.length)];
-                }
-
-                if (!chosen) {
+                if (candidates.length === 0) {
                     return sendResponse({ url: null, reason: 'no_match', minScore: targetMinScore });
                 }
+
+                // Для сайтов-провайдеров (ru.yummyani.me и др.) ищем тайтл прямо на целевом сайте
+                if (message.siteId && message.siteId !== 'animego' && message.siteId !== 'jutsu') {
+                    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+                    const site = AgSites.byId(message.siteId);
+
+                    let resolvedUrl = null;
+                    let foundCand = null;
+
+                    for (const cand of shuffled.slice(0, 15)) {
+                        const candTitles = [cand.russian, cand.name].filter(Boolean);
+                        const candYear = cand.aired_on ? cand.aired_on.split('-')[0] : '';
+                        const candUrl = await resolveSiteUrl(message.siteId, {
+                            titles: candTitles,
+                            year: candYear,
+                            shikimoriId: cand.id
+                        }).catch(() => null);
+
+                        if (candUrl) {
+                            if (message.currentUrl && candUrl === message.currentUrl) {
+                                continue;
+                            }
+                            resolvedUrl = candUrl;
+                            foundCand = cand;
+                            break;
+                        }
+                    }
+
+                    if (resolvedUrl && foundCand) {
+                        return sendResponse({
+                            url: resolvedUrl,
+                            id: foundCand.id,
+                            name: foundCand.name,
+                            russian: foundCand.russian,
+                            score: foundCand.score,
+                            kind: foundCand.kind
+                        });
+                    }
+
+                    const fallbackCand = shuffled[0];
+                    const queryStr = fallbackCand ? (fallbackCand.russian || fallbackCand.name) : '';
+                    let catalogUrl = null;
+                    if (site && queryStr) {
+                        if (site.platform === 'yani') {
+                            catalogUrl = `${site.home}/catalog?q=${encodeURIComponent(queryStr)}`;
+                        } else if (site.dle && site.dle.searchPath) {
+                            catalogUrl = `${site.home}${site.dle.searchPath}${encodeURIComponent(queryStr)}`;
+                        }
+                    }
+
+                    return sendResponse({
+                        url: catalogUrl,
+                        id: fallbackCand ? fallbackCand.id : null,
+                        name: fallbackCand ? fallbackCand.name : null,
+                        russian: fallbackCand ? fallbackCand.russian : null,
+                        fallback: true
+                    });
+                }
+
+                chosen = candidates[Math.floor(Math.random() * candidates.length)];
 
                 const russianName = chosen.russian || '';
                 const origName = chosen.name || '';
@@ -693,6 +755,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             poster: relPoster
                         };
                     }).filter(Boolean);
+                    await fillShikiPosters(related.filter(r => r.id));
                     return sendResponse({ related });
                 }
             } catch (e) {}
@@ -713,6 +776,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     poster = 'https://shikimori.one' + poster;
                 }
                 poster = poster.replace(/\/preview\//g, '/original/').replace(/\/x\d+\//g, '/original/');
+                if (isMissingShikiPoster(poster)) poster = (await getShikiPosters([data.id]))[data.id] || '';
 
                 let screenshots = [];
                 const scrData = await fetchShikimoriApi(`/api/animes/${id}/screenshots`);
@@ -751,7 +815,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 const query = (data.name && data.name.length > 2) ? data.name : (data.russian || '');
-                const jutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(query)}`;
+                const jutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(query)}&ag_from=animeplus`;
 
                 sendResponse({
                     data: {
@@ -782,18 +846,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    if (message.action === "fullscreen_on") {
-        chrome.windows.getCurrent((window) => {
-            chrome.windows.update(window.id, { state: "fullscreen" });
-        });
-        sendResponse({ success: true });
-    }
-
-    if (message.action === "fullscreen_off") {
-        chrome.windows.getCurrent((window) => {
-            chrome.windows.update(window.id, { state: "maximized" });
-        });
-        sendResponse({ success: true });
+    if (message.action === "fullscreen_on" || message.action === "fullscreen_off") {
+        // Окно вкладки-отправителя. windows.getCurrent в service worker возвращает
+        // последнее сфокусированное окно, и фуллскрин мог включиться не там
+        const state = message.action === "fullscreen_on" ? "fullscreen" : "maximized";
+        const applyState = (windowId) => chrome.windows.update(windowId, { state })
+            .then(() => sendResponse({ success: true }))
+            .catch((e) => sendResponse({ success: false, error: e.message }));
+        if (sender.tab && sender.tab.windowId !== undefined) {
+            applyState(sender.tab.windowId);
+        } else {
+            chrome.windows.getLastFocused().then(w => applyState(w.id)).catch(() => sendResponse({ success: false }));
+        }
+        return true;
     }
 
     if (message.action === "shiki_oauth_exchange") {
@@ -838,7 +903,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             let tokens = await getShikiTokens();
             if (tokens.shiki_access_token && !tokens.shiki_user) {
                 try {
-                    const userRes = await shikiFetch('https://shikimori.one/api/users/whoami');
+                    const userRes = await shikiFetch('https://shikimori.io/api/users/whoami');
                     if (userRes.ok) {
                         tokens.shiki_user = await userRes.json();
                         await chrome.storage.local.set({ shiki_user: tokens.shiki_user });
@@ -857,7 +922,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 'shiki_today_episodes'
             ]);
 
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = localDateKey();
             let todayCount = 0;
             let todayEpisodes = Array.isArray(storageData.shiki_today_episodes) ? storageData.shiki_today_episodes : [];
 
@@ -889,7 +954,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === "reset_today_count") {
         (async () => {
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = localDateKey();
             await chrome.storage.local.set({
                 shiki_today_date: todayStr,
                 shiki_today_count: 0,
@@ -934,10 +999,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             chrome.tabs.remove(sender.tab.id).catch(() => {});
         }
         sendResponse({ success: true });
-        return true;
+        return false;
     }
 
-    return true;
+    // Неизвестное действие: не держим канал открытым — отправитель сразу получит lastError, а не повиснет
+    return false;
 });
 
 // Автоматический перехват URL авторизации Shikimori
@@ -969,3 +1035,43 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         }
     }
 });
+// Шаблон нативной страницы тайтла AnimeGO для синтетических карточек.
+// Раньше бралась первая ссылка /anime/*-N из каталога, а это оказывалась «/anime/top-250» (страница-список).
+// Теперь отбираем только карточки тайтлов и проверяем, что в HTML есть разметка детальной страницы.
+const NATIVE_TEMPLATE_TTL = 12 * 60 * 60 * 1000;
+let nativeTemplateMemo = null;
+
+async function getNativePageTemplate(origin) {
+    const base = /^https:\/\/animego\.(me|org)$/.test(origin || '') ? origin : 'https://animego.me';
+    const isFresh = (m) => m && m.base === base && Date.now() - m.ts < NATIVE_TEMPLATE_TTL;
+    if (isFresh(nativeTemplateMemo)) return nativeTemplateMemo.html;
+    // Память service worker теряется при каждом засыпании — второй уровень кэша в storage.session
+    try {
+        const { ag_native_template: stored } = await chrome.storage.session.get(['ag_native_template']);
+        if (isFresh(stored)) {
+            nativeTemplateMemo = stored;
+            return stored.html;
+        }
+    } catch (e) {}
+
+    const isDetailPage = (html) => /class="[^"]*entity__poster/.test(html) && /class="[^"]*entity__title/.test(html) && /<header[\s>]/.test(html);
+
+    const catalogHtml = await (await fetch(`${base}/anime`)).text();
+    const candidates = [...new Set(
+        [...catalogHtml.matchAll(/href="(?:https?:\/\/animego\.(?:me|org))?(\/anime\/[a-z0-9-]+-(\d{2,}))"/gi)]
+            .filter(m => !/^\/anime\/(top|season|status|genre|type|studio|random)\b/i.test(m[1]))
+            .map(m => m[1])
+    )].slice(0, 4);
+
+    for (const path of candidates) {
+        try {
+            const html = await (await fetch(base + path)).text();
+            if (isDetailPage(html)) {
+                nativeTemplateMemo = { base, html, ts: Date.now() };
+                chrome.storage.session.set({ ag_native_template: nativeTemplateMemo }).catch(() => {});
+                return html;
+            }
+        } catch (e) {}
+    }
+    return null;
+}

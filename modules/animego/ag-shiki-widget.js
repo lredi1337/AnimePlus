@@ -1,152 +1,167 @@
+// modules/animego/ag-shiki-widget.js
+// Сведения о странице тайтла AnimeGO, виджет Shikimori, AniSkip и учёт просмотра
+
 (function () {
     'use strict';
 
     let cachedSkipData = null;
     let lastFetchedEp = null;
+    let skipRequestEp = null;
 
-    function simplifyTitle(title) {
-        if (!title) return null;
-        let simple = title.split(/[:\-—]/)[0].trim();
-        if (simple && simple !== title) {
-            return simple;
+    // ---------- Сведения о странице (новый DOM 2026 + старые фолбэки) ----------
+
+    const readJsonLd = () => {
+        for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+            try {
+                const data = JSON.parse(script.textContent);
+                const items = Array.isArray(data) ? data : [data];
+                const anime = items.find(d => d && /TVSeries|Movie|CreativeWork/i.test(d['@type'] || ''));
+                if (anime) return anime;
+            } catch (e) {}
         }
         return null;
-    }
+    };
 
-    window.agSyncAniSkip = async function (forceSendToWindow = null) {
-        const titleEl = document.querySelector('.entity__title h1')
-            || document.querySelector('.anime-title h1')
-            || document.querySelector('h1.entity__title')
-            || document.querySelector('h1');
-        const sel = document.querySelector("select[name='series']");
-        const currentEp = (sel && sel.options && sel.options[sel.selectedIndex])
-            ? sel.options[sel.selectedIndex].textContent.match(/\d+/)?.[0]
-            : "1";
+    const KIND_BY_LD_TYPE = { TVSeries: 'tv', Movie: 'movie' };
 
-        if (forceSendToWindow && cachedSkipData && lastFetchedEp === currentEp) {
-            forceSendToWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData }, '*');
-            return;
+    window.agGetCurrentEpisode = function () {
+        // Новый плеер: Stimulus anime-player-episodes, активная серия помечена .active
+        const active = window.agFind('animego', 'episodeActive');
+        if (active) return active.dataset.episodeNumber;
+
+        // Старый плеер: <select name="series">
+        const sel = window.agFind('animego', 'legacyEpisodeSelect');
+        if (sel && sel.options && sel.options[sel.selectedIndex]) {
+            return sel.options[sel.selectedIndex].textContent.match(/\d+/)?.[0] || '1';
+        }
+        return '1';
+    };
+
+    window.agGetAnimePageInfo = function () {
+        if (!/^\/anime\/[^/]+/.test(location.pathname)) return null;
+
+        const titleEl = window.agFind('animego', 'title');
+        const rawTitle = titleEl ? titleEl.innerText.trim() : '';
+        const ld = readJsonLd();
+
+        // Раньше h1 имел вид «Русское / English», теперь оригинал лежит в JSON-LD alternateName
+        let title = rawTitle.split('/')[0].trim();
+        let origTitle = rawTitle.split('/')[1]?.trim() || '';
+        if (!origTitle && ld && ld.alternateName) {
+            origTitle = Array.isArray(ld.alternateName) ? ld.alternateName[0] : ld.alternateName;
+        }
+        if (!title && ld && ld.name) title = ld.name;
+
+        const synonyms = window.agFindAll('animego', 'titleSynonyms')
+            .map(li => li.innerText.trim()).filter(Boolean);
+
+        const year = ld && ld.datePublished ? String(ld.datePublished).slice(0, 4) : '';
+        const kind = ld ? (KIND_BY_LD_TYPE[ld['@type']] || '') : '';
+        const pageKey = (location.pathname.match(/\/anime\/([^/]+)/) || [])[1] || location.pathname;
+
+        return {
+            pageKey,
+            title,
+            origTitle: origTitle || title,
+            titles: [origTitle, title, ...synonyms].filter(Boolean),
+            year,
+            kind,
+            totalEpisodes: ld && ld.numberOfEpisodes ? parseInt(ld.numberOfEpisodes, 10) || 0 : 0,
+            episode: window.agGetCurrentEpisode()
+        };
+    };
+
+    // ---------- Кнопка Shikimori + AniSkip ----------
+
+    const sendSkipData = (target, data) => {
+        if (!target) return;
+        try { target.postMessage({ type: 'AS_DATA_UPDATE', data }, '*'); } catch (e) {}
+    };
+
+    const getPlayerIframeWindow = () => {
+        const iframe = window.agFind('animego', 'playerIframe');
+        return iframe?.contentWindow || null;
+    };
+
+    const injectShikiButton = (anime) => {
+        if (document.getElementById('ag-shiki-btn')) return;
+        let ratingContainer = window.agFind('animego', 'ratingBlock');
+        if (!ratingContainer) {
+            const parent = window.agQueryFirst(['.entity__title', '.anime-title', '.entity__sticky']);
+            if (!parent) return;
+            ratingContainer = document.createElement('div');
+            ratingContainer.className = 'entity__rating d-flex align-items-center gap-2 my-2';
+            parent.appendChild(ratingContainer);
         }
 
-        if (titleEl && window.agLastEpSkip !== currentEp) {
-            window.agLastEpSkip = currentEp;
-            const russianTitle = titleEl.innerText.split('/')[0].trim();
-            const englishTitle = titleEl.innerText.split('/')[1]?.trim();
-            try {
-                let shiki = [];
-                const searchTitles = [];
-                if (englishTitle) searchTitles.push(englishTitle);
-                if (russianTitle) searchTitles.push(russianTitle);
+        const btn = document.createElement('a');
+        btn.id = 'ag-shiki-btn';
+        btn.href = `https://shikimori.io/animes/${anime.id}`;
+        btn.target = '_blank';
+        btn.rel = 'noopener';
+        btn.className = 'btn d-inline-flex align-items-center';
+        btn.style.cssText = 'background-color: #212121; color: white; font-weight: 600; border-radius: 4px; padding: 0 12px; font-size: 13px; height: 32px; text-decoration: none; margin-top: auto; margin-bottom: auto; border: none; transition: opacity 0.2s;';
+        btn.onmouseover = () => btn.style.opacity = '0.8';
+        btn.onmouseout = () => btn.style.opacity = '1';
+        btn.innerText = `Shikimori ★ ${anime.score || '?'}`;
+        ratingContainer.appendChild(btn);
+    };
 
-                const simpleEng = simplifyTitle(englishTitle);
-                if (simpleEng && !searchTitles.includes(simpleEng)) searchTitles.push(simpleEng);
+    window.agSyncAniSkip = async function (forceSendToWindow = null) {
+        const info = window.agGetAnimePageInfo();
+        if (!info || info.titles.length === 0) return;
+        const currentEp = info.episode;
 
-                const simpleRus = simplifyTitle(russianTitle);
-                if (simpleRus && !searchTitles.includes(simpleRus)) searchTitles.push(simpleRus);
+        if (cachedSkipData && lastFetchedEp === currentEp) {
+            sendSkipData(forceSendToWindow || getPlayerIframeWindow(), cachedSkipData);
+            return;
+        }
+        if (skipRequestEp === currentEp) return; // запрос по этой серии уже в полёте
+        skipRequestEp = currentEp;
 
-                for (const searchTitle of searchTitles) {
-                    const shikiResponse = await new Promise((resolve) => {
-                        chrome.runtime.sendMessage({
-                            action: "fetch_shikimori",
-                            url: `https://shikimori.one/api/animes?search=${encodeURIComponent(searchTitle)}&limit=1`
-                        }, resolve);
-                    });
-                    const data = shikiResponse && shikiResponse.data ? shikiResponse.data : [];
-                    if (data.length > 0) {
-                        shiki = data;
-                        break;
-                    }
-                }
+        try {
+            const anime = await window.agSendMessage({
+                action: 'resolve_shikimori_id',
+                titles: info.titles,
+                year: info.year,
+                kind: info.kind
+            });
+            if (!anime || !anime.id) return;
 
-                if (shiki.length > 0) {
-                    let ratingContainer = document.querySelector('.entity__rating') || document.querySelector('.anime-rating') || document.querySelector('.media-rating');
-                    if (!ratingContainer) {
-                        const parent = document.querySelector('.entity__title') || document.querySelector('.anime-title') || document.querySelector('.entity__sticky');
-                        if (parent) {
-                            ratingContainer = document.createElement('div');
-                            ratingContainer.className = 'entity__rating d-flex align-items-center gap-2 my-2';
-                            parent.appendChild(ratingContainer);
-                        }
-                    }
-                    if (ratingContainer && !document.getElementById('ag-shiki-btn')) {
-                        const shikiUrl = `https://shikimori.one${shiki[0].url}`;
+            // Счёт берём из полной карточки (resolve хранит только ID)
+            const details = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${anime.id}` });
+            injectShikiButton({ id: anime.id, score: details?.data?.score });
 
-                        const createBtn = (id, text, url, bgColor) => {
-                            const btn = document.createElement('a');
-                            btn.id = id;
-                            btn.href = url;
-                            btn.target = '_blank';
-                            btn.className = 'btn d-inline-flex align-items-center';
-                            btn.style.cssText = `background-color: ${bgColor}; color: white; font-weight: 600; border-radius: 4px; padding: 0 12px; font-size: 13px; height: 32px; text-decoration: none; margin-top: auto; margin-bottom: auto; border: none; transition: opacity 0.2s;`;
-                            btn.onmouseover = () => btn.style.opacity = '0.8';
-                            btn.onmouseout = () => btn.style.opacity = '1';
-                            btn.innerText = text;
-                            return btn;
-                        };
-
-                        ratingContainer.appendChild(createBtn('ag-shiki-btn', `Shikimori ★ ${shiki[0].score || '?'}`, shikiUrl, '#212121'));
-                    }
-
-                    const res = await fetch(`https://api.aniskip.com/v2/skip-times/${shiki[0].id}/${parseFloat(currentEp)}?types=op&types=ed&episodeLength=0`).then(r => r.json());
-                    const data = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
-
-                    if (res.found) {
-                        const op = res.results.find(r => r.skipType === 'op');
-                        const ed = res.results.find(r => r.skipType === 'ed');
-                        if (op) data.op = { start: op.interval.startTime, end: op.interval.endTime };
-                        if (ed) data.ed = { start: ed.interval.startTime, end: ed.interval.endTime };
-                    }
-
-                    cachedSkipData = data;
-                    lastFetchedEp = currentEp;
-
-                    const iframe = document.querySelector('iframe');
-                    if (iframe?.contentWindow) {
-                        iframe.contentWindow.postMessage({ type: 'AS_DATA_UPDATE', data }, '*');
-                    }
-                    if (forceSendToWindow) {
-                        forceSendToWindow.postMessage({ type: 'AS_DATA_UPDATE', data }, '*');
-                    }
-                }
-            } catch (e) {
-                console.error('[Anime+] AniSkip fetch error:', e);
+            const res = await fetch(`https://api.aniskip.com/v2/skip-times/${anime.id}/${parseFloat(currentEp)}?types=op&types=ed&episodeLength=0`).then(r => r.json());
+            const data = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
+            if (res && res.found) {
+                const op = res.results.find(r => r.skipType === 'op');
+                const ed = res.results.find(r => r.skipType === 'ed');
+                if (op) data.op = { start: op.interval.startTime, end: op.interval.endTime };
+                if (ed) data.ed = { start: ed.interval.startTime, end: ed.interval.endTime };
             }
+
+            cachedSkipData = data;
+            lastFetchedEp = currentEp;
+            sendSkipData(getPlayerIframeWindow(), data);
+            if (forceSendToWindow) sendSkipData(forceSendToWindow, data);
+        } catch (e) {
+            console.error('[Anime+] AniSkip fetch error:', e);
+        } finally {
+            if (skipRequestEp === currentEp) skipRequestEp = null;
         }
     };
 
+    // ---------- Учёт просмотра ----------
+
     window.initShikimoriAutoSync = function () {
-        window.addEventListener('message', (e) => {
-            if (!e.data) return;
-            if (e.data.type === 'AG_VIDEO_PROGRESS') {
-                const epNum = parseInt(e.data.episode) || 1;
-                const isCompleted = e.data.isEnded === true;
-                
-                chrome.storage.local.get(['ag_settings'], (res) => {
-                    const settings = res.ag_settings || {};
-                    if (!settings.shiki_enabled) return;
-
-                    const titleEl = document.querySelector('.entity__title h1') || document.querySelector('h1');
-                    const searchTitle = titleEl ? titleEl.innerText.split('/')[0].trim() : '';
-                    if (!searchTitle) return;
-
-                    chrome.runtime.sendMessage({
-                        action: "fetch_shikimori",
-                        url: `https://shikimori.one/api/animes?search=${encodeURIComponent(searchTitle)}&limit=1`
-                    }, (shikiRes) => {
-                        const list = shikiRes && shikiRes.data ? shikiRes.data : [];
-                        if (list.length > 0) {
-                            const animeId = list[0].id;
-                            chrome.runtime.sendMessage({
-                                action: "shiki_sync_progress",
-                                shikimoriId: animeId,
-                                episode: epNum,
-                                totalEpisodes: list[0].episodes || 0,
-                                status: isCompleted ? 'completed' : 'watching'
-                            });
-                        }
-                    });
-                });
-            }
+        if (!window.agInitProgressTracker) return;
+        window.agInitProgressTracker({
+            site: 'animego',
+            // На AnimeGO Kodik открыт в режиме одной серии (/seria/...) и не знает её номер —
+            // источник истины — активная серия в плеере сайта
+            getEpisode: () => window.agGetCurrentEpisode(),
+            getTitleInfo: () => window.agGetAnimePageInfo()
         });
     };
 })();

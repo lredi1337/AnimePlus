@@ -14,7 +14,12 @@
                 if (rawTitle && coverUrl) {
                     chrome.storage.local.get(['ag_native_covers'], (res) => {
                         const cache = res.ag_native_covers || {};
-                        cache[rawTitle.toLowerCase()] = coverUrl;
+                        const key = rawTitle.toLowerCase();
+                        if (cache[key] === coverUrl) return; // не перезаписываем storage без изменений
+                        delete cache[key]; // ключ уходит в конец — порядок ключей служит LRU
+                        cache[key] = coverUrl;
+                        const keys = Object.keys(cache);
+                        if (keys.length > 1000) keys.slice(0, keys.length - 1000).forEach(k => delete cache[k]);
                         chrome.storage.local.set({ ag_native_covers: cache });
                     });
                 }
@@ -44,7 +49,7 @@
                 const res = await new Promise(resolve => {
                     chrome.runtime.sendMessage({
                         action: "fetch_shikimori",
-                        url: `https://shikimori.one/api/animes?search=${encodeURIComponent(animeTitle)}&limit=1`
+                        url: `https://shikimori.io/api/animes?search=${encodeURIComponent(animeTitle)}&limit=1`
                     }, resolve);
                 });
 

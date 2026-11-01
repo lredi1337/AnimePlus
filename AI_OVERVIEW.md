@@ -1,0 +1,392 @@
+# Anime+ (v9.3.0) — Архитектура и Руководство для ИИ / LLM
+
+> **Назначение документа**: Данный файл содержит исчерпывающее техническое описание архитектуры, компонентов, потоков данных, сетевых протоколов и внутренних механизмов браузерного расширения **Anime+**. Документ составлен таким образом, чтобы любая нейросеть (LLM) или разработчик могли мгновенно понять устройство проекта, назначение каждого файла, протоколы обмена сообщениями и контекст выполнения.
+
+---
+
+## 1. Обзор проекта и назначение
+
+**Anime+** — это браузерное расширение Manifest V3 для Chromium-браузеров (Chrome, Edge, Brave, Opera, Яндекс.Браузер), предназначенное для глубокой модификации, улучшения пользовательского опыта (UX) и объединения экосистем популярных аниме-ресурсов:
+- **Целевые онлайн-кинотеатры**: AnimeGO (`animego.me`, `animego.org`), Jut-Su (`jut-su.net`), YummyAnime (`ru.yummyani.me`, `old.yummyani.me`), `yummyanime.tv`, `animego.online`, `yammyanime.club`. Полный список — `modules/shared/sites.js`.
+- **База метаданных и трекер**: [Shikimori](https://shikimori.one / `shikimori.io` / `shikimori.me`).
+- **Видеоплееры и CDN**: Сеть плееров **Kodik** (`*.kodik.info`, `*.kodikplayer.com`, `*.dbcode.info`, `*.anivod.com` и др.).
+- **Сторонние API**: [AniSkip](https://api.aniskip.com) (таймкоды опенингов/эндингов), [AnimeThemes](https://api.animethemes.moe) (распознавание музыки), [Kitsu.io](https://kitsu.io) (фолбэк постеров).
+
+### Ключевые возможности
+1. **Умный автовыбор озвучки** (AniLibria, Studio Band, Dream Cast, Дубляж и др.) по настраиваемому пользователем списку приоритетов на AnimeGO, Jut-Su и в плеере Kodik.
+2. **Псевдо-фуллскрин (Pseudo-Fullscreen)**: Разворачивание плеера на 100% viewport браузера без системных рамок с сохранением позиции скролла и блокировкой прокрутки страницы.
+3. **Автоматический пропуск опенингов и эндингов (AniSkip)** с визуализацией сегментов на таймлайне и хоткеем <kbd>S</kbd>.
+4. **Бесшовная двухсторонняя интеграция с Shikimori**:
+   - Автоматическая OAuth 2.0 авторизация (с перехватом страницы выдачи прав).
+   - Авто-синхронизация просмотренных серий и статусов (*«Смотрю»*, *«Пересматриваю»*, *«Просмотрено»*).
+   - Счетчик серий, просмотренных за сегодня.
+   - Виджеты оценок Shikimori на страницах тайтлов.
+5. **Синтетические карточки аниме (Synthetic Anime Pages)**: Автоматическая генерация полноценных страниц на AnimeGO для тайтлов, отсутствующих в каталоге сайта (`/anime/shiki-{id}`).
+6. **Кросс-портальный поиск и бесшовный фолбэк**: Мгновенный переход с AnimeGO на Jut-Su (и наоборот), подмешивание результатов Jut-Su в нативный поиск AnimeGO.
+7. **Интерактивное расширенное Расписание онгоингов**: Дополнение расписания AnimeGO тайтлами с Jut-Su с фильтрацией китайских дуньхуа, длинных франшиз и низких рейтингов.
+8. **Топ-100 Shikimori**: Интеграция каталога лучших аниме прямо в шапку и структуру обоих сайтов.
+9. **Desktop и In-Page Push-уведомления о выходе новых серий**: Мониторинг онгоингов из списка пользователя каждые 30 минут через Chrome Alarms + проверка доступности озвучек на Kodik / порталах.
+10. **Music Finder**: Определение треков опенингов/эндингов в Popup с прямыми ссылками на YouTube.
+
+---
+
+## 2. Архитектура Manifest V3 и структура файлов
+
+```
+AnimePlus-main/
+├── manifest.json              # Манифест расширения (MV3, permissions, content_scripts, host_permissions)
+├── config.js                  # Глобальные константы, дефолтные настройки (DEFAULT_SETTINGS), хелперы
+├── credentials.js             # OAuth Client ID и URL Cloudflare Worker для авторизации Shikimori
+├── background.js              # Service Worker: центральный маршрутизатор сообщений и событий
+├── content-animego.js         # Точка входа Content Script для AnimeGO
+├── content-jutsu.js           # Точка входа Content Script для Jut-Su
+├── content-kodik.js           # Content Script для iframe плееров Kodik (all_frames: true)
+├── content-external.js        # Content Script для страниц Shikimori (кнопка "Смотреть с Anime+")
+├── content-shiki-auth.js      # Перехватчик OAuth-страницы Shikimori (стилизация + авто-подтверждение)
+├── shiki-auth.css             # Стили для модального окна авторизации Shikimori
+├── notification.html          # HTML автономного всплывающего окна уведомлений о серии
+├── notification.js            # Логика автономного окна уведомления
+├── notification.css           # Стили автономного окна уведомления
+│
+├── modules/                   # Модули расширения
+│   ├── bg-cache.js            # Движок кэширования ссылок, нечеткого поиска и нормализации названий
+│   ├── bg-shiki.js            # Движок API Shikimori, OAuth, синхронизации и push-уведомлений
+│   ├── ui-utils.js            # Общие UI-утилиты (тоасты, логотипы, нормализация постеров)
+│   │
+│   ├── animego/               # Подсистема AnimeGO
+│   │   ├── ag-player.js       # Управление плеером AnimeGO, псевдо-фуллскрин, скролл-лок
+│   │   ├── ag-voice.js        # Автовыбор приоритетной озвучки и переключение на Kodik
+│   │   ├── ag-shiki-widget.js # Виджет рейтинга Shikimori и AniSkip на AnimeGO
+│   │   ├── ag-synthetic.js    # Генерация синтетических карточек аниме на 404 страницах
+│   │   ├── ag-schedule.js     # Расширение расписания онгоингов AnimeGO
+│   │   ├── ag-jutsu-search.js # Встраивание поиска Jut-Su в поисковую строку AnimeGO
+│   │   ├── ag-top.js          # Страница Топ-100 Shikimori внутри AnimeGO
+│   │   ├── ag-random.js       # Логика кнопки «Случайное аниме»
+│   │   └── ag-settings.js     # Модальное окно настроек AnimeGO (5 вкладок)
+│   │
+│   └── jutsu/                 # Подсистема Jut-Su
+│       ├── jt-player.js       # Управление плеером Jut-Su, псевдо-фуллскрин, хоткеи
+│       ├── jt-voice.js        # Автовыбор приоритетной озвучки на Jut-Su
+│       ├── jt-shiki-widget.js # Рейтинг Shikimori и AniSkip на Jut-Su
+│       ├── jt-covers.js       # Замена низкокачественных постеров на постеры Shikimori/Kitsu
+│       ├── jt-top.js          # Страница Топ-100 Shikimori внутри Jut-Su
+│       ├── jt-random.js       # Логика кнопки «Случайное аниме» для Jut-Su
+│       └── jt-settings.js     # Модальное окно настроек Jut-Su
+│
+├── popup/                     # Всплывающее меню расширения (Popup)
+│   ├── popup.html             # Разметка Popup (Glassmorphism, адаптивная тема)
+│   ├── popup.js               # Логика Popup (список Shikimori, плеер, музыка, переключатели)
+│   └── popup.css              # Стилизация Popup (темы AnimeGO / Jut-Su / Default)
+│
+└── assets/ & icons/           # Графика, логотипы и иконки расширения
+```
+
+---
+
+## 3. Модель данных и хранилище (Storage Schema)
+
+Все настройки и персистентные данные хранятся в `chrome.storage.local`.
+
+### Объект настроек `ag_settings`
+```javascript
+{
+  global_enabled: true,               // Глобальный статус расширения (вкл/выкл)
+  autoNext: true,                     // Автоматический переход к следующей серии
+  autoFS: true,                       // Автоматический псевдо-фуллскрин при старте
+  autoSkip: true,                     // Авто-пропуск опенингов и эндингов (AniSkip)
+  autoPlay: true,                     // Авто-плей видео при открытии страницы
+  showNav: true,                      // Показывать боковые стрелки перехода серий в плеере
+  showSkipBtn: true,                  // Показывать кнопку "+90с" в плеере
+  showPiP: true,                      // Показывать кнопку Picture-in-Picture
+  showCenterBtn: true,                // Показывать кнопки перемотки -5с/+5с в центре
+  showDBL: true,                      // Двойной клик (по краям — перемотка, по центру — FS)
+  hideTime: 2000,                     // Время скрытия оверлея плеера в мс
+  use_standard_covers: false,         // Заменять постеры Jut-Su на стандартные обложки Shikimori
+  
+  // Расписание (Schedule)
+  ongoing_enabled: true,              // Включить расширенное расписание
+  ongoing_hide_chinese: true,         // Скрывать китайские тайтлы (дуньхуа)
+  ongoing_hide_long_running: false,   // Скрывать длинные сериалы (> 24 серий)
+  ongoing_min_score: 0,               // Минимальный рейтинг для отображения в расписании
+  ongoing_types: ["TV", "ONA", "OVA"],// Разрешенные типы в расписании
+  
+  // Рандомайзер
+  random_min_score: 6.0,              // Минимальная оценка для подбора случайного аниме
+  random_kinds: ["tv", "movie", "ona", "ova", "special"],
+  
+  // Shikimori интеграция
+  shiki_enabled: true,                // Включить функции Shikimori
+  shiki_client_id: "...",             // Client ID OAuth-приложения
+  shiki_worker_url: "",               // URL прокси Cloudflare Worker
+  shiki_auto_mark_watching: true,     // Авто-добавление в «Смотрю»
+  shiki_auto_mark_completed: true,    // Авто-перенос в «Просмотрено» на последней серии
+  shiki_sync_episodes: true,          // Синхронизация номеров серий
+  shiki_show_toasts: true,            // Показывать уведомления о синхронизации
+  
+  // Уведомления
+  notif_enabled: true,                // Включить push-уведомления о новых сериях
+  notif_interval_min: 30,             // Интервал проверки (в минутах)
+  
+  // Озвучки
+  auto_select_voice: true,            // Автовыбор озвучки
+  voice_priority_list: [              // Список приоритета озвучек по убыванию
+    "Anilibria",
+    "Studio Band",
+    "Dream Cast",
+    "Дубляж",
+    "SHIZA Project",
+    "Subtitles"
+  ],
+  
+  // Горячие клавиши
+  keys: {
+    fs: "f",                          // Псевдо-фуллскрин
+    next: "n",                        // Следующая серия
+    prev: "p",                        // Предыдущая серия
+    skip: "s",                        // Скип опенинга / +85с
+    rewind: "arrowleft",              // Назад на 5с
+    forward: "arrowright"             // Вперед на 5с
+  }
+}
+```
+
+### Другие ключи в `chrome.storage.local`
+- `shiki_access_token`, `shiki_refresh_token`, `shiki_token_expires_at`: Токены OAuth 2.0 Shikimori.
+- `shiki_user`: JSON-объект профиля пользователя Shikimori (`{ id, nickname, avatar, ... }`).
+- `shiki_today_date`, `shiki_today_count`, `shiki_today_episodes`: Дневная статистика просмотренных серий (массив строк вида `"${animeId}_${episode}"`).
+- `shiki_list_cache_watching`, `shiki_list_cache_rewatching`: Кэш списков аниме пользователя.
+- `ag_watch_history`: Последние 5 просмотренных тайтлов для быстрого доступа.
+- `cache_{ru}_{en}_{year}`: 7-дневный кэш резолвинга прямых URL на тайтлы Jut-Su и AnimeGO.
+- `ag_schedule_covers_cache`: Кэш резолвинга обложек для виджета расписания.
+- `notified_episodes`, `notified_episodes_history`: Хэш-сет и история отправленных уведомлений о сериях.
+- `active_notifications_map`: Активные объекты уведомлений для обработки кликов.
+
+---
+
+## 4. Шина сообщений (Communication Protocol)
+
+Расширение использует двухуровневую систему коммуникации:
+1. Внутреннюю шину Chrome Extension (`chrome.runtime.sendMessage` / `chrome.tabs.sendMessage`).
+2. Оконную шину HTML5 (`window.postMessage`) для связи между основным сайтом и вложенным `<iframe>` плеера.
+
+```
++-----------------------------------------------------------------------------------+
+|                            Chrome Runtime & Background                            |
+|                                  (background.js)                                  |
++-------------------+-------------------------------+-------------------------------+
+        ^           |                               ^               ^
+        | runtime   | tabs.sendMessage              | runtime       | runtime
+        v           v                               v               v
++-----------------------+               +-----------------------+   +---------------+
+|     Main Web Page     |               |    Popup Dashboard    |   | Notification  |
+|  content-animego.js   |               |      (popup.js)       |   | (notification)|
+|   content-jutsu.js    |               +-----------------------+   +---------------+
++-----------------------+
+        ^
+        | window.postMessage (AG_*, AS_*)
+        v
++-----------------------+
+|  Kodik Player Iframe  |
+|   (content-kodik.js)  |
++-----------------------+
+```
+
+### 4.1. Спецификация `chrome.runtime.onMessage` (Background Router)
+
+| Action | Параметры | Описание | Ответ |
+| :--- | :--- | :--- | :--- |
+| `force_check_episodes` | `{}` | Принудительная проверка выхода новых серий из списка Shikimori. | `{ success: boolean }` |
+| `search_anime` | `{ query }` | Поиск HTML-страницы выдачи на AnimeGO. | `{ html: string }` |
+| `fetch_shikimori` | `{ url }` | Проксирование запроса к Shikimori API с корректным User-Agent. | `{ data: Object, status: number }` |
+| `search_jutsu_direct` | `{ queryTitle, origTitle, targetYear }` | Поиск точного URL тайтла на Jut-Su с парсингом сезонов. | `{ url: string\|null }` |
+| `add_watch_history` | `{ item: { russian, name, url } }` | Запись тайтла в список недавних в popup (кнопка на Shikimori). | `{ success: boolean }` |
+| `search_fallback_anime` | `{ query }` | Поиск альтернатив через Shikimori API с резолвингом ссылок Jut-Su. | `{ results: Array<AnimeItem> }` |
+| `resolve_jutsu_cover` | `{ id, russian, name, title }` | Каскадный поиск обложки (Shikimori -> Kitsu -> Jut-Su og:image). | `{ poster: string, url: string }` |
+| `get_ongoing_schedule` | `{ settings }` | Загрузка и фильтрация календаря онгоингов Shikimori с ссылками Jut-Su. | `{ schedule: Array<ScheduleItem> }` |
+| `get_random_shikimori_anime` | `{}` | Случайный подбор тайтла по фильтрам жанров/оценки с поиском на порталах. | `{ url, jutsuUrl, id, name, russian, foundOnAnimeGO }` |
+| `get_shikimori_anime_details` | `{ id }` | Получение полной карточки тайтла (скриншоты, студии, жанры, плеер). | `{ data: FullAnimeDetails }` |
+| `get_shikimori_anime_related` | `{ id }` | Получение связанных тайтлов (сиквелы, приквелы, спин-оффы). | `{ related: Array }` |
+| `fullscreen_on` / `fullscreen_off` | `{}` | Управление полноэкранным состоянием окна браузера через `chrome.windows`. | `{ success: true }` |
+| `shiki_oauth_exchange` | `{ code, clientId, clientSecret }` | Обмен OAuth authorization code на Access & Refresh токены. | `{ success: boolean, user }` |
+| `shiki_auto_auth` | `{ code }` | Автоматический обмен кода из вкладки авторизации. | `{ success: boolean, user }` |
+| `shiki_logout` | `{}` | Удаление токенов и сброс статуса авторизации. | `{ success: true }` |
+| `shiki_get_status` | `{}` | Проверка валидности сессии, получение инфо о юзере и дневного счетчика. | `{ isLoggedIn, user, todayCount, ... }` |
+| `get_shiki_watching_list` | `{ status }` | Получение пользовательского списка тайтлов (`watching` / `rewatching`). | `{ success: boolean, items: Array }` |
+| `shiki_sync_progress` | `{ shikimoriId, episode, totalEpisodes, status }` | Обновление `user_rate` (прогресса просмотра серии) в профиле Shikimori. | `{ success: boolean, rate }` |
+| `reset_today_count` | `{}` | Сброс дневного счетчика просмотренных серий. | `{ success: true, todayCount: 0 }` |
+
+### 4.2. Спецификация `window.postMessage` (Page <-> Iframe Kodik)
+
+| Тип сообщения | Направление | Назначение | Payload |
+| :--- | :--- | :--- | :--- |
+| `AG_GET_DATA` | `Iframe -> Top` | Запрос информации о текущем тайтле и сериях от плеера. | `{ type: 'AG_GET_DATA' }` |
+| `AG_PLAYER_READY` | `Iframe -> Top` | Уведомление о готовности плеера и номер активной серии. | `{ type: 'AG_PLAYER_READY', episode: string }` |
+| `AG_DATA` | `Top -> Iframe` | Передача названий предыдущей, текущей и следующей серий. | `{ prevTitle, nextTitle, currentTitle }` |
+| `AG_PSEUDO_FS` | `Iframe -> Top` | Команда переключения псевдо-фуллскрина (`toggle`/`enable`/`disable`). | `{ action: 'toggle'\|'enable'\|'disable' }` |
+| `AG_FS_STATE` | `Top -> Iframe` | Синхронизация статуса фуллскрина для CSS-классов внутри iframe. | `{ active: boolean }` |
+| `AG_NAV` | `Iframe -> Top` | Команда клика по нативной кнопке следующей/предыдущей серии. | `{ dir: 'next'\|'prev' }` |
+| `AG_SWITCH_KODIK_EPISODE` | `Top -> Iframe` | Команда смены серии внутри Kodik (для DLE-сайтов без внешних кнопок серий на странице). | `{ dir: 'next'\|'prev' }` |
+| `AG_START_MARATHON`| `Iframe -> Top` | Запуск режима «Марафон» (сохранение ID тайтла в `sessionStorage`). | `{ type: 'AG_START_MARATHON' }` |
+| `AG_MARATHON_CONFIRM`| `Top -> Iframe` | Подтверждение марафона (разрешает автоплей в плеере). | `{ type: 'AG_MARATHON_CONFIRM' }` |
+| `AS_DATA_UPDATE` | `Top -> Iframe` | Передача таймкодов опенинга и эндинга (AniSkip). | `{ data: { op: {start, end}, ed: {start, end} } }` |
+| `AG_SETTINGS_UPDATE`| `Top -> Iframe` | Передача обновленных настроек пользователя в плеер. | `{ settings: Object }` |
+| `AG_VIDEO_PROGRESS`| `Iframe -> Top` | Отчет о прогрессе видео для авто-отметки в Shikimori. | `{ episode: number, isEnded: boolean }` |
+| `AG_EPISODE_CHANGED`| `Iframe -> Top` | Оповещение о смене серии внутри селекта Kodik. | `{ episode: string }` |
+
+---
+
+## 5. Детальное описание ключевых подсистем
+
+### 5.1. Умный плеер и псевдо-фуллскрин (`content-kodik.js`, `ag-player.js`, `jt-player.js`)
+- **Проблема нативных плееров**: Нативный Fullscreen API браузера перекрывает системные оверлеи, ломает переключение вкладок и работу расширений.
+- **Решение Anime+**: Режим **Pseudo-Fullscreen**. Плееру (`#video-player` или контейнеру `iframe`) динамически присваивается класс `.ag-pseudo-fs-active` со стилями:
+  ```css
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  ```
+- **Защита верстки**:
+  - Перед входом сохраняется позиция прокрутки страницы (`_savedScrollY`).
+  - Телу документа задается `overflow: hidden !important` и компенсируется сдвиг скроллбара (`paddingRight = scrollbarWidth`).
+  - При выходе (`Escape` или хоткей) позиция скролла восстанавливается в несколько тиков (`requestAnimationFrame`, `setTimeout(50)`, `setTimeout(150)`), что предотвращает прыжки страницы на динамических макетах AnimeGO и Jut-Su.
+  - Одновременно отправляется сообщение `fullscreen_on` / `fullscreen_off` для разворачивания окна браузера на весь экран монитора.
+- **Интерактивные зоны и оверлей**:
+  - Двойной клик слева/справа — плавная перемотка на 5/10/15 секунд с индикацией flash-бейджа.
+  - Двойной клик по центру — переключение псевдо-фуллскрина.
+  - Скролл колесиком мыши над областью плеера — регулировка громкости с шагом 1%, 5% или 10%.
+  - Интеграция Picture-in-Picture через HTML5 Video API (`video.requestPictureInPicture()`).
+
+### 5.2. Автопропуск опенингов / эндингов (AniSkip Engine)
+1. Контентные скрипты страниц (`ag-shiki-widget.js`, `jt-shiki-widget.js`) извлекают название аниме из DOM, нормализуют его (отсекая лишние подзаголовки функцией `simplifyTitle`) и через background запрашивают ID тайтла в Shikimori API.
+2. Делается запрос к API AniSkip:
+   `https://api.aniskip.com/v2/skip-times/{shikimori_id}/{episode}?types=op&types=ed&episodeLength=0`
+3. Полученные интервалы транслируются через `postMessage` в iframe Kodik (`AS_DATA_UPDATE`).
+4. `content-kodik.js` создает на полосе прогресса плеера полупрозрачные интерактивные плашки опенинга и эндинга с тултипом точного времени.
+5. При воспроизведении таймлайн слушает событие `timeupdate`:
+   - Если включен `autoSkip`: плеер мгновенно перематывает опенинг при входе в его отрезок.
+   - Если автоскип выключен: отображается плавающая кнопка «Пропустить опенинг» или срабатывает хоткей <kbd>S</kbd>.
+
+### 5.3. Автовыбор приоритетной озвучки (`ag-voice.js`, `jt-voice.js`)
+- Пользователь задает приоритетный порядок студий (например: *AniLibria -> Studio Band -> Dream Cast -> Дубляж*).
+- **На AnimeGO**: сначала выбирается озвучка по приоритету (`[data-anime-player-target="translation"]`), затем провайдер Kodik именно для этой озвучки (`[data-anime-player-target="provider"][data-provider-slug="kodik"]`, сопоставление по `data-ptranslation`).
+- **На Jut-Su**: Автоматически выбирается вкладка Kodik (`.tabs-block__select button:contains('Kodik')`), либо раскрывается нативный кастомный селект озвучек Jut-Su и выбирается приоритетный вариант.
+- Использована защита от рекурсивных кликов и MutationObserver с debounce-таймерами.
+
+### 5.4. Авторизация и синхронизация Shikimori (`bg-shiki.js`, `content-shiki-auth.js`)
+1. **OAuth 2.0 PKCE / Out-of-Band Flow**:
+   - Авторизация запускается из Popup или автоматически.
+   - Открывается окно авторизации Shikimori:
+     `https://shikimori.one/oauth/authorize?client_id={ID}&redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&scope=user_rates`
+2. **Бесшовный перехват (`content-shiki-auth.js`)**:
+   - Скрипт внедряется на фазе `document_start`, полностью перекрывая стандартную страницу Shikimori кастомным Glassmorphic UI в стиле Anime+.
+   - При подтверждении скрипт перехватывает форму, отправляет POST-запрос, извлекает `authorization_code` из результирующего URL `/oauth/authorize/{code}` и передает его в Service Worker через `chrome.runtime.sendMessage({ action: "shiki_auto_auth", code })`.
+   - Вкладка автоматически закрывается через 3.8 секунды после успешной авторизации.
+3. **Cloudflare Worker Proxy**:
+   - Токены обмениваются через легковесный Cloudflare Worker (`https://animeplus.ruscadred.workers.dev`), что позволяет скрыть Client Secret приложения и обойти ограничения CORS. В случае недоступности воркера реализован автоматический фолбэк на прямое обращение к зеркалам Shikimori (`.one`, `.me`, `.io`).
+4. **Синхронизация прогресса (`updateShikiUserRate`)**:
+   - При просмотре видео (отслеживается через `AG_VIDEO_PROGRESS`) расширение отправляет запрос к `/api/v2/user_rates`.
+   - Если серия последняя — статус тайтла переводится в `completed`.
+   - Если тайтл ранее был завершен, но пользователь смотрит его снова — статус автоматически меняется на `rewatching`.
+   - Инкрементируется дневной счетчик просмотренных серий в `chrome.storage.local`.
+
+### 5.5. Система Desktop и In-Page уведомлений о новых сериях
+- Background запускает `chrome.alarms` с именем `check_new_episodes_alarm` каждые 30 минут.
+- **Алгоритм проверки**:
+  1. Из Shikimori извлекается список тайтлов пользователя со статусом `watching`.
+  2. Запрашивается календарь релизов Shikimori (`/api/calendar`).
+  3. Для вышедших серий выполняется **двойная проверка фактической доступности**: запрос к `kodikapi.com/search?shikimori_id={id}&with_material_data=true` для подтверждения наличия русской озвучки.
+  4. Если серия действительно загружена, создается всплывающее desktop-окно через `chrome.windows.create` с интерфейсом `notification.html` (позиционируется в правом нижнем углу экрана), а также отправляется сообщение на все активные вкладки браузера для отрисовки красивого in-page тоаста.
+  5. В уведомлении выводятся доступные озвучки и прямые кнопки перехода: `▶ AnimeGO` и `▶ JUT-SU`.
+
+### 5.6. Синтетические карточки аниме (`ag-synthetic.js`)
+- **Проблема**: При переходе по ссылке из Расписания или Рандомайзера на тайтл, которого нет в базе AnimeGO, сайт выдает ошибку 404 Not Found.
+- **Решение**: URL формируются в специальном формате `/anime/shiki-{shikimori_id}`.
+- При загрузке такой страницы `ag-synthetic.js`:
+  1. Скрывает блоки ошибки 404 в DOM.
+  2. Запрашивает полные метаданные через Shikimori API (описание, рейтинг, студии, жанры, скриншоты, связанные франшизы).
+  3. Генерирует нативную разметку карточки AnimeGO со стилизацией под дизайн сайта.
+  4. Вставляет интерактивный плеер или кнопку перехода на просмотр тайтла на Jut-Su / Kodik.
+
+### 5.7. Резолвер ссылок и нечеткое сопоставление (`bg-cache.js`)
+- Поиск страниц аниме между разными сайтами затруднен различиями в транслитерации, переводах и нумерации сезонов.
+- **Решение в `findJutsuDirectUrl` и `findAnimeGoDirectUrl`**:
+  - Парсинг номеров сезонов из названий: поддерживаются арабские цифры, римские цифры (*II, III, IV, V*), форматы *«2 сезон»*, *«2nd season»*, *«Part 2»*, *«ТВ-2»*.
+  - Нормализация строк: удаление спецсимволов, пунктуации, стоп-слов, перевод в нижний регистр.
+  - Скоринговая модель соответствия:
+    * Точное совпадение очищенного названия: `+400..500` очков.
+    * Совпадение префикса: `+250..350` очков.
+    * Вхождение подстроки: `+150..200` очков.
+    * Совпадение сезона: `+300` очков.
+    * Несовпадение сезона: `-500` очков (штраф, отсекающий ошибочные сезоны).
+  - Результаты кэшируются на 7 дней в `chrome.storage` по комбинированному ключу `cache_{ru}_{en}_{year}`.
+
+---
+
+## 6. Внешние интерфейсы (Popup, UI, Notifications)
+
+### 6.1. Главное окно расширения (`popup/`)
+- **Адаптивный дизайн (Context Theme)**:
+  - Если открыта вкладка **AnimeGO** — применяется тема `theme-animego` (акцентный красный цвет `#ef4444`, логотип *AnimeGO+*).
+  - Если открыта вкладка **Jut-Su** — применяется тема `theme-jutsu` (акцентный фиолетово-розовый градиент, логотип *JUT-SU+*).
+  - Иначе — нейтральная тема `theme-default`.
+- **Вкладки Popup**:
+  1. **Быстрый доступ и статус**: Отображение статуса работы расширения, переключатель сайтов, кнопка ручной принудительной инъекции плеера (`scripting.executeScript`).
+  2. **Shikimori Профиль & Список**: Отображение аватара, никнейма, дневного счетчика серий, переключение списков *«Смотрю»* / *«Пересматриваю»*, мгновенный поиск по списку и фильтрация по типам (TV, Movie, OVA, ONA).
+  3. **Music Finder (OP/ED)**: Отображение распознанных опенингов и эндингов текущей серии с прямыми ссылками на видео в YouTube через интеграцию с базой `api.animethemes.moe`.
+  4. **Глобальный тумблер (Master Switch)**: Мгновенное включение/отключение расширения с перезагрузкой активных вкладок.
+
+### 6.2. Внутренние модальные окна настроек (`ag-settings.js`, `jt-settings.js`)
+Открываются прямо на страницах сайтов через иконку шестеренки у плеера или в шапке сайта:
+- **Вкладка 1: Плеер** (Автоплей, автопереход, псевдо-фуллскрин, автоскип, двойной клик).
+- **Вкладка 2: Озвучка** (Тумблер автовыбора, Drag-and-drop / интерактивный список приоритетов озвучек, поле добавления новой озвучки).
+- **Вкладка 3: Интерфейс** (Стрелки навигации, кнопка скипа, Picture-in-Picture, кнопки перемотки).
+- **Вкладка 4: Опции** (Шаг громкости колесика мыши 1-10%, задержка исчезновения оверлея, фильтры рандомайзера).
+- **Вкладка 5: Клавиши** (Интерактивное переназначение горячих клавиш с захватом нажатий клавиш клавиатуры).
+
+---
+
+### Настройки
+
+Чтение — `window.getSettings()`. Запись — только `window.agPatchSettings({ поле: значение })`: функция читает свежие настройки из хранилища и меняет лишь переданные поля. Запись копии настроек целиком откатывает то, что изменили в popup или на другой вкладке.
+
+---
+
+## 7. Памятка для ИИ: Частые сценарии и правила доработки
+
+Если вам (нейросети) поручено модифицировать или отлаживать данный проект, учитывайте следующие критические правила:
+
+1. **Безопасность Iframe (`content-kodik.js`)**:
+   - Скрипт `content-kodik.js` выполняется во всех фреймах (`all_frames: true`), но имеет строгий входной guard: он немедленно прекращает выполнение, если `window === window.top`, либо если `document.referrer` / параметры URL не принадлежат `animego.me`, `animego.org`, `jut-su.net` или доменам Kodik. Не удаляйте этот guard!
+2. **Асинхронность DOM на AnimeGO и Jut-Su**:
+   - Оба сайта активно используют AJAX-подгрузку контента (смена серий, переключение вкладок плеера, живой поиск). Всегда используйте `MutationObserver` с дебаунсом по времени (`Date.now() - lastCheck < 300`) или проверку флагов `data-ag-*`, чтобы избежать повторного срабатывания обработчиков.
+3. **Междоменные запросы и CORS**:
+   - В Manifest V3 фоновые запросы должны выполняться **исключительно** через `background.js` (Service Worker), так как Content Scripts ограничены CORS страницы. Запросы к API Shikimori, Kodik, AnimeGO Search и Kitsu отправляются через сообщения в Background.
+4. **Хранение настроек**:
+   - Чтение настроек всегда должно производиться через хелпер `await window.getSettings()`, объединяющий сохраненные настройки с `DEFAULT_SETTINGS` из `config.js` для предотвращения ошибок с `undefined` свойствами новых версий.
+5. **Обработка постеров**:
+   - Сторонние серверы часто возвращают 404 на старые превью обложек Shikimori. Всегда пропускайте URL через `window.agNormalizePosterUrl` и используйте обработчик ошибок `window.agHandlePosterError`, который реализует каскадный фолбэк:
+     `shikimori.one -> desu.shikimori.one -> resolve_jutsu_cover (Kitsu/JutSu) -> fallback SVG`.
+
+
+---
+
+## 8. Архитектура провайдеров и модульных фич (`providers/` и `features/`)
+
+Для масштабирования расширения на другие сайты с аниме (YummyAnime, AnimeGO.online, YammyAnime Club и др.) используется модульная система провайдеров:
+
+1. **Реестр сайтов (`modules/shared/sites.js`)**:
+   - Описывает поддерживаемые платформы (`yani`, `dle`, `animego`), сопоставление хостов и настройки поиска.
+2. **Провайдеры платформ (`providers/`)**:
+   - `providers/base.js`: базовый класс `BaseProvider` и система управления жизненным циклом `Scope` (автоматическая отписка от слушателей, остановка observers и таймеров при размонтировании).
+   - `providers/yani.js`: провайдер для YummyAnime (`ru.yummyani.me` — React SPA и `old.yummyani.me`), интеграция с внутренним JSON API сайта (`/api/anime/{slug}`, `/api/search`).
+   - `providers/dle.js`: провайдер для сайтов на движке DLE.
+   - `providers/runtime.js`: диспетчер запуска фич для сайтов-провайдеров.
+3. **Модульные фичи (`features/`)**:
+   - `player-bridge.js`: управление плеером Kodik (автоскип, горячие клавиши, переключение серий).
+   - `title-widgets.js`: виджеты Shikimori на странице тайтла (рейтинг, статус в списках пользователя, кнопка перехода на Shikimori).
+   - `top-overlay.js`: кнопка «Топ Shikimori» в меню сайта и модальное окно с топом аниме.
+   - `search-redirect.js`: умный автопереход со страницы поиска на лучший результат.
+   - `settings-entry.js`: добавление пункта «Настройки Anime+» в нативное меню настроек/профиля сайта.
+   - `random-anime.js`: перехват нативной кнопки «Случайное» на сайте, применение пользовательских фильтров (минимальный рейтинг `random_min_score`, форматы `random_kinds`), подбор случайного тайтла с Shikimori и поиск его страницы на текущем сайте с мгновенным переходом.

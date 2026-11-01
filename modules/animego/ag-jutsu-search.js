@@ -4,8 +4,6 @@
 (function () {
     'use strict';
 
-    let lastJutsuResults = null;
-    let lastJutsuQuery = '';
     let isRenderingJutsuSearch = false;
 
     function escapeHtml(str) {
@@ -110,8 +108,6 @@
             isRenderingJutsuSearch = true;
 
             try {
-                lastJutsuResults = results;
-                lastJutsuQuery = query;
 
                 let resContainer = document.querySelector('.navbar_search-list') ||
                                    document.querySelector('.js-search-result') ||
@@ -210,7 +206,7 @@
                             const year = a.dataset.agYear || item.year || '';
                             const kind = a.dataset.agKind || item.kind || '';
                             const searchQuery = russian || name;
-                            const fallbackUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery)}&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(name)}&ag_year=${encodeURIComponent(year)}&ag_kind=${encodeURIComponent(kind)}`;
+                            const fallbackUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(name)}&ag_year=${encodeURIComponent(year)}&ag_kind=${encodeURIComponent(kind)}`;
 
                             try {
                                 const res = await new Promise((resolve) => {
@@ -236,7 +232,7 @@
 
                         a.innerHTML = `
                             <div class="flex-shrink-0 me-3 position-relative">
-                                <img class="rounded" src="${posterUrl}" alt="${titleStr}" style="width: 48px; height: 68px; object-fit: cover;" onerror="if(!this.src.includes('data:image')) this.src='${AG_NO_POSTER_SVG}';">
+                                <img class="rounded" src="${posterUrl}" alt="${titleStr}" style="width: 48px; height: 68px; object-fit: cover;" data-ag-poster-ru="${titleStr}">
                             </div>
                             <div class="flex-grow-1 min-w-0 d-flex flex-column justify-content-center me-2">
                                 <div class="ajax-search__item-title text-truncate fw-bold color-main">${titleStr}</div>
@@ -256,7 +252,6 @@
 
                 newJutsuElements.sort((a, b) => b.score - a.score);
 
-                let insertedCount = 0;
                 newJutsuElements.forEach(itemObj => {
                     const el = itemObj.element;
                     const itemScore = itemObj.score;
@@ -271,14 +266,12 @@
                         if (itemScore > natScore) {
                             resContainer.insertBefore(el, natEl);
                             inserted = true;
-                            insertedCount++;
                             break;
                         }
                     }
 
                     if (!inserted) {
                         resContainer.appendChild(el);
-                        insertedCount++;
                     }
                 });
 

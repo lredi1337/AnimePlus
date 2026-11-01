@@ -1,9 +1,11 @@
 (async function () {
     'use strict';
-    const { AG_RED, AG_FONT, DEFAULT_SETTINGS, isValidOrigin, getSettings } = window;
+    const { getSettings } = window;
     let settings = await getSettings();
 
     if (settings.global_enabled === false) return;
+    // Переключатель сайта в popup (modules/shared/sites.js)
+    if (window.AgSites && !window.AgSites.isEnabled(settings, 'jutsu')) return;
 
     // ==========================================
     // --- ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ JUT-SU ---
@@ -18,7 +20,8 @@
     window.jtInitPlayerControls ? window.jtInitPlayerControls(settings, getAnimeId) : null;
 
     // 2. Инициализация окна настроек
-    const openSettingsModal = () => {
+    const openSettingsModal = async () => {
+        settings = await getSettings();
         if (window.jtOpenJutsuSettingsModal) {
             window.jtOpenJutsuSettingsModal(settings, async (newS) => { settings = newS; });
         }
@@ -103,22 +106,12 @@
     // 6. Слушатель запросов popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.type === 'AG_GET_PAGE_INFO') {
-            const playerEl = document.querySelector('.jutsu-page__player-video') || document.querySelector('.jutsu-page__poster');
-            if (playerEl) {
-                const titleEl = document.querySelector('.title_video') || document.querySelector('.jutsu-page__title-text h1');
-                if (titleEl) {
-                    let cleanTitle = titleEl.innerText.trim()
-                        .replace(/^Смотреть аниме\s+/i, '')
-                        .replace(/\s+онлайн$/i, '');
-                    const origTitleEl = document.querySelector('.jutsu-page__title-original')
-                        || document.querySelector('[class*="title-original"]')
-                        || document.querySelector('.jutsu-page__title-text span');
-                    const origTitle = origTitleEl ? origTitleEl.innerText.trim() : cleanTitle;
-                    sendResponse({ title: cleanTitle, origTitle: origTitle, episode: window.ag_current_episode || "1" });
-                    return;
-                }
+            const info = window.jtGetAnimePageInfo ? window.jtGetAnimePageInfo() : null;
+            if (info && info.title) {
+                sendResponse({ title: info.title, origTitle: info.origTitle, episode: window.ag_current_episode || "1" });
+            } else {
+                sendResponse({ title: null, origTitle: null, episode: "1" });
             }
-            sendResponse({ title: null, origTitle: null, episode: "1" });
         }
         if (request.type === 'AG_OPEN_SETTINGS') openSettingsModal();
         return true;
@@ -129,15 +122,16 @@
         catch (err) { console.error(`[JUT-SU+] Module error in ${name}:`, err); }
     };
 
-    // 7. MutationObserver — реагирует на появление .tabs-block__select в DOM
-    const pageObserver = new MutationObserver(() => {
+    // 7. Наблюдатель DOM с объединением мутаций (раньше все задачи выполнялись на каждую мутацию)
+    window.agObserveDom(() => {
         safeRun(injectGearButton, 'GearButton');
         safeRun(() => window.jtInjectHeaderGearButton && window.jtInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
         safeRun(customizeLogo, 'Logo');
         safeRun(autoSelectKodik, 'AutoSelectKodik');
+        safeRun(() => window.jtInjectTopButtons && window.jtInjectTopButtons(), 'TopButtons');
+        safeRun(() => window.agBindPostersIn && window.agBindPostersIn(document), 'Posters');
         safeRun(() => window.replaceCoversWithStandard && window.replaceCoversWithStandard(settings), 'ReplaceCovers');
-    });
-    pageObserver.observe(document.body, { childList: true, subtree: true });
+    }, { root: document.body, wait: 200 });
 
     // 8. Первичная инициализация
     safeRun(() => window.jtInjectHeaderGearButton && window.jtInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
@@ -157,6 +151,14 @@
     setTimeout(autoSelectKodik, 500);
     setTimeout(autoSelectKodik, 1500);
     setTimeout(autoSelectKodik, 3000);
+
+    // Проверка актуальности селекторов (см. modules/site-selectors.js)
+    setTimeout(() => {
+        if (/не найдена/i.test(document.title)) return;
+        const types = ['any'];
+        if (document.querySelector('[data-player-anime-id]')) types.push('anime');
+        safeRun(() => window.agCheckSelectorHealth('jutsu', types), 'SelectorHealth');
+    }, 5000);
 
     // 9. Определение текущего эпизода
     const pathParts = window.location.pathname.split('/');

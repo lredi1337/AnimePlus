@@ -4,30 +4,40 @@
     let settings = await window.getSettings();
     if (settings.global_enabled === false) return;
 
-    // Защита: запускаем только внутри iframe и только если родитель - AnimeGo
-    // (позволяет безопасно использовать широкие разрешения в manifest.json)
+    // Защита: запускаем только внутри iframe и только на страницах поддерживаемых сайтов
+    // (список сайтов — modules/shared/sites.js; позволяет безопасно использовать широкие разрешения манифеста)
     if (window === window.top) return;
+
+    const siteHosts = globalThis.AgSites ? globalThis.AgSites.allHosts() : ['animego.me', 'animego.org', 'jut-su.net'];
+    const hostOf = (u) => { try { return new URL(u).hostname; } catch (e) { return ''; } };
+    const isSiteHost = (h) => !!h && siteHosts.some(d => h === d || h.endsWith('.' + d));
+
+    const ref = document.referrer || '';
+    const urlParams = new URLSearchParams(window.location.search);
+    const embedDomain = (urlParams.get('d') || '').toLowerCase();
+    const embedRef = urlParams.get('ref') || '';
+    const refHost = hostOf(ref);
+    const parentSite = globalThis.AgSites ? (
+        globalThis.AgSites.byHost(refHost) ||
+        globalThis.AgSites.byHost(embedDomain) ||
+        globalThis.AgSites.byHost(hostOf(embedRef))
+    ) : null;
+
     try {
-        const ref = document.referrer || '';
-        const url = window.location.href || '';
+        const isAllowed = !ref
+            || isSiteHost(refHost)
+            || isSiteHost(embedDomain)
+            || isSiteHost(hostOf(embedRef))
+            // Kodik внутри обёртки другого плеера
+            || /kodik|anivod|aniboom|dbcode|kombik|tube-storage|aniqizm/.test(refHost);
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const embedDomain = urlParams.get('d') || '';
-        const embedRef = urlParams.get('ref') || '';
-
-        const isAllowed = 
-            !ref ||
-            ref.includes('animego.me') || ref.includes('animego.org') || ref.includes('jut-su.net') ||
-            embedDomain.includes('animego.me') || embedDomain.includes('animego.org') || embedDomain.includes('jut-su.net') ||
-            embedRef.includes('animego.me') || embedRef.includes('animego.org') || embedRef.includes('jut-su.net') ||
-            ref.includes('kodik') || ref.includes('anivod') || ref.includes('aniboom') || ref.includes('dbcode') || ref.includes('kombik') || ref.includes('tube-storage') || ref.includes('aniqizm');
-
-        if (!isAllowed) {
-            return;
-        }
+        if (!isAllowed) return;
     } catch (e) {
         return;
     }
+
+    // Команды плееру принимаем только от страниц поддерживаемых сайтов (точное совпадение домена)
+    const isParentSiteOrigin = (origin) => /^https:\/\//.test(origin || '') && isSiteHost(hostOf(origin));
 
     window.top.postMessage({ type: 'AG_GET_DATA' }, '*');
 
@@ -98,20 +108,31 @@
 
     const isJutsu = (document.referrer || '').includes('jut-su.net') || window.location.href.includes('d=jut-su.net');
 
-    let lastSwitchTime = 0;
-    let startEpisodeIdx = -1;
+    // Только список серий. В Kodik три одинаковых выпадающих списка (сезоны, серии, озвучки), и общий
+    // .dropdown-content .item находит их все: активным оказывался пункт сезона, а «следующим» — всегда первая серия
+    const KODIK_SERIES_ITEMS = '.serial-series-box .dropdown-content .item, .serial-series .dropdown-content .item, .series-select .dropdown-content .item';
 
-    const getActiveEpisodeIndex = () => {
-        const items = Array.from(document.querySelectorAll('.serial-series-box .dropdown-content .item, .serial-series .dropdown-content .item, .series-select .dropdown-content .item'));
-        if (items.length > 0) {
-            return items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active'));
-        }
+    const hasLocalEpisodeControls = () => {
         const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-        if (sel && sel.tagName === 'SELECT') {
-            return sel.selectedIndex;
-        }
-        return -1;
+        const items = document.querySelectorAll(KODIK_SERIES_ITEMS);
+        return !!(sel || items.length > 0);
     };
+
+    const isDleNavSite = () => {
+        const checkHost = refHost || embedDomain || hostOf(embedRef);
+        return isJutsu || (parentSite && parentSite.platform === 'dle') ||
+            /yummyanime\.tv|animego\.online|yammyanime\.club|jut-su\.net/.test(checkHost);
+    };
+
+    const shouldUseLocalNav = () => {
+        if (isDleNavSite()) return true;
+        const checkHost = refHost || embedDomain || hostOf(embedRef);
+        const isPageNavSite = /animego\.(me|org)|yummyani\.me/.test(checkHost);
+        if (!isPageNavSite && hasLocalEpisodeControls()) return true;
+        return false;
+    };
+
+    let lastSwitchTime = 0;
 
     /**
      * Переключает текущую серию в Kodik плеере (вперед/назад)
@@ -121,13 +142,19 @@
     const switchKodikEpisode = (dir, force = false) => {
         const debounceMs = (window.AG_CONSTANTS && window.AG_CONSTANTS.EPISODE_SWITCH_DEBOUNCE_MS) || 800;
         const now = Date.now();
-        if (!force && (now - lastSwitchTime < debounceMs)) return;
+        if (!force && (now - lastSwitchTime < debounceMs)) return false;
         lastSwitchTime = now;
 
         // 1. Попробуем найти элементы кастомного выпадающего списка
-        const items = Array.from(document.querySelectorAll('.serial-series-box .dropdown-content .item, .serial-series .dropdown-content .item, .series-select .dropdown-content .item'));
+        const items = Array.from(document.querySelectorAll(KODIK_SERIES_ITEMS));
         if (items.length > 0) {
-            const activeIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active'));
+            let activeIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active') || item.classList.contains('current'));
+            if (activeIdx === -1) {
+                const curEp = getLocalEpisodeData().current;
+                if (curEp) {
+                    activeIdx = items.findIndex(item => (item.textContent || '').match(/\d+/)?.[0] === String(curEp));
+                }
+            }
             if (activeIdx !== -1) {
                 let newIdx = activeIdx;
                 if (dir === 'next' && activeIdx < items.length - 1) {
@@ -136,60 +163,130 @@
                     newIdx = activeIdx - 1;
                 }
                 if (newIdx !== activeIdx && items[newIdx]) {
-                    startEpisodeIdx = newIdx;
-                    items[newIdx].click();
-                    return;
+                    const targetItem = items[newIdx];
+                    const opts = { bubbles: true, cancelable: true, view: window };
+                    targetItem.dispatchEvent(new MouseEvent('mousedown', opts));
+                    targetItem.dispatchEvent(new MouseEvent('mouseup', opts));
+                    targetItem.click();
+                    setTimeout(() => {
+                        updateLocalEpisodeNumbers();
+                        reportActiveEpisode();
+                    }, 200);
+                    return true;
                 }
             }
         }
 
-        // 2. Если кастомных элементов нет, используем стандартный select
+        // 2. Если кастомных элементов нет или не сработало, используем стандартный select
         const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-        if (!sel) return;
-
-        if (sel.tagName === 'SELECT') {
-            const curIdx = sel.selectedIndex;
+        if (sel && sel.tagName === 'SELECT' && sel.options && sel.options.length > 0) {
+            let curIdx = sel.selectedIndex;
+            if (curIdx === -1) {
+                const curEp = getLocalEpisodeData().current;
+                if (curEp) {
+                    curIdx = Array.from(sel.options).findIndex(opt => (opt.text || opt.value || '').match(/\d+/)?.[0] === String(curEp));
+                }
+            }
             let newIdx = curIdx;
             if (dir === 'next' && curIdx < sel.options.length - 1) {
                 newIdx = curIdx + 1;
             } else if (dir === 'prev' && curIdx > 0) {
                 newIdx = curIdx - 1;
             }
-            if (newIdx !== curIdx) {
+            if (newIdx !== curIdx && newIdx >= 0 && sel.options[newIdx]) {
                 sel.selectedIndex = newIdx;
-                startEpisodeIdx = newIdx;
-                sel.dispatchEvent(new Event('change'));
+                sel.options[newIdx].selected = true;
+                sel.dispatchEvent(new Event('input', { bubbles: true }));
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                setTimeout(() => {
+                    updateLocalEpisodeNumbers();
+                    reportActiveEpisode();
+                }, 200);
+                return true;
             }
         }
+
+        // Список серий есть, значит мы на краю сезона: дальше переключать нечего.
+        // Нативная кнопка Kodik здесь не годится: с последней серии она уводит в следующий сезон
+        if (items.length > 0 || sel) return false;
+
+        // 3. Fallback: только для плееров без списка серий — кнопки «Дальше >» / «< Назад»
+        if (dir === 'next') {
+            const nextBtn = document.querySelector('.serial-next, [class*="next-series"], [class*="next-episode"]') ||
+                Array.from(document.querySelectorAll('button, a, div, span')).find(el => {
+                    if (el.children.length > 2 || el.id === 'ag-n') return false;
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return t === 'дальше' || t === 'дальше >' || t === 'следующая серия';
+                });
+            if (nextBtn) {
+                const opts = { bubbles: true, cancelable: true, view: window };
+                nextBtn.dispatchEvent(new MouseEvent('mousedown', opts));
+                nextBtn.dispatchEvent(new MouseEvent('mouseup', opts));
+                nextBtn.click();
+                setTimeout(() => {
+                    updateLocalEpisodeNumbers();
+                    reportActiveEpisode();
+                }, 200);
+                return true;
+            }
+        } else if (dir === 'prev') {
+            const prevBtn = document.querySelector('.serial-prev, [class*="prev-series"], [class*="prev-episode"]') ||
+                Array.from(document.querySelectorAll('button, a, div, span')).find(el => {
+                    if (el.children.length > 2 || el.id === 'ag-p') return false;
+                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
+                    return t === 'назад' || t === '< назад' || t === 'предыдущая серия';
+                });
+            if (prevBtn) {
+                const opts = { bubbles: true, cancelable: true, view: window };
+                prevBtn.dispatchEvent(new MouseEvent('mousedown', opts));
+                prevBtn.dispatchEvent(new MouseEvent('mouseup', opts));
+                prevBtn.click();
+                setTimeout(() => {
+                    updateLocalEpisodeNumbers();
+                    reportActiveEpisode();
+                }, 200);
+                return true;
+            }
+        }
+        return false;
     };
 
     const getLocalEpisodeData = () => {
         const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
         if (sel && sel.tagName === 'SELECT' && sel.options && sel.options.length > 0) {
-            const curIdx = sel.selectedIndex;
-            const prevOpt = sel.options[curIdx - 1];
-            const nextOpt = sel.options[curIdx + 1];
-            const curOpt = sel.options[curIdx];
+            const curIdx = sel.selectedIndex >= 0 ? sel.selectedIndex : Array.from(sel.options).findIndex(o => o.selected);
+            const prevOpt = curIdx > 0 ? sel.options[curIdx - 1] : null;
+            const nextOpt = curIdx >= 0 && curIdx < sel.options.length - 1 ? sel.options[curIdx + 1] : null;
+            const curOpt = curIdx >= 0 ? sel.options[curIdx] : null;
 
-            return {
-                current: curOpt ? (curOpt.text || curOpt.value).match(/\d+/)?.[0] : "1",
-                prev: prevOpt ? (prevOpt.text || prevOpt.value).match(/\d+/)?.[0] : "",
-                next: nextOpt ? (nextOpt.text || nextOpt.value).match(/\d+/)?.[0] : ""
-            };
+            if (curOpt) {
+                return {
+                    current: (curOpt.text || curOpt.value).match(/\d+/)?.[0] || "1",
+                    prev: prevOpt ? (prevOpt.text || prevOpt.value).match(/\d+/)?.[0] || "" : "",
+                    next: nextOpt ? (nextOpt.text || nextOpt.value).match(/\d+/)?.[0] || "" : ""
+                };
+            }
         }
 
-        const items = Array.from(document.querySelectorAll('.serial-series-box .dropdown-content .item, .serial-series .dropdown-content .item, .series-select .dropdown-content .item, .dropdown-item, .item'));
+        const items = Array.from(document.querySelectorAll(KODIK_SERIES_ITEMS));
         if (items.length > 0) {
-            const activeIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active'));
+            let activeIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active') || item.classList.contains('current'));
+            if (activeIdx === -1) {
+                const seriesTextEl = document.querySelector('.serial-series-box .text, .series-select .text, .serial-series .text');
+                const epMatch = (seriesTextEl?.textContent || '').match(/\d+/);
+                if (epMatch) {
+                    activeIdx = items.findIndex(item => (item.textContent || '').match(/\d+/)?.[0] === epMatch[0]);
+                }
+            }
             if (activeIdx !== -1) {
                 const curItem = items[activeIdx];
                 const prevItem = items[activeIdx - 1];
                 const nextItem = items[activeIdx + 1];
 
                 return {
-                    current: curItem ? curItem.textContent.match(/\d+/)?.[0] : "1",
-                    prev: prevItem ? prevItem.textContent.match(/\d+/)?.[0] : "",
-                    next: nextItem ? nextItem.textContent.match(/\d+/)?.[0] : ""
+                    current: curItem ? (curItem.textContent || '').match(/\d+/)?.[0] || "1" : "1",
+                    prev: prevItem ? (prevItem.textContent || '').match(/\d+/)?.[0] || "" : "",
+                    next: nextItem ? (nextItem.textContent || '').match(/\d+/)?.[0] || "" : ""
                 };
             }
         }
@@ -284,12 +381,12 @@
         }
         else if (combo === settings.keys.next) {
             e.preventDefault(); e.stopPropagation();
-            if (isJutsu) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
+            if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
         }
         else if (combo === settings.keys.prev) {
             e.preventDefault(); e.stopPropagation();
-            if (isJutsu) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
+            if (shouldUseLocalNav()) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
         }
         else if (combo === settings.keys.skip) {
@@ -308,7 +405,7 @@
     });
 
     window.addEventListener('message', (e) => {
-        if (!e.origin.includes('animego.me') && !e.origin.includes('animego.org') && !e.origin.includes('jut-su.net')) return;
+        if (!isParentSiteOrigin(e.origin)) return;
 
         if (e.data?.type === 'AG_MARATHON_CONFIRM') {
             canAutoPlay = true;
@@ -327,6 +424,11 @@
             skipData = e.data.data;
             const v = document.querySelector('video');
             if (v) updateTimelineZones(v);
+        }
+
+        if (e.data?.type === 'AG_SWITCH_KODIK_EPISODE') {
+            switchKodikEpisode(e.data.dir, true);
+            updateLocalEpisodeNumbers();
         }
 
         if (e.data?.type === 'AG_SETTINGS_UPDATE') {
@@ -350,7 +452,7 @@
     document.addEventListener('webkitfullscreenchange', syncFsState);
 
     const getKodikEpisode = () => {
-        const sel = document.querySelector('.serial-series, select[name="series"], .series-select, .serial-series select');
+        const sel = document.querySelector('.serial-series-box select, .serial-series, select[name="series"], .series-select, .serial-series select');
         if (sel) {
             if (sel.tagName === 'SELECT') {
                 return sel.value || (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text.match(/\d+/)?.[0] : "1");
@@ -364,7 +466,7 @@
     window.top.postMessage({ type: 'AG_PLAYER_READY', episode: getKodikEpisode() }, '*');
 
     document.addEventListener('change', (e) => {
-        if (e.target.matches('.serial-series, select[name="series"], .series-select, .serial-series select')) {
+        if (e.target.matches('.serial-series-box select, .serial-series, select[name="series"], .series-select, .serial-series select')) {
             const ep = e.target.value || (e.target.options[e.target.selectedIndex] ? e.target.options[e.target.selectedIndex].text.match(/\d+/)?.[0] : "1");
             window.top.postMessage({ type: 'AG_PLAYER_READY', episode: ep }, '*');
         }
@@ -651,11 +753,11 @@
         }
 
         document.getElementById('ag-p').onclick = () => {
-            if (isJutsu) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
+            if (shouldUseLocalNav()) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
         };
         document.getElementById('ag-n').onclick = () => {
-            if (isJutsu) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
+            if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
         };
         document.getElementById('ag-skip').onclick = () => v.currentTime += 90;
@@ -694,7 +796,7 @@
 
         window.addEventListener('message', (e) => {
             // Исправлено: window.isValidOrigin нет в скрипте, заменил на базовую проверку
-            if (!e.origin.includes('animego.me') && !e.origin.includes('animego.org') && !e.origin.includes('jut-su.net')) return;
+            if (!isParentSiteOrigin(e.origin)) return;
 
             if (e.data?.type === 'AG_MOUSE_MOVE') {
                 triggerUiAutoHide();
@@ -727,11 +829,11 @@
                 navigator.mediaSession.setActionHandler('seekforward', () => { v.currentTime += 5; });
                 navigator.mediaSession.setActionHandler('seekbackward', () => { v.currentTime -= 5; });
                 navigator.mediaSession.setActionHandler('previoustrack', () => {
-                    if (isJutsu) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
+                    if (shouldUseLocalNav()) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
                     else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
                 });
                 navigator.mediaSession.setActionHandler('nexttrack', () => {
-                    if (isJutsu) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
+                    if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
                     else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
                 });
             } catch (e) { console.warn("MediaSession not fully supported."); }
@@ -795,10 +897,10 @@
             }
         });
 
-        if (isJutsu) {
+        if (shouldUseLocalNav()) {
             const checkInterval = setInterval(() => {
                 const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-                const items = document.querySelectorAll('.serial-series-box .dropdown-content .item, .dropdown-content .item');
+                const items = document.querySelectorAll(KODIK_SERIES_ITEMS);
                 if ((sel && sel.options && sel.options.length > 0) || items.length > 0) {
                     updateLocalEpisodeNumbers();
                     reportActiveEpisode();
@@ -810,7 +912,6 @@
             document.addEventListener('change', (e) => {
                 if (e.target.matches('.serial-series-box select, .serial-series select, select[name="series"], .series-select')) {
                     lastSwitchTime = Date.now();
-                    startEpisodeIdx = getActiveEpisodeIndex();
                     setTimeout(() => {
                         updateLocalEpisodeNumbers();
                         reportActiveEpisode();
@@ -819,9 +920,10 @@
             });
 
             document.addEventListener('click', (e) => {
-                if (e.target.closest('.serial-series-box .dropdown-content .item, .serial-series .dropdown-content .item, .series-select .dropdown-content .item')) {
+                const target = e.target.closest(`${KODIK_SERIES_ITEMS}, .serial-next-button, .serial-next, [class*="next-series"], [class*="next-episode"]`);
+                const isNextText = !target && (e.target.innerText || e.target.textContent || '').trim().toLowerCase().startsWith('дальше');
+                if (target || isNextText) {
                     lastSwitchTime = Date.now();
-                    startEpisodeIdx = getActiveEpisodeIndex();
                     setTimeout(() => {
                         updateLocalEpisodeNumbers();
                         reportActiveEpisode();
@@ -838,11 +940,9 @@
         if (v && !v.dataset.agInit) {
             v.dataset.agInit = '1';
             drawUI(v);
-            startEpisodeIdx = getActiveEpisodeIndex();
 
             v.addEventListener('play', () => {
                 if (settings.autoFS) sendFs('enable');
-                startEpisodeIdx = getActiveEpisodeIndex();
             }, { once: true });
 
             let isHandlingEnded = false;
@@ -860,7 +960,7 @@
                 lastSwitchTime = now;
 
                 if (settings.autoNext) {
-                    if (isJutsu) {
+                    if (shouldUseLocalNav()) {
                         switchKodikEpisode('next', true);
                         updateLocalEpisodeNumbers();
                     } else {
@@ -956,36 +1056,60 @@
     });
     iframeObserver.observe(document.body, { childList: true, subtree: true });
 
-    // Video progress reporter for Shikimori Auto-Sync
-    const videoAttachInterval = setInterval(() => {
-        const v = document.querySelector('video');
-        if (!v) return;
-        if (v.dataset.shikiAttached === '1') {
-            clearInterval(videoAttachInterval);
-            return;
-        }
-        v.dataset.shikiAttached = '1';
-        clearInterval(videoAttachInterval);
+    // Отчёт о прогрессе видео для учёта серий (modules/progress-tracker.js на странице сайта).
+    // Kodik создаёт <video> только после нажатия Play и пересоздаёт его при смене серии/озвучки,
+    // поэтому следим за DOM постоянно, а не 15 секунд после загрузки.
+    const trackedVideos = new WeakSet();
+    const PROGRESS_THROTTLE_MS = 2000;
+
+    const attachProgressReporter = (v) => {
+        if (trackedVideos.has(v)) return;
+        trackedVideos.add(v);
+        let lastSent = 0;
+        // getLocalEpisodeData в худшем случае обходит весь DOM плеера — номер серии
+        // пересчитываем не чаще раза в 10 с и при смене источника видео
+        let episodeCache = null;
+        let episodeCacheTs = 0;
+        const getEpisodeCached = () => {
+            if (!episodeCache || Date.now() - episodeCacheTs > 10000) {
+                episodeCache = getLocalEpisodeData();
+                episodeCacheTs = Date.now();
+            }
+            return episodeCache;
+        };
+        v.addEventListener('loadstart', () => { episodeCache = null; });
+
+        const report = (isEnded) => {
+            const data = getEpisodeCached();
+            window.top.postMessage({
+                type: 'AG_VIDEO_PROGRESS',
+                episode: data.current,
+                currentTime: v.currentTime || 0,
+                duration: Number.isFinite(v.duration) ? v.duration : 0,
+                isEnded
+            }, '*');
+        };
 
         v.addEventListener('play', () => {
             const data = getLocalEpisodeData();
             window.top.postMessage({ type: 'AG_VIDEO_PLAY', episode: data.current }, '*');
         });
-
         v.addEventListener('timeupdate', () => {
-            if (v.duration && (v.currentTime / v.duration) >= 0.80) {
-                const data = getLocalEpisodeData();
-                window.top.postMessage({ type: 'AG_VIDEO_PROGRESS', episode: data.current, isEnded: false }, '*');
-            }
+            const now = Date.now();
+            if (now - lastSent < PROGRESS_THROTTLE_MS) return;
+            lastSent = now;
+            report(false);
         });
+        v.addEventListener('ended', () => report(true));
+    };
 
-        v.addEventListener('ended', () => {
-            const data = getLocalEpisodeData();
-            window.top.postMessage({ type: 'AG_VIDEO_PROGRESS', episode: data.current, isEnded: true }, '*');
-        });
-    }, 1000);
-
-    setTimeout(() => clearInterval(videoAttachInterval), 15000);
+    const scanVideos = () => document.querySelectorAll('video').forEach(attachProgressReporter);
+    scanVideos();
+    let videoScanTimer = null;
+    new MutationObserver(() => {
+        if (videoScanTimer) return;
+        videoScanTimer = setTimeout(() => { videoScanTimer = null; scanVideos(); }, 500);
+    }).observe(document.documentElement, { childList: true, subtree: true });
 
 
     let isKodikVoiceDone = false;
@@ -1020,7 +1144,7 @@
         }
 
         // 2. Check custom Kodik dropdown items
-        const dropdownItems = Array.from(document.querySelectorAll('.serial-translations-box .dropdown-content .item, .serial-translations .dropdown-content .item, .translation-select .dropdown-content .item, [class*="translation"] .dropdown-content .item, .dropdown-content .item'));
+        const dropdownItems = Array.from(document.querySelectorAll('.serial-translations-box .dropdown-content .item, .serial-translations .dropdown-content .item, .translation-select .dropdown-content .item, [class*="translation"] .dropdown-content .item'));
 
         if (dropdownItems.length > 0) {
             for (const priorityName of priorityList) {

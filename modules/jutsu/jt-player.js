@@ -158,7 +158,7 @@
         };
 
         window.addEventListener('message', (e) => {
-            if (!e.origin.includes('kodik') && !e.origin.includes('dbcode') && !e.origin.includes('anivod') && !e.origin.includes('aniboom') && !e.origin.includes('kombik') && !e.origin.includes('tube-storage') && !e.origin.includes('aniqizm') && !e.origin.includes('jut-su.net')) return;
+            if (!window.isValidOrigin(e.origin)) return;
 
             if (e.data?.type === 'AG_EPISODE_CHANGED') {
                 const ep = e.data.episode || "1";

@@ -1,0 +1,16 @@
+{
+  "name": "anime-plus",
+  "version": "9.3.0",
+  "private": true,
+  "description": "Anime+ — браузерное расширение для AnimeGO и Jut-Su (Manifest V3)",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test --test-force-exit tests/*.test.js",
+    "check": "npm run lint && npm test"
+  },
+  "devDependencies": {
+    "eslint": "^10.14.0",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.3"
+  }
+}

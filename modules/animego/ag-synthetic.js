@@ -16,147 +16,229 @@
 
     const ensureAgLogoPlus = window.ensureAgLogoPlus || function () {};
 
-    window.renderSyntheticAnimePage = function () {
-        const match = window.location.pathname.match(/\/anime\/shiki-(\d+)/);
-        if (!match) return;
+    // ---------- Оболочка сайта для «голой» 404-страницы ----------
+    // С 2026 года 404-страница AnimeGO содержит только картинку и текст: ни шапки, ни <main>, ни скриптов.
+    // Достраиваем каркас из нативной страницы тайтла (шапка, мобильное меню, футер) и пустой <main>.
+    let shellPromise = null;
 
-        const shikiId = match[1];
+    window.agEnsureAnimeGoShell = function () {
+        const existing = document.querySelector('main.content, main');
+        if (existing) return Promise.resolve(existing);
+        if (shellPromise) return shellPromise;
 
-        document.title = "Загрузка аниме... | AnimeGO";
+        shellPromise = (async () => {
+            const res = await window.agSendMessage({ action: 'get_native_page_template', origin: location.origin });
+            if (!res || !res.html) return null;
 
-        // Скрываем блоки ошибки 404, сохраняя при этом хэдер и навигацию
-        const errorBlocks = document.querySelectorAll('.error-page, .alert-danger');
-        errorBlocks.forEach(el => el.style.display = 'none');
-        document.querySelectorAll('.container.py-5.text-center, .py-5.text-center').forEach(el => {
-            if (el.textContent.includes('404') || el.textContent.includes('не найдена') || el.textContent.includes('Запрашиваемый ресурс')) {
-                el.style.display = 'none';
+            const doc = new DOMParser().parseFromString(res.html, 'text/html');
+            const wrapper = doc.querySelector('.wrapper');
+            const contentPage = wrapper && wrapper.querySelector('.content-page');
+            if (!wrapper || !contentPage) return null;
+
+            const shellContent = doc.createElement('div');
+            shellContent.className = 'content-page';
+            shellContent.innerHTML = '<div class="container-xxl"><main class="content_first content card"><div class="card-body"></div></main></div>';
+            contentPage.replaceWith(shellContent);
+
+            if (!document.documentElement.hasAttribute('data-bs-theme')) {
+                document.documentElement.setAttribute('data-bs-theme', doc.documentElement.getAttribute('data-bs-theme') || 'dark');
             }
+            document.querySelectorAll('.error-page').forEach(el => el.style.display = 'none');
+            document.body.prepend(document.adoptNode(wrapper));
+            ensureAgLogoPlus(document);
+            if (window.agInjectTopButtons) window.agInjectTopButtons();
+            return document.querySelector('main');
+        })().catch((e) => {
+            console.error('[AnimeGO+] Failed to build site shell:', e);
+            shellPromise = null;
+            return null;
         });
+        return shellPromise;
+    };
 
-        let wrapper = document.querySelector('.wrapper') || document.querySelector('.content-container') || document.body;
-        let container = document.getElementById('ag-synthetic-page-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'ag-synthetic-page-container';
-            container.className = 'content-page mt-3';
-            wrapper.appendChild(container);
+    const fetchAnimeDetails = async (shikiId) => {
+        const res = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${shikiId}` });
+        const raw = res && res.status === 200 ? res.data : null;
+        if (!raw || !raw.id) return null;
+
+        const normalize = (url) => {
+            if (!url) return '';
+            if (window.agNormalizePosterUrl) return window.agNormalizePosterUrl(url);
+            return url.startsWith('http') ? url : 'https://shikimori.io' + url;
+        };
+
+        let poster = normalize(raw.image ? (raw.image.original || raw.image.preview || '') : '');
+        if (poster) poster = poster.replace(/\/preview\//g, '/original/').replace(/\/x\d+\//g, '/original/');
+        // REST часто отдаёт заглушку «лису» — настоящий постер берём из GraphQL
+        if (window.agIsPlaceholderPoster(poster)) {
+            const gql = await window.agSendMessage({ action: 'resolve_shiki_posters', ids: [raw.id] });
+            poster = (gql && gql.posters && gql.posters[raw.id]) || poster;
         }
 
-        container.innerHTML = `
+        let rawScreens = Array.isArray(raw.screenshots) ? raw.screenshots : null;
+        if (!rawScreens) {
+            const scr = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${shikiId}/screenshots` });
+            rawScreens = scr && Array.isArray(scr.data) ? scr.data : [];
+        }
+        const screenshots = rawScreens.slice(0, 10).map(s => normalize(s.original || s.preview || '')).filter(Boolean);
+
+        const kindMap = { tv: 'ТВ Сериал', movie: 'Фильм', ova: 'OVA', ona: 'ONA', special: 'Спешл', music: 'Клип', tv_special: 'ТВ Спешл' };
+
+        return {
+            id: raw.id,
+            name: raw.name || '',
+            russian: raw.russian || raw.name || '',
+            japanese: Array.isArray(raw.japanese) ? raw.japanese[0] : (raw.japanese || ''),
+            poster,
+            kind: kindMap[raw.kind] || (raw.kind ? String(raw.kind).toUpperCase() : 'TV'),
+            score: raw.score || '—',
+            status: raw.status || '',
+            episodes: raw.episodes || 0,
+            episodesAired: raw.episodes_aired || 0,
+            airedOn: raw.aired_on ? String(raw.aired_on).split('-')[0] : '',
+            // description_html — пользовательский HTML Shikimori: только через санитайзер
+            description: raw.description_html ? window.agSanitizeHtml(raw.description_html) : escapeHtml(raw.description || ''),
+            genres: Array.isArray(raw.genres) ? raw.genres.map(g => g.russian || g.name) : [],
+            studios: Array.isArray(raw.studios) ? raw.studios.map(s => s.name) : [],
+            videos: Array.isArray(raw.videos) ? raw.videos : [],
+            screenshots,
+            jutsuUrl: `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(raw.name || raw.russian || '')}&ag_from=animeplus`
+        };
+    };
+
+    // Шаблон годится, только если это детальная страница тайтла с постером, инфо-блоком и плеером
+    const isUsableTemplate = (doc) => !!(doc
+        && doc.querySelector('.content-page .entity__poster img')
+        && doc.querySelector('.content-page .entity__title h1')
+        && doc.querySelector('.content-page .entity-field'));
+
+    // Убираем всё, что в шаблоне относится к чужому тайтлу и не перезаписывается ниже
+    const sanitizeTemplate = (page, data) => {
+        const rating = page.querySelector('.entity__rating');
+        if (rating) {
+            rating.removeAttribute('data-controller');
+            Array.from(rating.children).forEach(el => { if (el.id !== 'ag-shiki-btn') el.remove(); });
+        }
+
+        page.querySelectorAll('.fancybox-trigger-cover').forEach(el => {
+            el.setAttribute('data-src', data.poster || '');
+            el.removeAttribute('data-fancybox');
+        });
+        page.querySelectorAll('[data-controller="anime-watched-progress"]').forEach(el => el.remove());
+
+        if (!data.screenshots || data.screenshots.length === 0) {
+            page.querySelectorAll('.screenshots').forEach(el => {
+                const heading = el.previousElementSibling;
+                if (heading && /^H[1-6]$/.test(heading.tagName)) heading.remove();
+                el.remove();
+            });
+        }
+
+        // Секции «График выхода серий», «Рецензии и отзывы», «Комментарии» из шаблона
+        page.querySelectorAll('h2, h3').forEach(h => {
+            if (!/График выхода|Расписание|Рецензии|Отзывы|Комментари/i.test(h.textContent)) return;
+            const block = h.closest('.card-body > *, section, .content_third') || h.parentElement;
+            if (block && block !== page) block.remove();
+        });
+        page.querySelectorAll('.content_third, .comments, #comments, .reviews').forEach(el => el.remove());
+    };
+
+    // Запасная страница на случай, если нативный шаблон недоступен
+    const renderFallbackPage = (main, data) => {
+        const body = main.querySelector('.card-body') || main;
+        body.innerHTML = `
+            <div class="d-flex flex-column flex-md-row gap-4" id="ag-synthetic-page-container">
+                <div style="flex: 0 0 240px; max-width: 240px;">
+                    <img referrerpolicy="no-referrer" src="${escapeHtml(data.poster)}" alt="${escapeHtml(data.russian)}" data-ag-poster-id="${data.id}" data-ag-poster-ru="${escapeHtml(data.russian)}" data-ag-poster-en="${escapeHtml(data.name)}" class="rounded w-100" style="aspect-ratio: 5/7; object-fit: cover;">
+                    <a href="${data.jutsuUrl}" id="ag-synthetic-jutsu-side-btn" class="btn btn-danger w-100 fw-bold mt-2">Смотреть на Jut.su</a>
+                </div>
+                <div class="flex-grow-1 mw-0">
+                    <div class="entity__title mb-3">
+                        <h1>${escapeHtml(data.russian)}</h1>
+                        <div class="text-body-tertiary small">${escapeHtml(data.name)}${data.japanese ? ' / ' + escapeHtml(data.japanese) : ''}</div>
+                    </div>
+                    <div class="mb-3">
+                        <a id="ag-shiki-btn" href="https://shikimori.io/animes/${data.id}" target="_blank" rel="noopener" class="btn btn-dark btn-sm fw-semibold">Shikimori ★ ${escapeHtml(String(data.score))}</a>
+                    </div>
+                    <div class="mb-3 text-body-secondary small">
+                        ${escapeHtml(data.kind)} · ${data.episodes || 'выходит'} эп. · ${escapeHtml(data.airedOn || '—')} · ${escapeHtml(data.genres.join(', '))}
+                    </div>
+                    <div class="description mb-4">${data.description || 'Описание отсутствует.'}</div>
+                    <a href="${data.jutsuUrl}" id="ag-synthetic-jutsu-btn" class="btn btn-danger btn-lg fw-bold">▶ Открыть плеер на Jut-Su</a>
+                </div>
+            </div>
+        `;
+    };
+
+    const bindJutsuClick = (btnId, data) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const response = await window.agSendMessage({
+                action: 'search_jutsu_direct',
+                queryTitle: data.russian || data.name,
+                origTitle: data.name,
+                targetYear: data.airedOn
+            });
+            window.open((response && response.url) ? response.url : data.jutsuUrl, '_blank');
+        });
+    };
+
+    window.renderSyntheticAnimePage = async function () {
+        const match = window.location.pathname.match(/\/anime\/shiki-(\d+)/);
+        if (!match) return;
+        if (document.body.dataset.agSyntheticRendered === match[1]) return;
+        document.body.dataset.agSyntheticRendered = match[1];
+
+        const shikiId = match[1];
+        document.title = "Загрузка аниме... | AnimeGO";
+        document.querySelectorAll('.error-page, .alert-danger').forEach(el => el.style.display = 'none');
+
+        const main = await window.agEnsureAnimeGoShell();
+        const host = main ? (main.querySelector('.card-body') || main) : document.body;
+        const loader = document.createElement('div');
+        loader.id = 'ag-synthetic-loader';
+        loader.innerHTML = `
             <div style="text-align: center; padding: 80px 20px; color: #94a3b8; font-size: 18px;">
-                <div style="font-size: 36px; margin-bottom: 12px; animation: spin 1s infinite linear;">⌛</div>
+                <div class="spinner-border text-danger mb-3" role="status"></div>
                 <div>Загрузка информации об аниме...</div>
             </div>
         `;
+        host.replaceChildren(loader);
 
-        const fetchAnimeDetails = async () => {
-            let data = null;
-            try {
-                const resp = await fetch(`https://shikimori.io/api/animes/${shikiId}`);
-                if (resp.ok) {
-                    const raw = await resp.json();
-                    let poster = raw.image ? (raw.image.original || raw.image.preview || '') : '';
-                    if (window.agNormalizePosterUrl) {
-                        poster = window.agNormalizePosterUrl(poster);
-                    } else if (poster && !poster.startsWith('http')) {
-                        poster = 'https://shikimori.one' + poster;
-                    }
-                    if (poster) {
-                        poster = poster.replace(/\/preview\//g, '/original/').replace(/\/x\d+\//g, '/original/');
-                    }
+        // Тот .content-page, который подменим нативной разметкой
+        const container = (main && main.closest('.content-page')) || loader;
 
-                    let screenshots = [];
-                    try {
-                        const scrResp = await fetch(`https://shikimori.io/api/animes/${shikiId}/screenshots`);
-                        if (scrResp.ok) {
-                            const scrData = await scrResp.json();
-                            if (Array.isArray(scrData)) {
-                                screenshots = scrData.slice(0, 10).map(s => {
-                                    let url = s.original || s.preview || '';
-                                    if (window.agNormalizePosterUrl) {
-                                        return window.agNormalizePosterUrl(url);
-                                    }
-                                    if (url && !url.startsWith('http')) {
-                                        url = 'https://shikimori.one' + url;
-                                    }
-                                    return url;
-                                }).filter(Boolean);
-                            }
-                        }
-                    } catch (e) {}
+        const [data, nativeRes] = await Promise.all([
+            fetchAnimeDetails(shikiId).catch(() => null),
+            window.agSendMessage({ action: 'get_native_page_template', origin: location.origin })
+        ]);
+        const nativeHtml = nativeRes ? nativeRes.html : null;
 
-                    const kindMap = {
-                        tv: 'ТВ Сериал',
-                        movie: 'Фильм',
-                        ova: 'OVA',
-                        ona: 'ONA',
-                        special: 'Спешл',
-                        music: 'Клип',
-                        tv_special: 'ТВ Спешл'
-                    };
+        if (!data) {
+            host.innerHTML = `
+                <div class="py-5 text-center" style="color: #f87171;">
+                    <h2>Не удалось загрузить данные об аниме</h2>
+                    <p class="text-muted mt-2">Возможно, такого аниме нет в базе Shikimori или сервер временно недоступен.</p>
+                    <a href="/" class="btn btn-outline-light mt-3">Вернуться на главную</a>
+                </div>
+            `;
+            return;
+        }
 
-                    data = {
-                        id: raw.id,
-                        name: raw.name || '',
-                        russian: raw.russian || raw.name || '',
-                        japanese: Array.isArray(raw.japanese) ? raw.japanese[0] : (raw.japanese || ''),
-                        poster: poster,
-                        kind: kindMap[raw.kind] || (raw.kind ? String(raw.kind).toUpperCase() : 'TV'),
-                        score: raw.score || '—',
-                        status: raw.status || '',
-                        episodes: raw.episodes || 0,
-                        episodesAired: raw.episodes_aired || 0,
-                        airedOn: raw.aired_on ? String(raw.aired_on).split('-')[0] : '',
-                        description: raw.description_html || raw.description || '',
-                        genres: Array.isArray(raw.genres) ? raw.genres.map(g => g.russian || g.name) : [],
-                        studios: Array.isArray(raw.studios) ? raw.studios.map(s => s.name) : [],
-                        videos: Array.isArray(raw.videos) ? raw.videos : [],
-                        screenshots: screenshots,
-                        jutsuUrl: `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(raw.name || raw.russian || '')}`
-                    };
-                }
-            } catch (e) {}
-            return data;
-        };
+        document.title = `${data.russian} / ${data.name} — смотреть онлайн на AnimeGO`;
 
-        // Request native page template and anime details in parallel
-        Promise.all([
-            fetchAnimeDetails(),
-            new Promise(resolve => {
-                try {
-                    chrome.runtime.sendMessage({ action: "get_native_page_template" }, res => resolve(res ? res.html : null));
-                } catch(err) {
-                    resolve(null);
-                }
-            })
-        ]).then(([data, nativeHtml]) => {
-            if (!data) {
-                container.innerHTML = `
-                    <div class="container-xxl py-5 text-center" style="color: #f87171;">
-                        <h2>Не удалось загрузить данные об аниме</h2>
-                        <p class="text-muted mt-2">Возможно, такого аниме нет в базе Shikimori.</p>
-                        <a href="/" class="btn btn-outline-light mt-3">Вернуться на главную</a>
-                    </div>
-                `;
-                return;
-            }
+        const nativeDoc = nativeHtml ? new DOMParser().parseFromString(nativeHtml, 'text/html') : null;
+        if (!main || !isUsableTemplate(nativeDoc)) {
+            renderFallbackPage(main || document.body, data);
+            bindJutsuClick('ag-synthetic-jutsu-btn', data);
+            bindJutsuClick('ag-synthetic-jutsu-side-btn', data);
+            return;
+        }
 
-            document.title = `${data.russian} / ${data.name} — смотреть онлайн на AnimeGO`;
-
+        (() => {
             if (nativeHtml) {
-                const parser = new DOMParser();
-                const nativeDoc = parser.parseFromString(nativeHtml, 'text/html');
-
-                // Sync header if missing or hidden
-                const nativeHeader = nativeDoc.querySelector('header.header-navbar, header.header, header');
-                const existingHeader = document.querySelector('header.header-navbar, header.header, header');
-                if (!existingHeader && nativeHeader) {
-                    wrapper.insertBefore(nativeHeader, wrapper.firstChild);
-                } else if (existingHeader) {
-                    existingHeader.style.display = '';
-                }
-
-                // Extract .content-page from native doc
                 const nativeContentPage = nativeDoc.querySelector('.content-page');
                 if (nativeContentPage) {
                     // Title
@@ -186,7 +268,7 @@
                         if (oldShikiBtn) oldShikiBtn.remove();
                         const shikiBtn = document.createElement('a');
                         shikiBtn.id = 'ag-shiki-btn';
-                        shikiBtn.href = `https://shikimori.one/animes/${data.id}`;
+                        shikiBtn.href = `https://shikimori.io/animes/${data.id}`;
                         shikiBtn.target = '_blank';
                         shikiBtn.className = 'btn d-inline-flex align-items-center';
                         shikiBtn.style.cssText = 'background-color: rgb(33, 33, 33); color: white; font-weight: 600; border-radius: 4px; padding: 0px 12px; font-size: 13px; height: 32px; text-decoration: none; margin-left: 8px;';
@@ -200,11 +282,6 @@
                         posterImg.setAttribute('referrerpolicy', 'no-referrer');
                         posterImg.src = data.poster;
                         posterImg.alt = data.russian || data.name;
-                        posterImg.onerror = function () {
-                            if (window.agHandlePosterError) {
-                                window.agHandlePosterError(this, data.russian || data.name, data.id, data.russian, data.name);
-                            }
-                        };
                         posterImg.removeAttribute('data-src');
                         posterImg.removeAttribute('srcset');
                         posterImg.style.cssText = 'width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 8px; cursor: pointer; transition: transform 0.25s ease, box-shadow 0.25s ease;';
@@ -222,7 +299,7 @@
                                         <button class="ag-poster-close" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.25s ease;" onmouseover="this.style.background='rgba(239,68,68,0.9)'; this.style.borderColor='rgba(239,68,68,1)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.08)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='none';">✕</button>
                                     </div>
                                     <div class="ag-poster-content" style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; align-items: center; justify-content: center;">
-                                        <img referrerpolicy="no-referrer" src="${data.poster}" style="height: 85vh; max-height: 88vh; max-width: 88vw; border-radius: 18px; box-shadow: 0 35px 100px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.15); object-fit: contain; user-select: none;">
+                                        <img referrerpolicy="no-referrer" src="${escapeHtml(data.poster)}" style="height: 85vh; max-height: 88vh; max-width: 88vw; border-radius: 18px; box-shadow: 0 35px 100px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.15); object-fit: contain; user-select: none;">
                                     </div>
                                 `;
                                 document.body.appendChild(posterOverlay);
@@ -341,7 +418,7 @@
                         screenshotsBlock.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; width: 100%;';
                         screenshotsBlock.innerHTML = gridScreenshots.map((src, idx) => `
                             <div class="ag-screenshot-thumb" data-idx="${idx}" style="aspect-ratio: 16 / 9; width: 100%; position: relative; overflow: hidden; border-radius: 8px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='scale(1.03)'; this.style.boxShadow='0 6px 15px rgba(0,0,0,0.4)';" onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                                <img referrerpolicy="no-referrer" src="${src}" class="rounded" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                                <img referrerpolicy="no-referrer" src="${escapeHtml(src)}" class="rounded" style="width: 100%; height: 100%; object-fit: cover; display: block;">
                             </div>
                         `).join('');
 
@@ -368,7 +445,7 @@
                                     <div class="ag-lb-strip" style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; padding: 8px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; backdrop-filter: blur(16px); z-index: 10;">
                                         ${data.screenshots.map((src, i) => `
                                             <div class="ag-lb-dot" data-idx="${i}" style="width: 44px; height: 28px; border-radius: 6px; overflow: hidden; opacity: 0.4; border: 2px solid transparent; cursor: pointer; transition: all 0.2s ease;">
-                                                <img referrerpolicy="no-referrer" src="${src}" style="width: 100%; height: 100%; object-fit: cover;">
+                                                <img referrerpolicy="no-referrer" src="${escapeHtml(src)}" style="width: 100%; height: 100%; object-fit: cover;">
                                             </div>
                                         `).join('')}
                                     </div>
@@ -496,7 +573,12 @@
                         }
                     });
 
+                    sanitizeTemplate(nativeContentPage, data);
                     container.replaceWith(nativeContentPage);
+                    // Цепочку постера привязываем только после вставки в документ: в документе из DOMParser
+                    // картинка не грузится и выглядела бы «сломанной»
+                    const livePoster = nativeContentPage.querySelector('.entity__poster img');
+                    if (livePoster) window.agBindPoster(livePoster, { id: data.id, ru: data.russian, en: data.name });
                     nativeContentPage.id = 'ag-synthetic-page-container';
 
                     ensureAgLogoPlus(document);
@@ -545,7 +627,7 @@
                                     <div class="d-flex flex-wrap gap-3">
                                         ${res.related.slice(0, 8).map(item => `
                                             <a href="/anime/shiki-${item.id}" class="d-flex align-items-center gap-3 p-2 rounded bg-body-tertiary text-decoration-none text-reset" style="width: 260px; border: 1px solid rgba(255,255,255,0.08); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
-                                                <img referrerpolicy="no-referrer" src="${item.poster || ''}" style="width: 48px; height: 68px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="${escapeHtml(item.russian)}" onerror="this.style.display='none'">
+                                                <img referrerpolicy="no-referrer" src="${escapeHtml(item.poster || '')}" style="width: 48px; height: 68px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="${escapeHtml(item.russian)}" data-ag-poster-id="${item.id}" data-ag-poster-ru="${escapeHtml(item.russian)}">
                                                 <div class="overflow-hidden">
                                                     <div class="fw-bold text-truncate small">${escapeHtml(item.russian)}</div>
                                                     <div class="text-body-tertiary text-truncate" style="font-size: 0.8rem; opacity: 0.75;">${escapeHtml(item.relation)}</div>
@@ -560,34 +642,71 @@
                         }
                     });
 
-                    if (window.agSyncAniSkip) {
-                        window.agSyncAniSkip();
-                    }
                 }
             }
-        });
+        })();
+    };
+
+    // Кнопка «Смотреть на Jut-Su», если у AnimeGO нет рабочего видео.
+    // Плеер грузится лениво (anime-player-loader → /player/{id}), поэтому до загрузки ничего не решаем —
+    // раньше кнопка появлялась на каждой странице, пока iframe ещё не успел создаться.
+    const NO_VIDEO_RE = /Нет видео|заблокирован|недоступен|изъят/i;
+
+    const getPlayerVideoState = () => {
+        const modern = document.querySelector('[data-controller~="anime-player"]');
+        if (modern) {
+            const providers = Array.from(modern.querySelectorAll('[data-anime-player-target="provider"]'));
+            const working = providers.filter(p => !p.classList.contains('player-error') && p.dataset.player);
+            const globalError = modern.querySelector('.player-error-global:not(.d-none)');
+            const online = modern.querySelector('[data-anime-player-target="iframeContainer"]');
+            const noVideoText = online && !online.querySelector('iframe') && NO_VIDEO_RE.test(online.textContent || '');
+            return (working.length === 0 || globalError || noVideoText) ? 'no-video' : 'ok';
+        }
+
+        // Плеер ещё загружается
+        if (document.querySelector('[data-controller~="anime-player-loader"]')) return 'loading';
+
+        // Старый плеер
+        const legacy = document.querySelector('#video-player');
+        if (legacy) {
+            const blocked = NO_VIDEO_RE.test(legacy.textContent || '');
+            return (!legacy.querySelector('iframe') || blocked) ? 'no-video' : 'ok';
+        }
+        return 'unknown';
     };
 
     window.checkNoVideoAndInjectJutsuButton = function () {
-        const playerContainer = document.querySelector('.player-video, #video-player, .player__video');
-        if (!playerContainer) return;
+        if (/\/anime\/shiki-\d+/.test(location.pathname)) return;
+        if (document.getElementById('ag-jutsu-switch-btn')) return;
+        if (getPlayerVideoState() !== 'no-video') return;
 
-        const hasIframe = playerContainer.querySelector('iframe');
-        const hasBlockedText = playerContainer.textContent && (playerContainer.textContent.includes('заблокирован') || playerContainer.textContent.includes('недоступен') || playerContainer.textContent.includes('изъят'));
+        const anchor = window.agQueryFirst(['.player__video', '#video-player', '.player-video']);
+        if (!anchor) return;
 
-        if ((!hasIframe || hasBlockedText) && !document.getElementById('ag-jutsu-switch-btn')) {
-            const btn = document.createElement('a');
-            btn.id = 'ag-jutsu-switch-btn';
-            btn.className = 'btn btn-primary btn-lg mt-3 w-100 fw-bold';
-            btn.style.cssText = 'background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); border: none; border-radius: 10px; color: #fff; padding: 14px 20px; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(76,175,80,0.3);';
-            btn.innerHTML = '<span>🎬 Смотреть этот тайтл на Jut-Su</span>';
+        const info = window.agGetAnimePageInfo ? window.agGetAnimePageInfo() : null;
+        const queryTitle = info && info.title ? info.title : document.title.split(' — ')[0];
 
-            const titleEl = document.querySelector('.entity__title h1, h1');
-            const queryTitle = titleEl ? titleEl.innerText.split('/')[0].trim() : document.title;
-            btn.href = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(queryTitle)}`;
-            btn.target = '_blank';
+        const btn = document.createElement('a');
+        btn.id = 'ag-jutsu-switch-btn';
+        btn.className = 'btn btn-primary btn-lg mt-3 w-100 fw-bold';
+        btn.style.cssText = 'background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); border: none; border-radius: 10px; color: #fff; padding: 14px 20px; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(76,175,80,0.3);';
+        btn.innerHTML = '<span>🎬 Смотреть этот тайтл на Jut-Su</span>';
+        btn.href = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(queryTitle)}&ag_from=animeplus`;
+        btn.target = '_blank';
+        btn.rel = 'noopener';
 
-            playerContainer.appendChild(btn);
-        }
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const res = await window.agSendMessage({
+                action: 'search_jutsu_direct',
+                queryTitle,
+                origTitle: info ? info.origTitle : '',
+                targetYear: info ? info.year : ''
+            });
+            window.open((res && res.url) ? res.url : btn.href, '_blank');
+        });
+
+        // Вставляем после контейнера плеера: его содержимое целиком подменяет Stimulus-контроллер
+        anchor.after(btn);
     };
 })();

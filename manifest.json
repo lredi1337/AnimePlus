@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "9.1.0",
-  "description": "Улучшает плеер на AnimeGO и Jut-Su: автовыбор озвучки, автоплей, псевдо-фуллскрин, пропуск опенингов, PiP и Топ Shikimori 🚀",
+  "version": "9.3.0",
+  "description": "Улучшает просмотр аниме на AnimeGO, Jut-Su, YummyAnime и других сайтах: автовыбор озвучки, учёт серий в Shikimori, пропуск опенингов, Топ Shikimori 🚀",
   "homepage_url": "https://lredi1337.github.io/AnimeGoPlus/",
   "permissions": [
     "storage",
@@ -65,7 +65,15 @@
     "https://api.animethemes.moe/*",
     "https://kitsu.io/*",
     "https://jut-su.net/*",
-    "https://*.jut-su.net/*"
+    "https://*.jut-su.net/*",
+    "https://old.yummyani.me/*",
+    "https://ru.yummyani.me/*",
+    "https://yummyanime.tv/*",
+    "https://animego.online/*",
+    "https://yammyanime.club/*",
+    "https://*.yummyanime.tv/*",
+    "https://*.animego.online/*",
+    "https://*.yammyanime.club/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -78,7 +86,11 @@
       ],
       "js": [
         "config.js",
+        "modules/shared/sites.js",
+        "modules/shared/title-match.js",
         "modules/ui-utils.js",
+        "modules/site-selectors.js",
+        "modules/progress-tracker.js",
         "modules/animego/ag-settings.js",
         "modules/animego/ag-random.js",
         "modules/animego/ag-schedule.js",
@@ -100,7 +112,12 @@
       ],
       "js": [
         "config.js",
+        "modules/shared/sites.js",
+        "modules/shared/title-match.js",
         "modules/ui-utils.js",
+        "modules/site-selectors.js",
+        "modules/progress-tracker.js",
+        "modules/animego/ag-settings.js",
         "modules/jutsu/jt-settings.js",
         "modules/jutsu/jt-top.js",
         "modules/jutsu/jt-random.js",
@@ -109,6 +126,37 @@
         "modules/jutsu/jt-voice.js",
         "modules/jutsu/jt-covers.js",
         "content-jutsu.js"
+      ],
+      "run_at": "document_end",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://old.yummyani.me/*",
+        "https://ru.yummyani.me/*",
+        "https://yummyanime.tv/*",
+        "https://animego.online/*",
+        "https://yammyanime.club/*"
+      ],
+      "js": [
+        "config.js",
+        "modules/shared/sites.js",
+        "modules/shared/title-match.js",
+        "modules/ui-utils.js",
+        "modules/site-selectors.js",
+        "modules/progress-tracker.js",
+        "modules/animego/ag-settings.js",
+        "providers/base.js",
+        "providers/dle.js",
+        "providers/yani.js",
+        "features/player-bridge.js",
+        "features/title-widgets.js",
+        "features/top-overlay.js",
+        "features/search-redirect.js",
+        "features/settings-entry.js",
+        "features/random-anime.js",
+        "providers/runtime.js",
+        "content-sites.js"
       ],
       "run_at": "document_end",
       "all_frames": false
@@ -145,6 +193,7 @@
       ],
       "js": [
         "config.js",
+        "modules/shared/sites.js",
         "content-kodik.js"
       ],
       "run_at": "document_end",
@@ -161,6 +210,7 @@
         "https://shikimori.me/anime/*"
       ],
       "js": [
+        "modules/shared/sites.js",
         "content-external.js"
       ],
       "run_at": "document_end",
@@ -188,9 +238,7 @@
       "resources": [
         "icons/icon16.png",
         "icons/icon48.png",
-        "icons/icon128.png",
-        "icon16.png",
-        "icon48.png"
+        "icons/icon128.png"
       ],
       "matches": [
         "https://animego.me/*",
@@ -200,7 +248,12 @@
         "https://shikimori.one/*",
         "https://shikimori.io/*",
         "https://shikimori.org/*",
-        "https://shikimori.me/*"
+        "https://shikimori.me/*",
+        "https://old.yummyani.me/*",
+        "https://ru.yummyani.me/*",
+        "https://yummyanime.tv/*",
+        "https://animego.online/*",
+        "https://yammyanime.club/*"
       ]
     }
   ]

@@ -4,94 +4,116 @@
 (function () {
     'use strict';
 
-    let isAnimeGoVoiceDone = false;
-    let animegoCheckTimer = null;
-    let lastAnimegoCheckTime = 0;
-    let animeGoVoiceObserver = null;
+    const clean = (s) => (s || '').toLowerCase().replace(/\(ошибка\)/g, '').replace(/[^a-z0-9а-яё]/gi, '').trim();
 
-    function findAndSelectPriorityVoiceAnimeGo(settings) {
-        if (isAnimeGoVoiceDone || !settings || settings.auto_select_voice === false) return false;
+    const getPriorityList = (settings) => (settings && Array.isArray(settings.voice_priority_list) && settings.voice_priority_list.length > 0)
+        ? settings.voice_priority_list
+        : (window.DEFAULT_SETTINGS ? window.DEFAULT_SETTINGS.voice_priority_list : ["Anilibria", "Studio Band"]);
 
-        const priorityList = (settings && settings.voice_priority_list && settings.voice_priority_list.length > 0)
-            ? settings.voice_priority_list
-            : (window.DEFAULT_SETTINGS ? window.DEFAULT_SETTINGS.voice_priority_list : ["Anilibria", "Studio Band"]);
+    const isActive = (el) => el.classList.contains('active') || el.classList.contains('is-active') || el.classList.contains('selected');
+    const isBroken = (el) => el.classList.contains('player-error');
 
-        const items = Array.from(document.querySelectorAll('.list-group-item[data-translation], button[data-translation], [data-translation], #video-dubbing .item, [data-dubbing], .video-player__translation-item, .video-player__translation, [data-translation-id], .video-player__translations span, .video-player__translations a, .video-player__translations div'));
-        if (items.length === 0) return false;
+    // Не кликаем по одному и тому же элементу чаще, чем раз в 1.5 с (сайт перерисовывает меню после клика)
+    const safeClick = (el) => {
+        const now = Date.now();
+        if (el.dataset.agLastClick && now - parseInt(el.dataset.agLastClick, 10) < 1500) return;
+        el.dataset.agLastClick = String(now);
+        el.click();
+    };
 
-        const clean = (s) => (s || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
+    const findByPriority = (items, priorityList, getText) => {
+        for (const name of priorityList) {
+            const prio = clean(name);
+            if (!prio) continue;
+            const hit = items.find(item => {
+                const text = clean(getText(item));
+                return text && (text.includes(prio) || prio.includes(text));
+            });
+            if (hit) return hit;
+        }
+        return null;
+    };
 
-        for (const priorityName of priorityList) {
-            const prioClean = clean(priorityName);
-            if (!prioClean) continue;
+    // ---------- Новый плеер (Stimulus anime-player, 2026) ----------
+    // Кнопки озвучки:   [data-anime-player-target="translation"][data-translation]
+    // Кнопки провайдера: [data-anime-player-target="provider"][data-ptranslation][data-provider-slug]
 
-            for (const item of items) {
-                const textSpan = item.querySelector('.text-truncate') || item.querySelector('span') || item;
-                const itemText = clean(textSpan.innerText || textSpan.textContent || item.innerText || item.getAttribute('data-dubbing') || item.getAttribute('title') || item.getAttribute('data-title') || '');
-                if (itemText && (itemText.includes(prioClean) || prioClean.includes(itemText))) {
-                    isAnimeGoVoiceDone = true;
-                    if (!item.classList.contains('active') && !item.classList.contains('selected')) {
-                        item.click();
-                        if (textSpan !== item) {
-                            textSpan.click();
-                        }
-                    }
-                    return true;
-                }
+    // Возвращает true, когда больше ничего делать не нужно
+    function applyModernPlayer(settings, state) {
+        const translations = window.agFindAll('animego', 'translations');
+        const providers = window.agFindAll('animego', 'providers');
+        if (translations.length === 0 && providers.length === 0) return false;
+
+        // 1. Озвучка по приоритету (одна попытка на загрузку меню, дальше выбор за пользователем)
+        if (!state.voiceDone && settings.auto_select_voice !== false && translations.length > 0) {
+            const usable = translations.filter(t => !isBroken(t));
+            const target = findByPriority(usable, getPriorityList(settings), t => t.textContent);
+            state.voiceDone = true;
+            if (target && !isActive(target)) {
+                safeClick(target);
+                return false; // дождёмся перерисовки меню провайдеров
             }
         }
-        return false;
+
+        // 2. Kodik для активной озвучки (наши функции плеера работают только внутри Kodik)
+        if (!state.providerDone) {
+            const activeTranslation = translations.find(isActive);
+            const key = activeTranslation ? activeTranslation.dataset.translation : null;
+            const kodik = providers.find(p => p.dataset.providerSlug === 'kodik' && !isBroken(p) && (!key || p.dataset.ptranslation === key));
+            if (!kodik) {
+                state.providerDone = true;
+                return true;
+            }
+            if (isActive(kodik)) {
+                state.providerDone = true;
+                return true;
+            }
+            safeClick(kodik);
+            return false;
+        }
+        return true;
     }
 
-    function autoSelectKodikPlayer() {
-        let kodikBtn = document.querySelector('span[data-provider="2"]') ||
-            document.querySelector('li[data-provider="2"]') ||
-            document.querySelector('[data-provider="2"]') ||
-            document.querySelector('[data-provider-title*="Kodik"]') ||
-            document.querySelector('[data-player-title*="Kodik"]');
+    // ---------- Старый плеер (до 2026) ----------
 
-        if (!kodikBtn) {
-            const candidates = Array.from(document.querySelectorAll('#video-player [data-provider], .video-player__providers [data-provider], #video-player .nav-item, #video-player span, #video-player li, .player-video [data-provider], button, a, span, li'));
-            kodikBtn = candidates.find(el => (el.innerText || el.textContent || '').trim().toLowerCase().includes('kodik'));
-        }
-
-        if (kodikBtn) {
-            const target = kodikBtn.closest('button') || kodikBtn.closest('a') || kodikBtn.closest('li') || kodikBtn;
-            if (target.classList.contains('active') || target.classList.contains('is-active') || target.classList.contains('selected')) return;
-
-            const now = Date.now();
-            if (!target.dataset.lastClickTime || now - parseInt(target.dataset.lastClickTime) > 1500) {
-                target.dataset.lastClickTime = now.toString();
-                target.click();
+    function applyLegacyPlayer(settings, state) {
+        if (!state.providerDone) {
+            const kodikBtn = window.agQueryFirst(['[data-provider-title*="Kodik"]', '[data-player-title*="Kodik"]'])
+                || Array.from(document.querySelectorAll('#video-player [data-provider], .video-player__providers [data-provider]'))
+                    .find(el => (el.textContent || '').toLowerCase().includes('kodik'));
+            if (kodikBtn) {
+                const target = kodikBtn.closest('button, a, li') || kodikBtn;
+                if (isActive(target)) state.providerDone = true;
+                else safeClick(target);
             }
         }
+
+        if (!state.voiceDone && settings.auto_select_voice !== false) {
+            const items = Array.from(document.querySelectorAll('#video-dubbing .item, .video-player__translation-item, .video-player__translations [data-translation]'));
+            const target = findByPriority(items, getPriorityList(settings), el => el.textContent || el.getAttribute('data-dubbing') || el.getAttribute('title'));
+            if (target) {
+                state.voiceDone = true;
+                if (!isActive(target)) safeClick(target);
+            }
+        }
+        return state.voiceDone && state.providerDone;
     }
+
+    // Состояние привязано к конкретному меню плеера: при смене серии AnimeGO подменяет меню целиком
+    let currentMenu = null;
+    let state = null;
 
     window.agInitVoiceAutoSelect = function (settings) {
-        autoSelectKodikPlayer();
-        findAndSelectPriorityVoiceAnimeGo(settings);
+        if (!settings || settings.global_enabled === false) return;
 
-        if (animeGoVoiceObserver) return;
-
-        animeGoVoiceObserver = new MutationObserver(() => {
-            const now = Date.now();
-            if (now - lastAnimegoCheckTime < 300) return;
-            lastAnimegoCheckTime = now;
-
-            autoSelectKodikPlayer();
-
-            if (findAndSelectPriorityVoiceAnimeGo(settings)) {
-                if (animegoCheckTimer) clearTimeout(animegoCheckTimer);
-            }
-        });
-
-        if (document.documentElement) {
-            animeGoVoiceObserver.observe(document.documentElement, { childList: true, subtree: true });
+        const menu = document.querySelector('[data-anime-player-target="translation"]')?.closest('[id], .player-video') || document.body;
+        if (menu !== currentMenu || !menu.isConnected) {
+            currentMenu = menu;
+            state = { voiceDone: false, providerDone: false, finished: false };
         }
+        if (state.finished) return;
 
-        animegoCheckTimer = setTimeout(() => {
-            if (animeGoVoiceObserver) animeGoVoiceObserver.disconnect();
-            animeGoVoiceObserver = null;
-        }, 10000);
+        const modern = document.querySelector('[data-anime-player-target="translation"], [data-anime-player-target="provider"]');
+        state.finished = modern ? applyModernPlayer(settings, state) : applyLegacyPlayer(settings, state);
     };
 })();

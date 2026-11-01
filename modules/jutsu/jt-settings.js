@@ -5,7 +5,6 @@
     'use strict';
     const accentColor = '#3c8fff';
     const AG_FONT = window.AG_FONT || "'Inter', system-ui, sans-serif";
-    const AG_RED = window.AG_RED || '#ef4444';
 
     function injectJutsuSettingsStyles() {
         if (document.getElementById('jt-settings-styles')) return;
@@ -356,8 +355,8 @@
         renderVoicePriorityList();
 
         modal.querySelector('#ag-save').onclick = async () => {
-            const updated = {
-                ...settings,
+            // Только поля этого окна: остальное берётся из хранилища (agPatchSettings)
+            const patch = {
                 autoPlay: modal.querySelector('#set-autoPlay')?.checked ?? true,
                 autoFS: modal.querySelector('#set-autoFS')?.checked ?? false,
                 autoNext: modal.querySelector('#set-autoNext')?.checked ?? true,
@@ -373,7 +372,7 @@
                 volStep: parseFloat(modal.querySelector('#set-volStep')?.dataset.value || 0.05),
                 hideTime: parseInt(modal.querySelector('#set-hideTime')?.value || 2000)
             };
-            await chrome.storage.local.set({ ag_settings: updated });
+            const updated = await window.agPatchSettings(patch);
             if (typeof saveCallback === 'function') saveCallback(updated);
             close();
         };

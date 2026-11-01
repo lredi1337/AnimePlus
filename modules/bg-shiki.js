@@ -1,15 +1,104 @@
 // modules/bg-shiki.js
 // Движок авторизации, работы с API Shikimori, синхронизации и push-уведомлений
 
-const SHIKI_APP_USER_AGENT = 'AnimePlus/9.1.0 (Browser Extension)';
+const SHIKI_APP_USER_AGENT = `AnimePlus/${chrome.runtime.getManifest().version} (Browser Extension)`;
 const SHIKI_REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
+
+// shikimori.one и shikimori.me теперь отвечают редиректом на shikimori.io.
+// При редиректе на другой origin браузер удаляет заголовок Authorization,
+// поэтому авторизованные запросы обязаны идти сразу на основной домен.
+const SHIKI_API_BASE = 'https://shikimori.io';
+const SHIKI_API_DOMAINS = [SHIKI_API_BASE, 'https://shikimori.one', 'https://shikimori.me'];
+
+function toShikiApiUrl(url) {
+    return String(url).replace(/^https:\/\/(?:www\.)?shikimori\.(?:one|me|org)(?=\/)/, SHIKI_API_BASE);
+}
+
+// ---------- Постеры ----------
+// REST API отдаёт для многих (особенно новых) тайтлов заглушку /assets/globals/missing_*.jpg (та самая «лиса»),
+// хотя настоящий постер у тайтла есть — он доступен только через GraphQL (poster { mainUrl originalUrl }).
+
+function isMissingShikiPoster(url) {
+    return !url || /\/assets\/|missing|no-poster|no-image|stub/i.test(String(url));
+}
+
+function absoluteShikiUrl(url) {
+    if (!url) return '';
+    if (/^https?:\/\//.test(url)) return toShikiApiUrl(url);
+    return `${SHIKI_API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+const SHIKI_POSTER_TTL = 7 * 24 * 60 * 60 * 1000;
+const SHIKI_POSTER_MISS_TTL = 12 * 60 * 60 * 1000; // «постера нет» перепроверяем чаще
+const shikiPosterMemo = new Map();
+
+async function getShikiPosters(ids) {
+    const unique = [...new Set((ids || []).map(id => parseInt(id, 10)).filter(Boolean))];
+    const result = {};
+    if (unique.length === 0) return result;
+
+    const now = Date.now();
+    const { shiki_poster_cache: cache = {} } = await chrome.storage.local.get(['shiki_poster_cache']);
+    const toFetch = [];
+    for (const id of unique) {
+        const hit = shikiPosterMemo.get(id) || cache[id];
+        const ttl = hit && hit.url ? SHIKI_POSTER_TTL : SHIKI_POSTER_MISS_TTL;
+        if (hit && now - hit.ts < ttl) {
+            if (hit.url) result[id] = hit.url;
+        } else {
+            toFetch.push(id);
+        }
+    }
+
+    const fresh = {};
+    for (let i = 0; i < toFetch.length; i += 50) {
+        const chunk = toFetch.slice(i, i + 50);
+        try {
+            const res = await fetch(`${SHIKI_API_BASE}/api/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ query: `{ animes(ids: "${chunk.join(',')}", limit: ${chunk.length}) { id poster { mainUrl originalUrl } } }` })
+            });
+            if (!res.ok) continue;
+            const json = await res.json();
+            // GraphQL отвечает 200 и при ошибке запроса — такой ответ не кэшируем как «постера нет»
+            if (!json || json.errors || !json.data || !Array.isArray(json.data.animes)) continue;
+            const found = new Map((json?.data?.animes || []).map(a => [parseInt(a.id, 10), a.poster ? (a.poster.mainUrl || a.poster.originalUrl) : null]));
+            chunk.forEach(id => {
+                const url = found.get(id) ? absoluteShikiUrl(found.get(id)) : null;
+                const entry = { url, ts: now };
+                shikiPosterMemo.set(id, entry);
+                fresh[id] = entry;
+                if (url) result[id] = url;
+            });
+        } catch (e) {
+            console.warn('[Anime+] GraphQL poster fetch failed:', e);
+        }
+    }
+
+    if (Object.keys(fresh).length > 0) {
+        await updateStorageObject('shiki_poster_cache', c => Object.assign(c, fresh), { maxEntries: 2000 });
+    }
+    return result;
+}
+
+// Лучший постер для объекта аниме из REST API: настоящий REST-постер, иначе GraphQL
+async function fillShikiPosters(items, { getId = (i) => i.id, getRaw = (i) => i.poster, setPoster = (i, url) => { i.poster = url; } } = {}) {
+    const need = items.filter(i => isMissingShikiPoster(getRaw(i)));
+    const map = need.length ? await getShikiPosters(need.map(getId)) : {};
+    items.forEach(i => {
+        const raw = getRaw(i);
+        setPoster(i, isMissingShikiPoster(raw) ? (map[parseInt(getId(i), 10)] || '') : absoluteShikiUrl(raw));
+    });
+    return items;
+}
 
 async function fetchShikimoriApi(endpoint) {
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json'
     };
-    const domains = ['https://shikimori.one', 'https://shikimori.me', 'https://shikimori.io'];
+    const domains = SHIKI_API_DOMAINS;
     
     for (const domain of domains) {
         try {
@@ -42,6 +131,7 @@ async function getShikiTokens() {
 }
 
 async function shikiFetch(url, options = {}, isRetry = false) {
+    url = toShikiApiUrl(url);
     let tokens = await getShikiTokens();
 
     if (tokens.shiki_access_token && tokens.shiki_token_expires_at) {
@@ -126,7 +216,7 @@ async function postShikiOAuthToken(bodyObj, isRetry = false) {
         'User-Agent': SHIKI_APP_USER_AGENT
     };
 
-    const domains = ['https://shikimori.one', 'https://shikimori.me', 'https://shikimori.io'];
+    const domains = SHIKI_API_DOMAINS;
     let lastRes = null;
 
     for (const domain of domains) {
@@ -244,14 +334,14 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
 
         let userRes;
         try {
-            userRes = await fetch('https://shikimori.one/api/users/whoami', {
+            userRes = await fetch('https://shikimori.io/api/users/whoami', {
                 headers: {
                     'User-Agent': SHIKI_APP_USER_AGENT,
                     'Authorization': `Bearer ${tokenData.access_token}`
                 }
             });
             if (!userRes.ok) {
-                userRes = await fetch('https://shikimori.me/api/users/whoami', {
+                userRes = await fetch('https://shikimori.io/api/users/whoami', {
                     headers: {
                         'User-Agent': SHIKI_APP_USER_AGENT,
                         'Authorization': `Bearer ${tokenData.access_token}`
@@ -305,7 +395,7 @@ async function getShikiWatchingList(targetStatus = 'watching') {
     } catch (e) {}
 
     try {
-        const res = await shikiFetch(`https://shikimori.one/api/v2/user_rates?user_id=${userId}&target_type=Anime&status=${cleanStatus}&limit=30`);
+        const res = await shikiFetch(`https://shikimori.io/api/v2/user_rates?user_id=${userId}&target_type=Anime&status=${cleanStatus}&limit=30`);
         if (res.ok) {
             const rates = await res.json();
             if (Array.isArray(rates) && rates.length === 0) {
@@ -315,7 +405,7 @@ async function getShikiWatchingList(targetStatus = 'watching') {
             if (Array.isArray(rates) && rates.length > 0) {
                 const animeIds = rates.map(r => r.target_id).filter(Boolean);
                 if (animeIds.length > 0) {
-                    const animeRes = await shikiFetch(`https://shikimori.one/api/animes?ids=${animeIds.join(',')}&limit=30`);
+                    const animeRes = await shikiFetch(`https://shikimori.io/api/animes?ids=${animeIds.join(',')}&limit=30`);
                     let animeMap = new Map();
                     if (animeRes.ok) {
                         const animeList = await animeRes.json();
@@ -343,6 +433,7 @@ async function getShikiWatchingList(targetStatus = 'watching') {
                         };
                     });
 
+                    await fillShikiPosters(items, { getId: i => i.animeId });
                     await chrome.storage.local.set({ [cacheKey]: items });
                     return { success: true, items };
                 }
@@ -359,11 +450,84 @@ async function getShikiWatchingList(targetStatus = 'watching') {
     return { success: false, reason: 'fetch_failed', items: [] };
 }
 
+// Локальная дата (а не UTC из toISOString), иначе «сегодня» сбрасывается в 03:00 по Москве
+function localDateKey(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function bumpTodayCounter(targetId, epNumber) {
+    const todayStr = localDateKey();
+    const storageData = await chrome.storage.local.get(['shiki_today_date', 'shiki_today_episodes']);
+    let todayEpisodes = Array.isArray(storageData.shiki_today_episodes) ? storageData.shiki_today_episodes : [];
+    if (storageData.shiki_today_date !== todayStr) todayEpisodes = [];
+
+    const epKey = `${targetId}_${epNumber}`;
+    if (!todayEpisodes.includes(epKey)) todayEpisodes.push(epKey);
+
+    await chrome.storage.local.set({
+        shiki_last_sync_time: Date.now(),
+        shiki_last_sync_status: 'success',
+        shiki_auth_error: false,
+        shiki_today_date: todayStr,
+        shiki_today_episodes: todayEpisodes,
+        shiki_today_count: todayEpisodes.length
+    });
+}
+
+// Определение ID тайтла на Shikimori по набору названий (оригинал, русское, синонимы) и году.
+// Результат кэшируется на 30 дней, чтобы не дёргать API на каждой серии.
+const SHIKI_ID_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+
+async function resolveShikimoriId({ titles = [], year = '', kind = '' }) {
+    const cleanTitles = [...new Set(titles.map(t => String(t || '').trim()).filter(Boolean))];
+    if (cleanTitles.length === 0) return null;
+
+    const cacheKey = `${cleanTitles[0].toLowerCase()}|${year}`;
+    const { shiki_id_cache: cache = {} } = await chrome.storage.local.get(['shiki_id_cache']);
+    const hit = cache[cacheKey];
+    if (hit && Date.now() - hit.ts < SHIKI_ID_CACHE_TTL) return hit.data;
+
+    const norm = globalThis.AgTitleMatch.normalize;
+    const normTitles = cleanTitles.map(norm);
+
+    // Пробуем полные названия, затем укороченные до двоеточия/тире
+    const queries = [...cleanTitles];
+    cleanTitles.forEach(t => {
+        const short = t.split(/[:—–]|\s-\s/)[0].trim();
+        if (short && short !== t && !queries.includes(short)) queries.push(short);
+    });
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const q of queries) {
+        const list = await fetchShikimoriApi(`/api/animes?search=${encodeURIComponent(q)}&limit=8`);
+        if (!Array.isArray(list) || list.length === 0) continue;
+
+        list.forEach((item, idx) => {
+            const names = [item.name, item.russian, ...(item.english || []), ...(item.synonyms || [])].map(norm).filter(Boolean);
+            let score = -idx * 5; // порядок выдачи Shikimori тоже важен
+            if (names.some(n => normTitles.includes(n))) score += 100;
+            else if (names.some(n => normTitles.some(t => t && (n.startsWith(t) || t.startsWith(n))))) score += 40;
+            const itemYear = item.aired_on ? String(item.aired_on).slice(0, 4) : '';
+            if (year && itemYear) score += itemYear === String(year) ? 50 : -30;
+            if (kind && item.kind && String(item.kind).toLowerCase() === String(kind).toLowerCase()) score += 10;
+            if (score > bestScore) { bestScore = score; best = item; }
+        });
+        if (bestScore >= 100) break;
+    }
+
+    if (!best || bestScore < 0) return null;
+
+    const data = { id: best.id, episodes: best.episodes || best.episodes_aired || 0, name: best.name, russian: best.russian };
+    await updateStorageObject('shiki_id_cache', c => { c[cacheKey] = { ts: Date.now(), data }; }, { maxEntries: 500 });
+    return data;
+}
+
 async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status }) {
     let tokens = await getShikiTokens();
     if (tokens.shiki_access_token && !tokens.shiki_user) {
         try {
-            const userRes = await shikiFetch('https://shikimori.one/api/users/whoami');
+            const userRes = await shikiFetch('https://shikimori.io/api/users/whoami');
             if (userRes.ok) {
                 tokens.shiki_user = await userRes.json();
                 await chrome.storage.local.set({ shiki_user: tokens.shiki_user });
@@ -379,7 +543,7 @@ async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status
     const targetId = parseInt(shikimoriId);
     if (!targetId) return { success: false, reason: 'invalid_id' };
 
-    const getRes = await shikiFetch(`https://shikimori.one/api/v2/user_rates?user_id=${userId}&target_id=${targetId}&target_type=Anime`);
+    const getRes = await shikiFetch(`https://shikimori.io/api/v2/user_rates?user_id=${userId}&target_id=${targetId}&target_type=Anime`);
     let existingRate = null;
     if (getRes.ok) {
         const rates = await getRes.json();
@@ -398,6 +562,16 @@ async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status
         targetStatus = 'rewatching';
     }
 
+    // Пересмотр старой серии не должен откатывать прогресс назад
+    const isNoop = existingRate
+        && existingRate.status === targetStatus
+        && targetStatus !== 'rewatching'
+        && (parseInt(existingRate.episodes) || 0) >= epNumber;
+    if (isNoop) {
+        await bumpTodayCounter(targetId, epNumber);
+        return { success: true, noop: true, rate: existingRate };
+    }
+
     let payload = {
         user_rate: {
             user_id: userId,
@@ -410,13 +584,13 @@ async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status
 
     let saveRes;
     if (existingRate && existingRate.id) {
-        saveRes = await shikiFetch(`https://shikimori.one/api/v2/user_rates/${existingRate.id}`, {
+        saveRes = await shikiFetch(`https://shikimori.io/api/v2/user_rates/${existingRate.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
     } else {
-        saveRes = await shikiFetch(`https://shikimori.one/api/v2/user_rates`, {
+        saveRes = await shikiFetch(`https://shikimori.io/api/v2/user_rates`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -425,34 +599,7 @@ async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status
 
     if (saveRes.ok) {
         const savedData = await saveRes.json();
-        const now = Date.now();
-        const todayStr = new Date().toISOString().split('T')[0];
-
-        const storageData = await chrome.storage.local.get(['shiki_today_date', 'shiki_today_episodes']);
-        let todayDate = storageData.shiki_today_date;
-        let todayEpisodes = Array.isArray(storageData.shiki_today_episodes) ? storageData.shiki_today_episodes : [];
-
-        if (todayDate !== todayStr) {
-            todayDate = todayStr;
-            todayEpisodes = [];
-        }
-
-        const epKey = `${targetId}_${epNumber}`;
-        if (!todayEpisodes.includes(epKey)) {
-            todayEpisodes.push(epKey);
-        }
-
-        const count = todayEpisodes.length;
-
-        await chrome.storage.local.set({
-            shiki_last_sync_time: now,
-            shiki_last_sync_status: 'success',
-            shiki_auth_error: false,
-            shiki_today_date: todayDate,
-            shiki_today_episodes: todayEpisodes,
-            shiki_today_count: count
-        });
-
+        await bumpTodayCounter(targetId, epNumber);
         return { success: true, rate: savedData };
     } else {
         const errText = await saveRes.text();
@@ -642,13 +789,35 @@ try {
     });
 } catch (e) {}
 
+// Alarm проверки новых серий.
+// chrome.alarms.create с тем же именем отменяет существующий alarm и запускает отсчёт заново.
+// Раньше create вызывался при каждом пробуждении service worker (а он просыпается на каждое сообщение),
+// поэтому при активном просмотре проверка могла откладываться бесконечно.
+const EPISODES_ALARM = 'check_new_episodes_alarm';
+
+async function ensureEpisodesAlarm({ force = false } = {}) {
+    const { ag_settings: settings = {} } = await chrome.storage.local.get(['ag_settings']);
+    const period = Math.max(5, parseInt(settings.notif_interval_min, 10) || 30);
+    const existing = await chrome.alarms.get(EPISODES_ALARM);
+    if (!force && existing && existing.periodInMinutes === period) return;
+    await chrome.alarms.create(EPISODES_ALARM, { periodInMinutes: period, delayInMinutes: existing && !force ? period : 1 });
+}
+
 try {
-    chrome.alarms.create('check_new_episodes_alarm', { periodInMinutes: 30 });
     chrome.alarms.onAlarm.addListener((alarm) => {
-        if (alarm.name === 'check_new_episodes_alarm') {
-            checkNewEpisodeNotifications();
-        }
+        if (alarm.name === EPISODES_ALARM) checkNewEpisodeNotifications();
     });
+    chrome.runtime.onInstalled.addListener(() => ensureEpisodesAlarm({ force: true }));
+    chrome.runtime.onStartup.addListener(() => ensureEpisodesAlarm());
+    // Пересоздаём alarm, только если пользователь поменял интервал в настройках
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes.ag_settings) return;
+        const oldVal = changes.ag_settings.oldValue || {};
+        const newVal = changes.ag_settings.newValue || {};
+        if (oldVal.notif_interval_min !== newVal.notif_interval_min) ensureEpisodesAlarm({ force: true });
+    });
+    // Страховка: alarm мог потеряться (например, при обновлении браузера) — создаём, только если его нет
+    ensureEpisodesAlarm();
 } catch (e) {}
 
 async function checkNewEpisodeNotifications(isManual = false) {
@@ -662,7 +831,7 @@ async function checkNewEpisodeNotifications(isManual = false) {
         const watchingRes = await getShikiWatchingList('watching');
         if (!watchingRes || !watchingRes.success || !Array.isArray(watchingRes.items)) return;
 
-        const calendarRes = await fetch('https://shikimori.one/api/calendar');
+        const calendarRes = await fetch('https://shikimori.io/api/calendar');
         if (!calendarRes.ok) return;
         const calendar = await calendarRes.json();
         if (!Array.isArray(calendar)) return;
@@ -697,17 +866,11 @@ async function checkNewEpisodeNotifications(isManual = false) {
 
                     notifiedSet.add(notifKey);
 
-                    let rawPoster = portalCheck.poster || (userAnime && userAnime.poster) || (calItem.anime && calItem.anime.image && (calItem.anime.image.original || calItem.anime.image.preview)) || 'icons/icon128.png';
-                    if (typeof rawPoster === 'string' && rawPoster.trim()) {
-                        rawPoster = rawPoster.trim();
-                        if (rawPoster.includes('/system/animes/')) {
-                            const idx = rawPoster.indexOf('/system/animes/');
-                            rawPoster = 'https://shikimori.one' + rawPoster.substring(idx);
-                        } else if (!rawPoster.startsWith('http://') && !rawPoster.startsWith('https://')) {
-                            rawPoster = `https://shikimori.one${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`;
-                        }
-                    } else {
-                        rawPoster = chrome.runtime.getURL('icons/icon128.png');
+                    let rawPoster = portalCheck.poster || (userAnime && userAnime.poster) || (calItem.anime && calItem.anime.image && (calItem.anime.image.original || calItem.anime.image.preview)) || '';
+                    if (isMissingShikiPoster(rawPoster)) {
+                        rawPoster = (await getShikiPosters([animeId]))[animeId] || chrome.runtime.getURL('icons/icon128.png');
+                    } else if (!/^https?:\/\//.test(rawPoster)) {
+                        rawPoster = absoluteShikiUrl(rawPoster);
                     }
                     const poster = rawPoster;
                     const notifId = `animeplus_notif_${animeId}_${nextEp}_${Date.now()}`;

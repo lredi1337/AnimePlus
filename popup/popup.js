@@ -1,4 +1,46 @@
+// Реестр сайтов (modules/shared/sites.js подключён в popup.html до этого файла)
+const AgSites = window.AgSites;
+
+// Фолбэк постеров в popup. Inline onerror="" в страницах расширения запрещён CSP Manifest V3,
+// поэтому обработчик вешается через addEventListener. Заглушку Shikimori («лису» /assets/globals/missing_*)
+// заменяем настоящим постером из GraphQL (resolve_shiki_posters в background).
+const POPUP_PLACEHOLDER_POSTER = '../icons/icon128.png';
+function bindPopupPoster(img, animeId) {
+    if (!img) return;
+    let triedShiki = false;
+    const fallback = () => {
+        if (!triedShiki && animeId) {
+            triedShiki = true;
+            chrome.runtime.sendMessage({ action: 'resolve_shiki_posters', ids: [animeId] }, (res) => {
+                if (chrome.runtime.lastError) { img.src = POPUP_PLACEHOLDER_POSTER; return; }
+                const url = res && res.posters ? res.posters[parseInt(animeId, 10)] : null;
+                img.src = url || POPUP_PLACEHOLDER_POSTER;
+            });
+            return;
+        }
+        if (!img.src.endsWith('icons/icon128.png')) img.src = POPUP_PLACEHOLDER_POSTER;
+    };
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', fallback);
+    if (/\/assets\/globals\/|missing_|icons\/icon128\.png$/.test(img.getAttribute('src') || '')) fallback();
+}
+
+// Предупреждение о том, что сайт изменил вёрстку (пишет agCheckSelectorHealth в content-скриптах)
+async function renderSelectorHealth() {
+    const box = document.getElementById('selectorHealth');
+    if (!box) return;
+    const { ag_selector_health: health = {} } = await chrome.storage.local.get(['ag_selector_health']);
+    const WEEK = 7 * 24 * 60 * 60 * 1000;
+    const broken = Object.entries(health)
+        .filter(([, h]) => h && Array.isArray(h.missing) && h.missing.length > 0 && Date.now() - h.ts < WEEK)
+        .map(([site]) => (AgSites.byId(site) || { name: site }).name);
+    if (broken.length === 0) return;
+    box.textContent = `⚠ ${broken.join(' и ')}: сайт изменил разметку, часть функций может не работать. Подробности — в консоли страницы.`;
+    box.hidden = false;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    renderSelectorHealth().catch(() => {});
     // --- State & Settings ---
     const res = await chrome.storage.local.get(['ag_settings']);
     let settings = res.ag_settings || {};
@@ -17,8 +59,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const playToast = document.getElementById('playToast');
     const trackerToast = document.getElementById('trackerToast');
 
-    const btnAnimego = document.getElementById('btn-animego');
-    const btnJutsu = document.getElementById('btn-jutsu');
 
     const shikiLoggedOut = document.getElementById('shiki-logged-out');
     const shikiLoggedIn = document.getElementById('shiki-logged-in');
@@ -76,11 +116,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (extToggle) {
         extToggle.addEventListener('click', async () => {
             settings.global_enabled = !(settings.global_enabled !== false);
-            await chrome.storage.local.set({ ag_settings: settings });
+            await window.agPatchSettings({ global_enabled: settings.global_enabled });
             updateToggleState();
 
-            // Reload active tab on toggle change
-            chrome.tabs.query({ url: ["*://animego.me/*", "*://animego.org/*", "*://jut-su.net/*", "*://*.jut-su.net/*"] }, (tabs) => {
+            // Перезагружаем вкладки всех поддерживаемых сайтов
+            const patterns = AgSites.allHosts().flatMap(h => [`*://${h}/*`, `*://*.${h}/*`]);
+            chrome.tabs.query({ url: patterns }, (tabs) => {
                 tabs.forEach(tab => chrome.tabs.reload(tab.id));
             });
         });
@@ -89,23 +130,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Active Tab Check & Portal State ---
     let activeTab = null;
+    let currentSite = null; // запись из AgSites для активной вкладки
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         activeTab = tabs[0];
 
-        if (activeTab && activeTab.url) {
-            const url = activeTab.url;
-            if (url.includes("jut-su.net")) {
-                setTheme('jutsu');
-            } else if (url.includes("animego.me") || url.includes("animego.org")) {
-                setTheme('animego');
-            } else {
-                setTheme('default');
-            }
-        } else {
-            setTheme('default');
-        }
+        currentSite = activeTab && activeTab.url ? AgSites.byUrl(activeTab.url) : null;
+        applySiteTheme(currentSite);
+        renderSitesList();
 
-        if (activeTab && (activeTab.url.includes("animego.me") || activeTab.url.includes("animego.org") || activeTab.url.includes("jut-su.net"))) {
+        if (currentSite && AgSites.isEnabled(settings, currentSite.id)) {
             if (statusBox) statusBox.classList.add('active');
             if (statusDot) statusDot.className = 'dot';
             if (statusText) statusText.textContent = 'активно';
@@ -143,46 +176,111 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         } else {
             if (statusBox) statusBox.classList.remove('active');
-            if (statusText) statusText.textContent = 'откройте плеер';
+            if (statusText) statusText.textContent = currentSite ? 'выключено для этого сайта' : 'откройте поддерживаемый сайт';
             const musicLoading = document.getElementById('music-loading');
             if (musicLoading) musicLoading.textContent = 'Откройте страницу аниме...';
         }
     });
 
-    function setTheme(theme) {
-        document.body.classList.remove('theme-animego', 'theme-jutsu', 'theme-default');
-        if (theme === 'jutsu') {
-            document.body.classList.add('theme-jutsu');
-            if (brandEl) brandEl.innerHTML = 'JUT-SU<span>+</span>';
-            if (btnJutsu) btnJutsu.classList.add('active');
-            if (btnAnimego) btnAnimego.classList.remove('active');
-        } else if (theme === 'animego') {
-            document.body.classList.add('theme-animego');
-            if (brandEl) brandEl.innerHTML = 'AnimeGO<span>+</span>';
-            if (btnAnimego) btnAnimego.classList.add('active');
-            if (btnJutsu) btnJutsu.classList.remove('active');
+    // --- Сайты: тема по текущему сайту, список с поиском и переключателями ---
+    // Источник списка — modules/shared/sites.js; новый сайт появляется здесь автоматически
+    const sitesToggle = document.getElementById('sitesToggle');
+    const sitesPanel = document.getElementById('sitesPanel');
+    const sitesFilter = document.getElementById('sitesFilter');
+    const sitesList = document.getElementById('sitesList');
+    const sitesEmpty = document.getElementById('sitesEmpty');
+    const sitesCount = document.getElementById('sitesCount');
+
+    function hexToRgba(hex, alpha) {
+        const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+        return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})` : '';
+    }
+
+    // Акцент popup = цвет текущего сайта из реестра (раньше — две жёстко заданные темы)
+    function applySiteTheme(site) {
+        const badge = document.getElementById('siteCurrentBadge');
+        const name = document.getElementById('siteCurrentName');
+        if (site) {
+            document.body.style.setProperty('--accent', site.color);
+            document.body.style.setProperty('--accent-bg', hexToRgba(site.color, 0.15));
+            if (brandEl) brandEl.innerHTML = `${escapeHtml(site.name)}<span>+</span>`;
+            if (badge) { badge.textContent = site.short; badge.classList.remove('is-muted'); }
+            if (name) name.textContent = site.name;
         } else {
-            document.body.classList.add('theme-default');
+            document.body.style.removeProperty('--accent');
+            document.body.style.removeProperty('--accent-bg');
             if (brandEl) brandEl.innerHTML = 'ANIME<span>+</span>';
-            if (btnAnimego) btnAnimego.classList.remove('active');
-            if (btnJutsu) btnJutsu.classList.remove('active');
+            if (badge) { badge.textContent = '+'; badge.classList.add('is-muted'); }
+            if (name) name.textContent = 'Сайт не открыт';
         }
     }
 
-    if (btnAnimego) {
-        btnAnimego.onclick = () => {
-            setTheme('animego');
-            showToast(siteToast, "Переключено на AnimeGO — настройки плеера обновлены");
-            window.open('https://animego.me', '_blank');
-        };
+    // Состояние переключателя без учёта глобального выключателя (он отображается отдельно)
+    const isSiteOn = (siteId) => AgSites.isEnabled({ ...settings, global_enabled: true }, siteId);
+
+    async function setSiteEnabled(siteId, enabled) {
+        const map = { ...(settings.sites_enabled || {}) };
+        if (enabled) delete map[siteId]; else map[siteId] = false;
+        settings.sites_enabled = map;
+        await window.agPatchSettings({ sites_enabled: map });
+
+        const site = AgSites.byId(siteId);
+        showToast(siteToast, `${site.name}: ${enabled ? 'включено' : 'выключено'}`);
+        // Сайты-провайдеры включаются/выключаются на лету; старые модули AnimeGO / Jut-Su — после перезагрузки
+        if (site.legacy) {
+            const patterns = site.hosts.flatMap(h => [`*://${h}/*`, `*://*.${h}/*`]);
+            chrome.tabs.query({ url: patterns }, (tabs) => tabs.forEach(tab => chrome.tabs.reload(tab.id)));
+        }
+        renderSitesList();
+        if (currentSite && currentSite.id === siteId) {
+            if (statusText) statusText.textContent = enabled ? 'активно' : 'выключено для этого сайта';
+            if (statusBox) statusBox.classList.toggle('active', enabled);
+        }
     }
-    if (btnJutsu) {
-        btnJutsu.onclick = () => {
-            setTheme('jutsu');
-            showToast(siteToast, "Переключено на JUT-SU — настройки плеера обновлены");
-            window.open('https://jut-su.net', '_blank');
-        };
+
+    function renderSitesList() {
+        if (!sitesList) return;
+        const query = ((sitesFilter && sitesFilter.value) || '').trim().toLowerCase();
+        const enabledCount = AgSites.list.filter(s => isSiteOn(s.id)).length;
+        if (sitesCount) sitesCount.textContent = `${enabledCount}/${AgSites.list.length}`;
+
+        const isCurrent = (s) => !!currentSite && currentSite.id === s.id;
+        const ordered = [...AgSites.list].sort((a, b) => Number(isCurrent(b)) - Number(isCurrent(a)));
+        const visible = ordered.filter(s => !query || s.name.toLowerCase().includes(query) || s.hosts.some(h => h.includes(query)));
+
+        sitesList.replaceChildren(...visible.map(site => {
+            const enabled = isSiteOn(site.id);
+            const li = document.createElement('li');
+            li.className = 'site-item' + (isCurrent(site) ? ' is-current' : '') + (enabled ? '' : ' is-disabled');
+            li.innerHTML = `
+                <span class="site-badge" style="background:${site.color}">${escapeHtml(site.short)}</span>
+                <div class="site-item-text">
+                    <div class="site-item-name">${escapeHtml(site.name)}${isCurrent(site) ? '<span class="site-item-tag">открыт</span>' : ''}</div>
+                    <div class="site-item-host">${escapeHtml(site.hosts[0])}</div>
+                </div>
+                <button type="button" class="site-open" title="Открыть ${escapeHtml(site.name)}" aria-label="Открыть ${escapeHtml(site.name)}">↗</button>
+                <label class="site-switch" title="${enabled ? 'Выключить' : 'Включить'} на ${escapeHtml(site.name)}">
+                    <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Anime+ на ${escapeHtml(site.name)}">
+                    <span></span>
+                </label>
+            `;
+            li.querySelector('.site-open').addEventListener('click', () => chrome.tabs.create({ url: site.home }));
+            li.querySelector('input').addEventListener('change', (e) => setSiteEnabled(site.id, e.target.checked));
+            return li;
+        }));
+        if (sitesEmpty) sitesEmpty.hidden = visible.length > 0;
     }
+
+    if (sitesToggle && sitesPanel) {
+        sitesToggle.addEventListener('click', () => {
+            const open = sitesPanel.hidden;
+            sitesPanel.hidden = !open;
+            sitesToggle.setAttribute('aria-expanded', String(open));
+            if (open && sitesFilter) sitesFilter.focus();
+        });
+    }
+    if (sitesFilter) sitesFilter.addEventListener('input', renderSitesList);
+    renderSitesList();
 
     // --- Player Manual Activation ---
     if (activateBtn) {
@@ -192,7 +290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 await chrome.scripting.executeScript({
                     target: { tabId: activeTab.id, allFrames: true },
-                    files: ["config.js", "content-kodik.js"]
+                    files: ["config.js", "modules/shared/sites.js", "content-kodik.js"]
                 });
                 activateBtn.textContent = '✅ Плеер активирован!';
                 setTimeout(() => window.close(), 1500);
@@ -379,7 +477,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (item.url) {
                         window.open(item.url, '_blank');
                     } else {
-                        window.open(`https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(item.russian || item.name)}`, '_blank');
+                        window.open(`https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(item.russian || item.name)}&ag_from=animeplus`, '_blank');
                     }
                 };
 
@@ -452,7 +550,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : posterRaw;
 
             itemDiv.innerHTML = `
-                <img class="anime-thumb" src="${escapeHtml(posterSrc)}" alt="poster" onerror="if (window.agHandlePosterError) { window.agHandlePosterError(this, '${safeTitle}', '${item.animeId || item.id || ''}'); } else { this.src='../icons/icon128.png'; }">
+                <img class="anime-thumb" src="${escapeHtml(posterSrc)}" alt="poster">
                 <div style="flex:1; min-width:0;">
                     <div class="anime-title" title="${safeTitle}">${safeTitle}${kindTagHtml}</div>
                     <div class="anime-progress">${escapeHtml(epText)}</div>
@@ -460,50 +558,61 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <button class="play-btn" data-title="${safeTitle}">▶</button>
             `;
 
+            bindPopupPoster(itemDiv.querySelector('img.anime-thumb'), item.animeId || item.id);
             const watchBtn = itemDiv.querySelector('.play-btn');
             watchBtn.onclick = (e) => {
                 e.stopPropagation();
                 if (itemDiv.querySelector('.shiki-portal-choice')) return;
 
-                showToast(playToast, `Открываю плеер: ${item.russian}…`);
-                watchBtn.textContent = 'Ищем...';
+                showToast(playToast, `Ищу «${item.russian}» на сайтах…`);
+                watchBtn.textContent = '…';
                 watchBtn.disabled = true;
 
+                // Все включённые сайты; текущий открытый сайт — первым
+                const siteIds = AgSites.list
+                    .filter(s => AgSites.isEnabled(settings, s.id))
+                    .sort((a, b) => Number(!!currentSite && b.id === currentSite.id) - Number(!!currentSite && a.id === currentSite.id))
+                    .map(s => s.id);
+
                 chrome.runtime.sendMessage({
-                    action: "search_both_portals",
-                    queryTitle: item.russian,
-                    origTitle: item.name
+                    action: 'resolve_all_sites',
+                    siteIds,
+                    titles: [item.name, item.russian].filter(Boolean),
+                    shikimoriId: item.animeId
                 }, (res) => {
                     watchBtn.textContent = '▶';
                     watchBtn.disabled = false;
+                    const found = ((res && res.results) || []).filter(r => r.url);
 
-                    const jutsuInfo = res && res.jutsu;
-                    const animegoInfo = res && res.animego;
-
-                    if (jutsuInfo && jutsuInfo.isDirect && animegoInfo && animegoInfo.isDirect) {
-                        let choiceBar = itemDiv.querySelector('.shiki-portal-choice');
-                        if (!choiceBar) {
-                            choiceBar = document.createElement('div');
-                            choiceBar.className = 'shiki-portal-choice';
-                            choiceBar.innerHTML = `
-                                <button class="btn-choice btn-choice-animego" title="Смотреть на AnimeGO">AnimeGO</button>
-                                <button class="btn-choice btn-choice-jutsu" title="Смотреть на JUT-SU">JUT-SU</button>
-                            `;
-                            watchBtn.replaceWith(choiceBar);
-
-                            choiceBar.querySelector('.btn-choice-animego').onclick = () => {
-                                window.open(animegoInfo.url, '_blank');
-                            };
-                            choiceBar.querySelector('.btn-choice-jutsu').onclick = () => {
-                                window.open(jutsuInfo.url, '_blank');
-                            };
-                        }
-                    } else {
-                        const targetUrl = (animegoInfo && animegoInfo.isDirect)
-                            ? animegoInfo.url
-                            : (jutsuInfo ? jutsuInfo.url : `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(item.russian)}`);
-                        window.open(targetUrl, '_blank');
+                    if (found.length === 0) {
+                        // Ничего не нашли — поиск на первом включённом сайте (DLE-сайты сами перейдут на тайтл по ag_from)
+                        const fallback = AgSites.byId(siteIds[0]) || AgSites.byId('jutsu');
+                        const searchPath = fallback.dle ? fallback.dle.searchPath : null;
+                        window.open(searchPath
+                            ? fallback.home + searchPath + encodeURIComponent(item.russian) + '&ag_from=animeplus'
+                            : `https://shikimori.io/animes/${item.animeId}`, '_blank');
+                        return;
                     }
+                    if (found.length === 1) {
+                        window.open(found[0].url, '_blank');
+                        return;
+                    }
+
+                    // Несколько сайтов — выбор кнопками в цвете сайта
+                    const choiceBar = document.createElement('div');
+                    choiceBar.className = 'shiki-portal-choice';
+                    found.forEach(r => {
+                        const site = AgSites.byId(r.siteId);
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'btn-choice-site';
+                        btn.style.background = site.color;
+                        btn.textContent = site.short;
+                        btn.title = `Смотреть на ${site.name}`;
+                        btn.onclick = (ev) => { ev.stopPropagation(); window.open(r.url, '_blank'); };
+                        choiceBar.appendChild(btn);
+                    });
+                    watchBtn.replaceWith(choiceBar);
                 });
             };
 
@@ -724,15 +833,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadShikiStatus();
 
     // --- Music Fetching ---
-    function simplifyTitle(title) {
-        if (!title) return null;
-        let simple = title.split(/[:\-—]/)[0].trim();
-        if (simple && simple !== title) {
-            return simple;
-        }
-        return null;
-    }
-
     async function fetchOPED(title, origTitle, currentEpStr) {
         const opList = document.getElementById('op-list');
         const edList = document.getElementById('ed-list');
@@ -746,30 +846,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             loading.textContent = 'Поиск аниме...';
 
-            const searchTitles = [];
-            if (origTitle) searchTitles.push(origTitle);
-            if (title) searchTitles.push(title);
-
-            const simpleOrig = simplifyTitle(origTitle);
-            if (simpleOrig && !searchTitles.includes(simpleOrig)) searchTitles.push(simpleOrig);
-
-            const simpleTitle = simplifyTitle(title);
-            if (simpleTitle && !searchTitles.includes(simpleTitle)) searchTitles.push(simpleTitle);
-
-            let shikiAnime = null;
-            for (const searchTitle of searchTitles) {
-                const shikiResponse = await new Promise((resolve) => {
-                    chrome.runtime.sendMessage({
-                        action: "fetch_shikimori",
-                        url: `https://shikimori.one/api/animes?search=${encodeURIComponent(searchTitle)}&limit=1`
-                    }, resolve);
+            // Общий резолвер ID в background (оригинальное + русское название, сокращённые варианты, кэш)
+            const resolved = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({ action: 'resolve_shikimori_id', titles: [origTitle, title].filter(Boolean) }, (res) => {
+                    resolve(chrome.runtime.lastError ? null : res);
                 });
-                const data = shikiResponse && shikiResponse.data;
-                if (Array.isArray(data) && data.length > 0 && data[0]) {
-                    shikiAnime = data[0];
-                    break;
-                }
-            }
+            });
+            const shikiAnime = resolved && resolved.id ? resolved : null;
 
             if (shikiAnime) {
                 const shikiId = shikiAnime.id;
@@ -992,7 +1075,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         notifEnabledToggle.checked = settings.notif_enabled !== false;
         notifEnabledToggle.onchange = async () => {
             settings.notif_enabled = notifEnabledToggle.checked;
-            await chrome.storage.local.set({ ag_settings: settings });
+            await window.agPatchSettings({ notif_enabled: settings.notif_enabled });
         };
     }
 
@@ -1054,7 +1137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const safeTitle = escapeHtml(item.title || '');
 
                 row.innerHTML = `
-                    <img src="${posterSrc}" class="anime-thumb" alt="poster" onerror="if (window.agHandlePosterError) { window.agHandlePosterError(this, '${safeTitle}', '${item.animeId || ''}'); } else { this.src='../icons/icon128.png'; }">
+                    <img src="${posterSrc}" class="anime-thumb" alt="poster">
                     <div style="min-width: 0; flex: 1;">
                         <div class="anime-title" title="${safeTitle}">${safeTitle} ${epLabel ? `<small style="color: var(--text-secondary); font-weight: 500;">${epLabel}</small>` : ''}</div>
                         <div class="anime-progress">${metaText}</div>
@@ -1062,6 +1145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <button class="play-btn" data-title="${safeTitle}">▶</button>
                 `;
 
+                bindPopupPoster(row.querySelector('img.anime-thumb'), item.animeId);
                 const watchBtn = row.querySelector('.play-btn');
                 watchBtn.onclick = (e) => {
                     e.stopPropagation();

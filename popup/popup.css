@@ -169,52 +169,6 @@ input:focus {
     right: 14px;
 }
 
-/* Site Row */
-.site-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 10px;
-    border-bottom: 1px solid var(--border);
-}
-
-.site-group {
-    display: flex;
-    gap: 4px;
-}
-
-.site-btn {
-    padding: 2px 7px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    transition: all 0.2s ease;
-}
-
-#btn-animego:hover {
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.5);
-    background: rgba(239, 68, 68, 0.15);
-}
-
-#btn-jutsu:hover {
-    color: #3b82f6;
-    border-color: rgba(59, 130, 246, 0.5);
-    background: rgba(59, 130, 246, 0.15);
-}
-
-#btn-animego.active {
-    background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
-    border-color: #ef4444;
-}
-
-#btn-jutsu.active {
-    background: rgba(59, 130, 246, 0.15);
-    color: #3b82f6;
-    border-color: #3b82f6;
-}
-
 .status-dot-row {
     display: flex;
     align-items: center;
@@ -440,14 +394,6 @@ input:focus {
     color: #ffffff;
 }
 
-.shiki-portal-choice {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    flex-shrink: 0;
-    margin-left: auto;
-}
-
 .btn-choice {
     border-radius: 4px;
     padding: 2px 5px;
@@ -459,14 +405,6 @@ input:focus {
     border: 1px solid var(--border);
 }
 
-.btn-choice-animego {
-    color: #f87171;
-    border-color: rgba(248, 113, 113, 0.4);
-}
-.btn-choice-jutsu {
-    color: #60a5fa;
-    border-color: rgba(96, 165, 250, 0.4);
-}
 
 /* Bottom Accordion Tabs & Panels */
 .bottom-tabs {
@@ -848,4 +786,250 @@ input:focus {
 
 .notif-card-btn.btn-jt {
     background: #2563eb;
+}
+/* Предупреждение: сайт изменил разметку (modules/site-selectors.js) */
+.selector-health {
+    margin: 6px 0 2px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* ===== Сайты: текущий сайт + раскрывающийся список ===== */
+.site-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.site-current {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+
+.site-badge {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 800;
+    color: #fff;
+    background: var(--accent);
+    letter-spacing: 0.02em;
+}
+
+.site-badge.is-muted {
+    background: var(--card-2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.site-current-text { min-width: 0; }
+
+.site-current-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sites-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card-2);
+    color: var(--text-secondary);
+    font: 600 11px var(--font);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.sites-toggle:hover,
+.sites-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.sites-toggle[aria-expanded="true"] .sites-chevron { transform: rotate(180deg); }
+.sites-chevron { transition: transform 0.15s ease; font-size: 9px; }
+
+.sites-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.sites-panel {
+    padding: 8px 10px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.sites-filter {
+    width: 100%;
+    box-sizing: border-box;
+    height: 28px;
+    padding: 0 10px;
+    margin-bottom: 6px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    font: 500 11.5px var(--font);
+    outline: none;
+}
+
+.sites-filter:focus { border-color: var(--accent); }
+
+.sites-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 196px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sites-list::-webkit-scrollbar { width: 4px; }
+.sites-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.site-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 7px;
+}
+
+.site-item:hover { background: var(--card-2); }
+.site-item.is-current { background: var(--accent-bg); }
+.site-item.is-disabled .site-item-text { opacity: 0.45; }
+
+.site-item .site-badge { width: 22px; height: 22px; font-size: 9px; border-radius: 6px; }
+
+.site-item-text { min-width: 0; flex: 1; }
+
+.site-item-name {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.site-item-host {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.site-item-tag {
+    margin-left: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.site-open {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.site-open:hover { border-color: var(--border); color: var(--text); }
+
+/* Переключатель сайта */
+.site-switch {
+    position: relative;
+    width: 28px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.site-switch input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+.site-switch span {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    transition: background 0.15s ease;
+    pointer-events: none;
+}
+
+.site-switch span::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.site-switch input:checked + span { background: var(--accent); border-color: var(--accent); }
+.site-switch input:checked + span::after { transform: translateX(12px); background: #fff; }
+.site-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sites-empty {
+    padding: 10px 0 4px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Выбор сайта для кнопки «▶» в списке «Смотрю» */
+.shiki-portal-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    margin-left: auto;
+    max-width: 150px;
+}
+
+.btn-choice-site {
+    padding: 2px 6px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    font: 700 9.5px var(--font);
+    color: #fff;
+    cursor: pointer;
 }

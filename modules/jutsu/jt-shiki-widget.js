@@ -7,14 +7,33 @@
     let cachedSkipData = null;
     let lastFetchedEp = null;
 
-    function simplifyTitle(title) {
-        if (!title) return null;
-        let simple = title.split(/[:\-—]/)[0].trim();
-        if (simple && simple !== title) {
-            return simple;
-        }
-        return null;
-    }
+    // Сведения о странице тайтла Jut-Su. Оригинальное название теперь в .jutsu-page__original
+    window.jtGetAnimePageInfo = function () {
+        if (!document.querySelector('#jutsu-page__player, .jutsu-page__player-video, .jutsu-page__poster')) return null;
+        const titleEl = window.agFind('jutsu', 'title');
+        if (!titleEl) return null;
+        const title = titleEl.innerText.trim().replace(/^Смотреть аниме\s+/i, '').replace(/\s+онлайн$/i, '');
+        const origEl = window.agFind('jutsu', 'originalTitle');
+        const origTitle = origEl ? origEl.innerText.trim() : '';
+        const player = document.querySelector('[data-player-anime-id]');
+        const pageKey = (player && player.dataset.playerAnimeId) || location.pathname.split('/')[1] || location.pathname;
+        // «Статус: Вышел с 3 октября 2020 г. …», «Тип: TV Сериал». В .jutsu-page__meta лежит дата
+        // добавления на сайт, а не год выхода — её не трогаем
+        const infoText = window.agFind('jutsu', 'info')?.innerText || '';
+        const statusLine = infoText.split('\n').find(l => /^(Статус|Выпуск|Год)/i.test(l.trim())) || '';
+        const yearMatch = statusLine.match(/\b(19[6-9]\d|20[0-4]\d)\b/);
+        const typeLine = (infoText.split('\n').find(l => /^Тип/i.test(l.trim())) || '').toLowerCase();
+        const kind = /фильм|movie/.test(typeLine) ? 'movie' : /ova/.test(typeLine) ? 'ova' : /ona/.test(typeLine) ? 'ona' : /tv|сериал/.test(typeLine) ? 'tv' : '';
+        return {
+            pageKey,
+            title,
+            origTitle: origTitle || title,
+            titles: [origTitle, title].filter(Boolean),
+            year: yearMatch ? yearMatch[1] : '',
+            kind,
+            episode: window.ag_current_episode || '1'
+        };
+    };
 
     window.jtSyncAniSkip = async function (episodeNum, forceSendToWindow = null) {
         const titleEl = document.querySelector('.jutsu-page__title-text h1')
@@ -30,35 +49,21 @@
         if (titleEl && window.agLastEpSkip !== currentEp) {
             window.agLastEpSkip = currentEp;
             const rawTitle = titleEl.innerText.trim();
-            const origTitleEl = document.querySelector('.jutsu-page__title-original') 
-                || document.querySelector('[class*="title-original"]')
-                || document.querySelector('.jutsu-page__title-text span');
-            const origTitle = origTitleEl ? origTitleEl.innerText.trim() : null;
+            const pageInfo = window.jtGetAnimePageInfo();
 
             try {
+                // Общий резолвер ID (названия + год + тип, кэш 30 дней) вместо поиска «первого результата»
                 let shiki = [];
-                const searchTitles = [];
-                if (origTitle) searchTitles.push(origTitle);
-                if (rawTitle) searchTitles.push(rawTitle);
-
-                const simpleOrig = simplifyTitle(origTitle);
-                if (simpleOrig && !searchTitles.includes(simpleOrig)) searchTitles.push(simpleOrig);
-
-                const simpleRaw = simplifyTitle(rawTitle);
-                if (simpleRaw && !searchTitles.includes(simpleRaw)) searchTitles.push(simpleRaw);
-
-                for (const searchTitle of searchTitles) {
-                    const shikiResponse = await new Promise((resolve) => {
-                        chrome.runtime.sendMessage({
-                            action: "fetch_shikimori",
-                            url: `https://shikimori.one/api/animes?search=${encodeURIComponent(searchTitle)}&limit=1`
-                        }, resolve);
-                    });
-                    const data = shikiResponse && shikiResponse.data ? shikiResponse.data : [];
-                    if (data.length > 0) {
-                        shiki = data;
-                        break;
-                    }
+                const anime = pageInfo ? await window.agSendMessage({
+                    action: 'resolve_shikimori_id',
+                    titles: pageInfo.titles,
+                    year: pageInfo.year,
+                    kind: pageInfo.kind
+                }) : null;
+                if (anime && anime.id) {
+                    const details = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${anime.id}` });
+                    const d = details && details.data;
+                    shiki = [{ id: anime.id, url: (d && d.url) || `/animes/${anime.id}`, score: d && d.score }];
                 }
 
                 if (shiki.length > 0) {
@@ -73,7 +78,7 @@
                     }
                     if (ratingContainer) {
                         let shikiBlock = ratingContainer.querySelector('.jutsu-page__ratings-item--shikimori');
-                        const shikiUrl = `https://shikimori.one${shiki[0].url}`;
+                        const shikiUrl = `https://shikimori.io${shiki[0].url}`;
                         const shikiScoreStr = shiki[0].score || '?';
 
                         if (!shikiBlock) {
@@ -142,35 +147,17 @@
     };
 
     window.initJutsuShikimoriAutoSync = function () {
-        window.addEventListener('message', (e) => {
-            if (!e.data) return;
-            const msgEp = parseInt(e.data.episode) || 1;
-            if (e.data.type === 'AG_VIDEO_PROGRESS' && e.data.isEnded === true) {
-                chrome.storage.local.get(['ag_settings'], (res) => {
-                    const settings = res.ag_settings || {};
-                    if (!settings.shiki_enabled) return;
-
-                    const titleEl = document.querySelector('.jutsu-page__title-text h1, h1');
-                    const searchTitle = titleEl ? titleEl.innerText.trim() : '';
-                    if (!searchTitle) return;
-
-                    chrome.runtime.sendMessage({
-                        action: "fetch_shikimori",
-                        url: `https://shikimori.one/api/animes?search=${encodeURIComponent(searchTitle)}&limit=1`
-                    }, (shikiRes) => {
-                        const list = shikiRes && shikiRes.data ? shikiRes.data : [];
-                        if (list.length > 0) {
-                            chrome.runtime.sendMessage({
-                                action: "shiki_sync_progress",
-                                shikimoriId: list[0].id,
-                                episode: msgEp,
-                                totalEpisodes: list[0].episodes || 0,
-                                status: 'completed'
-                            });
-                        }
-                    });
-                });
-            }
+        if (!window.agInitProgressTracker) return;
+        // Раньше серия отмечалась только по событию ended, а автопереход и пропуск эндинга
+        // почти никогда не дают видео доиграть до конца. Теперь — 80% просмотра (modules/progress-tracker.js)
+        window.agInitProgressTracker({
+            site: 'jutsu',
+            // На странице «все серии» номер знает только Kodik — берём его из сообщения плеера
+            getEpisode: (msgEpisode) => {
+                if (msgEpisode && msgEpisode !== '0') window.ag_current_episode = msgEpisode;
+                return window.ag_current_episode || '1';
+            },
+            getTitleInfo: () => window.jtGetAnimePageInfo()
         });
     };
 })();

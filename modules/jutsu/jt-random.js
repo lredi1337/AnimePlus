@@ -25,7 +25,7 @@
                     window.location.href = res.jutsuUrl;
                 } else if (res && (res.russian || res.name)) {
                     const queryStr = res.russian || res.name;
-                    window.location.href = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(queryStr)}`;
+                    window.location.href = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(queryStr)}&ag_from=animeplus`;
                 } else if (res && res.url) {
                     window.location.href = res.url;
                 } else {

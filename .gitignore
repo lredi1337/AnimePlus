@@ -16,7 +16,6 @@ cloudflare-worker.js
 
 # Node & Dependencies
 node_modules/
-package-lock.json
 
 # OS Temp Files
 .DS_Store

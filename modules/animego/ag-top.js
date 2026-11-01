@@ -4,10 +4,7 @@
 (function () {
     'use strict';
 
-    let topCurrentPage = 1;
     let topCurrentKind = 'all';
-    let topIsLoading = false;
-    let topHasMore = true;
 
     const injectTopStyles = () => {
         if (document.getElementById('ag-animego-top-styles')) return;
@@ -500,31 +497,6 @@
         return `<div class="ag-top-badge ag-top-badge-other">#${rank}</div>`;
     };
 
-    const fetchFallbackCover = async (item) => {
-        if (!item) return null;
-        try {
-            const searchResponse = await new Promise((resolve) => {
-                try {
-                    chrome.runtime.sendMessage({
-                        action: "resolve_jutsu_cover",
-                        id: item.id,
-                        russian: item.russian || item.title_ru || item.title,
-                        name: item.name || item.title_english
-                    }, (response) => {
-                        if (chrome.runtime.lastError) resolve(null);
-                        else resolve(response);
-                    });
-                } catch (err) {
-                    resolve(null);
-                }
-            });
-            return searchResponse ? (searchResponse.poster || searchResponse.url) : null;
-        } catch (e) {
-            console.error("Error fetching fallback cover:", e);
-        }
-        return null;
-    };
-
     const getPosterUrl = (anime) => {
         if (anime.ag_resolved_poster) {
             return anime.ag_resolved_poster;
@@ -558,12 +530,9 @@
         const origTitle = anime.name || anime.title_english || anime.title_japanese || '';
         const score = anime.score || '?';
         const posterUrl = getPosterUrl(anime);
-        const safeTitle = (title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const safeRu = (anime.russian || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const safeEn = (anime.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const posterHTML = posterUrl 
-            ? `<img class="ag-top-poster-img" src="${posterUrl}" alt="${title}" loading="lazy" onerror="if(window.agHandlePosterError) window.agHandlePosterError(this, '${safeTitle}', ${anime.id || 'null'}, '${safeRu}', '${safeEn}'); else this.outerHTML='<div class=\\'ag-top-poster-fallback\\'><span>🎬</span><small>${safeTitle}</small></div>';">`
-            : `<div class="ag-top-poster-fallback"><span>🎬</span><small>${title}</small></div>`;
+        const esc = window.agEscapeHtml;
+        // Постер всегда <img>: даже без URL цепочка agBindPoster найдёт его через GraphQL / Kitsu / Jut-Su
+        const posterHTML = `<img class="ag-top-poster-img" src="${esc(posterUrl || '')}" alt="${esc(title)}" decoding="async" referrerpolicy="no-referrer" data-ag-poster-id="${anime.id || ''}" data-ag-poster-ru="${esc(anime.russian || title || '')}" data-ag-poster-en="${esc(anime.name || '')}">`;
 
         const type = anime.kind === 'tv' ? 'Сериал' : anime.kind === 'movie' ? 'Фильм' : (anime.type === 'TV' ? 'Сериал' : anime.type || 'Аниме');
         const year = anime.aired_on ? anime.aired_on.split('-')[0] : (anime.year || '');
@@ -573,26 +542,29 @@
         const queryTitle = (anime.russian || anime.title_ru || anime.name || anime.title_english || anime.title || '').split('/')[0].split('[')[0].trim();
         const fallbackSearchUrl = `/search/all?q=${encodeURIComponent(queryTitle)}`;
 
+        // Все поля из API экранируются: названия на Shikimori пользовательские и попадают в HTML страницы
+        const q = esc(queryTitle);
+        const linkAttrs = `href="${esc(fallbackSearchUrl)}" data-query="${q}" data-year="${esc(year)}" data-rank="${rank}" data-kind="${esc(topCurrentKind)}"`;
         return `
-            <div class="ag-top-card d-flex g-col-12" data-query="${queryTitle}" data-orig="${origTitle.replace(/"/g, '&quot;')}" data-year="${year}" data-rank="${rank}" data-kind="${topCurrentKind}">
+            <div class="ag-top-card d-flex g-col-12" data-query="${q}" data-orig="${esc(origTitle)}" data-year="${esc(year)}" data-rank="${rank}" data-kind="${esc(topCurrentKind)}">
                 <div class="ag-top-poster-wrap">
                     ${getRankBadgeHTML(rank)}
-                    <div class="ag-top-score-badge">★ ${score}</div>
-                    <a class="d-block ag-top-link" href="${fallbackSearchUrl}" data-query="${queryTitle}" data-year="${year}" data-rank="${rank}" data-kind="${topCurrentKind}">
+                    <div class="ag-top-score-badge">★ ${esc(score)}</div>
+                    <a class="d-block ag-top-link" ${linkAttrs}>
                         ${posterHTML}
                     </a>
                 </div>
                 <div class="ag-top-card-body">
                     <div>
                         <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
-                            <a class="ag-top-card-title ag-top-link" title="${title}" href="${fallbackSearchUrl}" data-query="${queryTitle}" data-year="${year}" data-rank="${rank}" data-kind="${topCurrentKind}">${title}</a>
+                            <a class="ag-top-card-title ag-top-link" title="${esc(title)}" ${linkAttrs}>${esc(title)}</a>
                         </div>
-                        <div class="ag-top-card-orig">${origTitle}</div>
+                        <div class="ag-top-card-orig">${esc(origTitle)}</div>
                         <div class="ag-top-tags">
-                            <span class="ag-top-tag">${type}</span>
-                            ${year ? `<span class="ag-top-tag">${year}</span>` : ''}
-                            ${episodes ? `<span class="ag-top-tag">${episodes}</span>` : ''}
-                            ${status ? `<span class="ag-top-tag">${status}</span>` : ''}
+                            <span class="ag-top-tag">${esc(type)}</span>
+                            ${year ? `<span class="ag-top-tag">${esc(year)}</span>` : ''}
+                            ${episodes ? `<span class="ag-top-tag">${esc(episodes)}</span>` : ''}
+                            ${status ? `<span class="ag-top-tag">${esc(status)}</span>` : ''}
                         </div>
                     </div>
                     <div class="ag-top-episodes-info">
@@ -613,14 +585,14 @@
             const p1 = new Promise((resolve) => {
                 chrome.runtime.sendMessage({
                     action: "fetch_shikimori",
-                    url: `https://shikimori.one/api/animes?limit=50&order=ranked&page=1${kindParam}`
+                    url: `https://shikimori.io/api/animes?limit=50&order=ranked&page=1${kindParam}`
                 }, resolve);
             });
 
             const p2 = new Promise((resolve) => {
                 chrome.runtime.sendMessage({
                     action: "fetch_shikimori",
-                    url: `https://shikimori.one/api/animes?limit=50&order=ranked&page=2${kindParam}`
+                    url: `https://shikimori.io/api/animes?limit=50&order=ranked&page=2${kindParam}`
                 }, resolve);
             });
 
@@ -633,28 +605,6 @@
             console.error("AnimeGO+ Top Error", e);
             return [];
         }
-    };
-
-    const getSeasonNumber = (str) => {
-        const matchSeason = str.match(/(\d+)\s*сезон/i) || str.match(/(\d+)\s*season/i);
-        if (matchSeason) return parseInt(matchSeason[1]);
-        
-        const matchTv = str.match(/тв-?(\d+)\b/i) || str.match(/tv-?(\d+)\b/i);
-        if (matchTv) return parseInt(matchTv[1]);
-        
-        const romanMap = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
-        const words = str.split(/[^a-z0-9]/i);
-        for (let i = words.length - 1; i >= 0; i--) {
-            const w = words[i].toLowerCase();
-            if (romanMap[w] !== undefined) {
-                return romanMap[w];
-            }
-        }
-        
-        const matchDigit = str.match(/\b(\d+)\b/);
-        if (matchDigit) return parseInt(matchDigit[1]);
-        
-        return 1;
     };
 
     const findBestAnimeMatch = (doc, queryTitle) => {
@@ -708,255 +658,226 @@
         return bestCandidate;
     };
 
-    const findJutsuDirectUrl = async (queryTitle, origTitle = '', targetYear = '') => {
-        return new Promise((resolve) => {
-            try {
-                chrome.runtime.sendMessage({
-                    action: "search_jutsu_direct",
-                    queryTitle,
-                    origTitle,
-                    targetYear
-                }, (response) => {
-                    if (chrome.runtime.lastError || !response) {
-                        resolve(null);
-                    } else {
-                        resolve(response.url || null);
+    const TOP_PATH = '/top-shikimori';
+    let renderToken = 0;
+    let topClickListenerBound = false;
+    let pageStateBeforeTop = null;
+
+    const KIND_FILTERS = [
+        ['all', 'Все аниме'], ['tv', 'Сериалы'], ['movie', 'Фильмы'],
+        ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Спешлы']
+    ];
+
+    // Корень Топа живёт в <main> вне turbo-frame и Stimulus-контроллеров каталога.
+    // Раньше Топ писался прямо в #content-container каталога, и ленивый контроллер
+    // infinite-scroll/catalog-list затирал его при первом подключении — отсюда «второй клик».
+    const ensureTopRoot = async () => {
+        let root = document.getElementById('ag-top-root');
+        if (root && root.isConnected) return root;
+
+        let main = document.querySelector('main.content, main');
+        // На «голой» 404-странице AnimeGO нет ни шапки, ни <main> — достраиваем оболочку сайта
+        if (!main && window.agEnsureAnimeGoShell) main = await window.agEnsureAnimeGoShell();
+        if (!main) return null;
+
+        Array.from(main.children).forEach(el => {
+            if (el.id === 'ag-top-root') return;
+            el.dataset.agTopPrevDisplay = el.style.display || '';
+            el.style.display = 'none';
+        });
+
+        root = document.createElement('div');
+        root.id = 'ag-top-root';
+        root.className = 'card-body';
+        root.innerHTML = `
+            <div class="entity__title" id="ag-top-title"></div>
+            <div id="ag-top-grid" class="grid ani-list py-3"></div>
+        `;
+        main.appendChild(root);
+        return root;
+    };
+
+    const unmountTop = () => {
+        renderToken++;
+        const root = document.getElementById('ag-top-root');
+        if (root) {
+            const main = root.parentElement;
+            root.remove();
+            if (main) {
+                Array.from(main.children).forEach(el => {
+                    if (el.dataset.agTopPrevDisplay !== undefined) {
+                        el.style.display = el.dataset.agTopPrevDisplay;
+                        delete el.dataset.agTopPrevDisplay;
                     }
                 });
-            } catch (e) {
-                resolve(null);
             }
+        }
+        document.body.classList.remove('ag-top-active', 'ag-top-page-active');
+    };
+
+    const renderTopHeader = (root) => {
+        const titleBox = root.querySelector('#ag-top-title');
+        titleBox.innerHTML = `
+            <div class="ag-top-header">
+                <h1>🏆 Топ-100 Аниме по версии Shikimori</h1>
+                <p>Самые высокооценённые тайтлы по мнению мирового сообщества</p>
+                <div class="ag-top-filters" id="ag-top-filters">
+                    ${KIND_FILTERS.map(([kind, label]) => `<button type="button" class="ag-filter-btn ${topCurrentKind === kind ? 'active' : ''}" data-kind="${kind}">${label}</button>`).join('')}
+                </div>
+            </div>
+        `;
+        titleBox.querySelectorAll('.ag-filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const newKind = btn.dataset.kind;
+                if (topCurrentKind === newKind) return;
+                topCurrentKind = newKind;
+                loadTopPage(root);
+            });
         });
     };
 
-    const loadTopPage = async (container) => {
-        if (topIsLoading) return;
-        topIsLoading = true;
+    const bindCardClick = (cardEl, item) => {
+        cardEl.addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (cardEl.querySelector('.ag-top-loading-overlay')) return;
 
-        injectTopStyles();
-
-        const titleEl = document.querySelector('.entity__title h1') || document.querySelector('.entity__title');
-        if (titleEl) {
-            titleEl.innerHTML = `
-                <div class="ag-top-header">
-                    <h1>🏆 Топ-100 Аниме по версии Shikimori</h1>
-                    <p>Самые высокооценённые тайтлы по мнению мирового сообщества</p>
-                    <div class="ag-top-filters" id="ag-top-filters">
-                        <button class="ag-filter-btn ${!topCurrentKind || topCurrentKind === 'all' ? 'active' : ''}" data-kind="all">Все аниме</button>
-                        <button class="ag-filter-btn ${topCurrentKind === 'tv' ? 'active' : ''}" data-kind="tv">Сериалы</button>
-                        <button class="ag-filter-btn ${topCurrentKind === 'movie' ? 'active' : ''}" data-kind="movie">Фильмы</button>
-                        <button class="ag-filter-btn ${topCurrentKind === 'ova' ? 'active' : ''}" data-kind="ova">OVA</button>
-                        <button class="ag-filter-btn ${topCurrentKind === 'ona' ? 'active' : ''}" data-kind="ona">ONA</button>
-                        <button class="ag-filter-btn ${topCurrentKind === 'special' ? 'active' : ''}" data-kind="special">Спешлы</button>
-                    </div>
-                </div>
+            const overlay = document.createElement('div');
+            overlay.className = 'ag-top-loading-overlay';
+            overlay.innerHTML = `
+                <div class="spinner-border text-danger" style="width: 2rem; height: 2rem;" role="status"></div>
+                <span>Ищем на AnimeGO...</span>
             `;
+            cardEl.appendChild(overlay);
+            const safetyTimer = setTimeout(() => overlay.remove(), 7000);
+            const go = (url) => { clearTimeout(safetyTimer); overlay.remove(); window.location.href = url; };
 
-            document.querySelectorAll('#ag-top-filters .ag-filter-btn').forEach(btn => {
-                btn.onclick = (e) => {
-                    e.preventDefault();
-                    const newKind = btn.getAttribute('data-kind');
-                    if (topCurrentKind !== newKind) {
-                        topCurrentKind = newKind;
-                        loadTopPage(container);
-                    }
-                };
-            });
-        }
-        
-        document.querySelectorAll('.sorter, .catalog-small-description, .button-list-loading, .entity__navigation').forEach(el => el.style.display = 'none');
-        container.innerHTML = renderSpinner();
+            const query = cardEl.getAttribute('data-query');
+            try {
+                const text = await (await fetch(`/search/all?q=${encodeURIComponent(query)}`)).text();
+                const doc = new DOMParser().parseFromString(text, 'text/html');
+                const bestResult = findBestAnimeMatch(doc, query);
+                const href = bestResult ? bestResult.getAttribute('href') : '';
+                if (href && /\/anime\/[^/]+-\d+$/.test(href)) {
+                    go(new URL(href, location.origin).href);
+                    return;
+                }
+            } catch (err) {}
+            // Тайтла нет в каталоге — открываем синтетическую страницу (ag-synthetic.js)
+            go(`/anime/shiki-${item.id}`);
+        });
+    };
+
+    const loadTopPage = async (root) => {
+        const token = ++renderToken;
+        injectTopStyles();
+        renderTopHeader(root);
+
+        const grid = root.querySelector('#ag-top-grid');
+        grid.innerHTML = renderSpinner();
         document.body.classList.add('ag-top-page-active');
 
         const items = await fetchTopData(topCurrentKind);
-        const spinner = container.querySelector('.ag-spinner-container');
-        if (spinner) spinner.remove();
-        const oldBtn = document.getElementById('ag-load-more');
-        if (oldBtn) oldBtn.remove();
+        // Пока грузили, пользователь мог переключить фильтр или уйти со страницы
+        if (token !== renderToken || !grid.isConnected) return;
 
-        // Фоновая подгрузка обложек без блокировки интерфейса
-        items.forEach(async (item) => {
-            let pUrl = getPosterUrl(item);
-            const isPlaceholder = !pUrl || pUrl.includes('/assets/') || pUrl.includes('missing') || pUrl.includes('404');
-            if (isPlaceholder) {
-                const realUrl = await fetchFallbackCover(item);
-                if (realUrl) {
-                    item.ag_resolved_poster = realUrl;
-                    const queryTitle = (item.russian || item.title_ru || item.name || item.title_english || item.title || '').split('/')[0].split('[')[0].trim();
-                    const card = container.querySelector(`.ag-top-card[data-query="${queryTitle}"]`);
-                    if (card) {
-                        const wrap = card.querySelector('.ag-top-poster-wrap a.ag-top-link');
-                        if (wrap) {
-                            wrap.innerHTML = `<img class="ag-top-poster-img" src="${realUrl}" alt="${item.russian || item.name}" loading="lazy">`;
-                        }
-                    }
-                }
-            }
-        });
-
-        items.forEach((item, idx) => {
-            const rank = idx + 1;
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = renderAnimeCard(item, rank);
-            const cardEl = tempDiv.firstElementChild;
-            container.appendChild(cardEl);
-
-            cardEl.addEventListener('click', async (e) => {
-                e.preventDefault();
-                if (cardEl.querySelector('.ag-top-loading-overlay')) return;
-
-                const overlay = document.createElement('div');
-                overlay.className = 'ag-top-loading-overlay';
-                overlay.innerHTML = `
-                    <div class="spinner-border text-danger" style="width: 2rem; height: 2rem;" role="status"></div>
-                    <span>Ищем на AnimeGO...</span>
-                `;
-                cardEl.appendChild(overlay);
-
-                const safetyTimer = setTimeout(() => {
-                    if (overlay.parentNode) overlay.remove();
-                }, 7000);
-
-                const query = cardEl.getAttribute('data-query');
-
-                // Открыть полноценную синтетическую страницу аниме (обрабатывает ag-synthetic.js)
-                const openSyntheticPage = () => {
-                    clearTimeout(safetyTimer);
-                    if (overlay.parentNode) overlay.remove();
-                    window.location.href = `/anime/shiki-${item.id}`;
-                };
-
-                try {
-                    const searchRes = await fetch(`/search/all?q=${encodeURIComponent(query)}`);
-                    const text = await searchRes.text();
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(text, 'text/html');
-                    
-                    const bestResult = findBestAnimeMatch(doc, query);
-                    
-                    if (bestResult && bestResult.href && bestResult.href.includes('/anime/') && bestResult.getAttribute('href') !== '/anime') {
-                        clearTimeout(safetyTimer);
-                        if (overlay.parentNode) overlay.remove();
-                        window.location.href = bestResult.href;
-                    } else {
-                        openSyntheticPage();
-                    }
-                } catch (err) {
-                    openSyntheticPage();
-                }
-            });
-        });
-
-        if (items.length > 0) {
-            const msg = document.createElement('div');
-            msg.className = 'text-center text-secondary my-4 g-col-12';
-            msg.style.gridColumn = '1 / -1';
-            msg.innerText = 'Это весь Топ-100!';
-            container.appendChild(msg);
+        grid.innerHTML = '';
+        if (items.length === 0) {
+            grid.innerHTML = `<div class="text-center text-secondary my-4 g-col-12">Не удалось загрузить данные Shikimori. Обновите страницу.</div>`;
+            return;
         }
 
-        topIsLoading = false;
+        const fragment = document.createDocumentFragment();
+        items.forEach((item, idx) => {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = renderAnimeCard(item, idx + 1);
+            const cardEl = tempDiv.firstElementChild;
+            bindCardClick(cardEl, item);
+            fragment.appendChild(cardEl);
+        });
+        const msg = document.createElement('div');
+        msg.className = 'text-center text-secondary my-4 g-col-12';
+        msg.innerText = 'Это весь Топ-100!';
+        fragment.appendChild(msg);
+        grid.appendChild(fragment);
+
+        // Цепочка фолбэков постеров (GraphQL Shikimori → Kitsu/Jut-Su → значок), см. ui-utils.js
+        window.agBindPostersIn(grid);
     };
 
-    const handleNavigation = (urlPath) => {
-        if (urlPath === '/top-shikimori') {
-            topCurrentKind = topCurrentKind || 'all';
-            topCurrentPage = 1;
-
-            let container = document.getElementById('content-container') || document.querySelector('.content-container') || document.querySelector('.ani-list');
-            if (!container) {
-                window.location.replace('/anime?show_ag_top=shikimori');
-                return true;
-            }
-
-            if (container) {
-                document.body.classList.add('ag-top-active');
-                loadTopPage(container, false);
-                return true;
-            }
+    const openTop = async ({ push }) => {
+        const root = await ensureTopRoot();
+        if (!root) {
+            // Встроиться некуда — обычная навигация, страница /top-shikimori отрисует Топ сама
+            window.location.href = TOP_PATH;
+            return;
         }
-        
-        document.body.classList.remove('ag-top-active');
-        document.body.classList.remove('ag-top-page-active');
-        return false;
+        if (push && location.pathname !== TOP_PATH) {
+            pageStateBeforeTop = { href: location.href, title: document.title };
+            history.pushState({ agTop: true }, '', TOP_PATH);
+        }
+        document.title = 'Топ-100 Shikimori — AnimeGO';
+        document.body.classList.add('ag-top-active');
+        document.querySelectorAll('.error-page, .alert-danger').forEach(el => el.style.display = 'none');
+        topCurrentKind = topCurrentKind || 'all';
+        loadTopPage(root);
+    };
+
+    const closeMobileMenu = () => {
+        const mmenu = document.getElementById('mmenu');
+        if (mmenu && mmenu.classList.contains('show')) mmenu.querySelector('.btn-close')?.click();
+    };
+
+    const bindTopClickListener = () => {
+        if (topClickListenerBound) return;
+        topClickListenerBound = true;
+        // capture-фаза: перехватываем клик раньше обработчиков сайта (offcanvas, Turbo)
+        document.addEventListener('click', (e) => {
+            const link = e.target.closest && e.target.closest(`a[href="${TOP_PATH}"]`);
+            if (!link || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            closeMobileMenu();
+            if (location.pathname === TOP_PATH) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            openTop({ push: true });
+        }, true);
     };
 
     const injectTopButtons = () => {
-        if (document.querySelector('a[href="/top-shikimori"]')) return;
+        bindTopClickListener();
 
-        const anchorLink = document.querySelector('a[href*="/anime/random"]')
-            || document.querySelector('a[href*="random"]')
-            || document.querySelector('a[href="/anime"]')
-            || document.querySelector('a[href*="/ongoing"]')
-            || document.querySelector('.navbar-nav a');
-
-        if (anchorLink) {
-            const parentLi = anchorLink.closest('li');
-            if (parentLi && parentLi.parentElement) {
-                const topLi = document.createElement('li');
-                topLi.className = parentLi.className ? `${parentLi.className} ag-top-injected` : 'nav-item ag-top-injected';
-                const linkClass = anchorLink.className || 'nav-link';
-                topLi.innerHTML = `<a class="${linkClass}" href="/top-shikimori">Топ Shikimori</a>`;
-                parentLi.parentElement.appendChild(topLi);
-            } else if (anchorLink.parentElement) {
-                const topA = document.createElement('a');
-                topA.className = `${anchorLink.className || 'nav-link'} ag-top-injected`;
-                topA.href = '/top-shikimori';
-                topA.textContent = 'Топ Shikimori';
-                anchorLink.parentElement.appendChild(topA);
-            }
-        } else {
-            const desktopMenu = document.querySelector('.navbar-nav.header-navbar-nav.text-nowrap.flex-grow-1')
-                || document.querySelector('.navbar-nav.header-navbar-nav')
-                || document.querySelector('.header-navbar-nav')
-                || document.querySelector('.navbar-nav')
-                || document.querySelector('header .navbar-nav')
-                || document.querySelector('header nav');
-
-            if (desktopMenu) {
-                const li = document.createElement('li');
-                li.className = 'nav-item ag-top-injected';
-                li.innerHTML = `<a class="nav-link" href="/top-shikimori">Топ Shikimori</a>`;
-                desktopMenu.appendChild(li);
-            }
-        }
-
-        const mobileMenu1 = document.querySelector('#mmenu .nav.flex-column');
-        if (mobileMenu1 && !mobileMenu1.querySelector('a[href="/top-shikimori"]')) {
-             mobileMenu1.insertAdjacentHTML('beforeend', `
-                <a class="nav-link fw-semibold text-reset fs-5 ag-top-injected" href="/top-shikimori">Топ Shikimori</a>
-             `);
-        }
-
-        const mobileMenu2 = document.querySelector('#mmenu nav.nav.flex-column:not(:first-of-type)');
-        if (mobileMenu2 && !mobileMenu2.querySelector('a[href="/top-shikimori"]')) {
-             mobileMenu2.insertAdjacentHTML('beforeend', `
-                <a class="nav-link text-reset fs-5 ag-top-injected" href="/top-shikimori">Топ Shikimori</a>
-             `);
-        }
-
-        if (!window.agTopClickListenerBound) {
-            window.agTopClickListenerBound = true;
-            document.body.addEventListener('click', (e) => {
-                const link = e.target.closest('a[href="/top-shikimori"]');
-                if (link) {
-                    e.preventDefault();
-                    const path = link.getAttribute('href');
-                    if (window.location.pathname !== path) {
-                        if (handleNavigation(path)) {
-                            history.pushState(null, '', path);
-                        } else {
-                            window.location.href = path;
-                            return;
-                        }
-
-                        const closeBtn = document.querySelector('#mmenu .btn-close');
-                        if (closeBtn && document.getElementById('mmenu').classList.contains('show')) {
-                            closeBtn.click();
-                        }
-                    }
+        if (!document.querySelector(`header a[href="${TOP_PATH}"]`)) {
+            const desktopMenu = window.agQueryFirst([
+                'header nav.header-navbar-nav',
+                'header .navbar-nav.header-navbar-nav',
+                'header .navbar-nav',
+                'header nav'
+            ]);
+            const sampleLink = desktopMenu && (desktopMenu.querySelector('a[href*="/anime/random"]') || desktopMenu.querySelector('a.nav-link'));
+            if (desktopMenu && sampleLink) {
+                const sampleLi = sampleLink.closest('li');
+                if (sampleLi && desktopMenu.contains(sampleLi)) {
+                    const li = document.createElement('li');
+                    li.className = `${sampleLi.className || 'nav-item'} ag-top-injected`;
+                    li.innerHTML = `<a class="${sampleLink.className || 'nav-link'}" href="${TOP_PATH}">Топ Shikimori</a>`;
+                    sampleLi.after(li);
+                } else {
+                    const a = document.createElement('a');
+                    a.className = `${sampleLink.className || 'nav-link'} ag-top-injected`;
+                    a.href = TOP_PATH;
+                    a.textContent = 'Топ Shikimori';
+                    sampleLink.after(a);
                 }
-            });
+            }
+        }
+
+        // Мобильное меню (offcanvas #mmenu): добавляем в первый список навигации
+        const mobileMenu = document.querySelector('#mmenu .nav.flex-column');
+        if (mobileMenu && !document.querySelector(`#mmenu a[href="${TOP_PATH}"]`)) {
+            mobileMenu.insertAdjacentHTML('beforeend', `<a class="nav-link fw-semibold text-reset fs-5 ag-top-injected" href="${TOP_PATH}">Топ Shikimori</a>`);
         }
     };
 
@@ -966,27 +887,29 @@
         injectTopButtons();
 
         window.addEventListener('popstate', () => {
-            if (!handleNavigation(window.location.pathname)) {
-                window.location.reload(); 
+            if (location.pathname === TOP_PATH) {
+                openTop({ push: false });
+            } else if (document.getElementById('ag-top-root')) {
+                // Вернулись на страницу, поверх которой открывали Топ — восстанавливаем её без перезагрузки
+                if (pageStateBeforeTop && pageStateBeforeTop.href === location.href) {
+                    unmountTop();
+                    document.title = pageStateBeforeTop.title;
+                } else {
+                    window.location.reload();
+                }
             }
         });
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const showTopParams = urlParams.get('show_ag_top');
-        if (showTopParams) {
-            history.replaceState(null, '', '/top-shikimori');
-            handleNavigation('/top-shikimori');
-        } else {
-            handleNavigation(window.location.pathname);
-        }
 
         window.addEventListener('pageshow', () => {
             document.querySelectorAll('.ag-top-loading-overlay').forEach(el => el.remove());
         });
 
-        if (window.location.pathname === '/top-shikimori') {
-            const errorBlocks = document.querySelectorAll('.error-page, .alert-danger');
-            errorBlocks.forEach(el => el.style.display = 'none');
+        // Совместимость со старыми ссылками вида /anime?show_ag_top=shikimori
+        if (new URLSearchParams(location.search).get('show_ag_top')) {
+            history.replaceState(null, '', TOP_PATH);
+        }
+        if (location.pathname === TOP_PATH) {
+            openTop({ push: false });
         }
     };
 })();

@@ -569,8 +569,7 @@
                     if (document.getElementById('ag-type-movie')?.checked) types.push('MOVIE');
                     if (document.getElementById('ag-type-special')?.checked) types.push('SPECIAL');
 
-                    const newSettings = {
-                        ...settings,
+                    const patch = {
                         ongoing_enabled: document.getElementById('ag-set-enabled').checked,
                         ongoing_hide_chinese: document.getElementById('ag-set-hide-chinese').checked,
                         ongoing_hide_long_running: document.getElementById('ag-set-hide-long').checked,
@@ -578,7 +577,7 @@
                         ongoing_types: types
                     };
 
-                    chrome.storage.local.set({ ag_settings: newSettings }, () => {
+                    window.agPatchSettings(patch).then(() => {
                         document.querySelectorAll('.ag-jutsu-schedule-card').forEach(el => el.remove());
                         window.agInitScheduleEnhancer();
                     });
@@ -761,15 +760,13 @@
             card.dataset.agYear = item.year || '';
             card.dataset.agKind = item.kind || '';
 
-            const safeRuStr = (item.russian || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            const safeEnStr = (item.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
             if (isAccordionLayout) {
                 card.className = 'aw-item text-decoration-none text-reset mw-0 ag-jutsu-schedule-card';
                 card.innerHTML = `
                     <div class="aw-cover">
                         <div class="image__picture aspect-ratio-5-7">
-                            <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${posterUrl}" alt="${titleStr}" onerror="if(window.agHandlePosterError) window.agHandlePosterError(this, '${titleStr}', ${item.id || 'null'}, '${safeRuStr}', '${safeEnStr}'); else this.src='${AG_NO_POSTER_SVG}';">
+                            <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${posterUrl}" alt="${titleStr}" data-ag-poster-id="${item.id || ''}" data-ag-poster-ru="${titleStr}" data-ag-poster-en="${window.agEscapeHtml(item.name || '')}">
                         </div>
                     </div>
                     <div class="aw-info gap-1 mw-0 justify-content-start">
@@ -790,7 +787,7 @@
 
                 card.innerHTML = `
                     <div style="width: 48px; height: 68px; flex-shrink: 0; margin-right: 12px; overflow: hidden; border-radius: 6px; position: relative;">
-                        <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${posterUrl}" alt="${titleStr}" style="width: 100%; height: 100%; object-fit: cover;" onerror="if(window.agHandlePosterError) window.agHandlePosterError(this, '${titleStr}', ${item.id || 'null'}, '${safeRuStr}', '${safeEnStr}'); else this.src='${AG_NO_POSTER_SVG}';">
+                        <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${posterUrl}" alt="${titleStr}" style="width: 100%; height: 100%; object-fit: cover;" data-ag-poster-id="${item.id || ''}" data-ag-poster-ru="${titleStr}" data-ag-poster-en="${window.agEscapeHtml(item.name || '')}">
                     </div>
                     <div style="flex-grow: 1; min-width: 0;">
                         <div class="text-truncate" style="font-weight: 600; font-size: 0.9rem; color: #fff; margin-bottom: 2px;">${titleStr}</div>
@@ -832,7 +829,7 @@
                 const year = card.dataset.agYear || item.year || '';
                 const kind = card.dataset.agKind || item.kind || '';
                 const searchQuery = russian || name;
-                const fallbackUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery)}&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(name)}&ag_year=${encodeURIComponent(year)}&ag_kind=${encodeURIComponent(kind)}`;
+                const fallbackUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(name)}&ag_year=${encodeURIComponent(year)}&ag_kind=${encodeURIComponent(kind)}`;
 
                 try {
                     const res = await new Promise((resolve) => {

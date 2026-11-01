@@ -322,13 +322,27 @@
 
     tryExtractCode();
 
-    const observer = new MutationObserver(tryExtractCode);
+    // Наблюдатель и страховочный опрос живут, пока код не получен, но не дольше 2 минут:
+    // раньше при закрытом/отменённом диалоге они работали вечно (опрос каждые 50 мс)
+    const AUTH_WATCH_LIMIT_MS = 2 * 60 * 1000;
+    let stopped = false;
+    const stopWatching = () => {
+        if (stopped) return;
+        stopped = true;
+        observer.disconnect();
+        clearInterval(interval);
+        clearTimeout(limitTimer);
+    };
+    const check = () => {
+        if (window.agAuthProcessed) return stopWatching();
+        tryExtractCode();
+        if (window.agAuthProcessed) stopWatching();
+    };
+
+    const observer = new MutationObserver(check);
     if (document.documentElement) {
         observer.observe(document.documentElement, { childList: true, subtree: true });
     }
-
-    const interval = setInterval(() => {
-        tryExtractCode();
-        if (window.agAuthProcessed) clearInterval(interval);
-    }, 50);
+    const interval = setInterval(check, 250);
+    const limitTimer = setTimeout(stopWatching, AUTH_WATCH_LIMIT_MS);
 })();

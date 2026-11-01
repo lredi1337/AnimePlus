@@ -8,6 +8,7 @@
     <title>Anime+</title>
     <link rel="stylesheet" href="popup.css">
     <script src="../config.js"></script>
+    <script src="../modules/shared/sites.js"></script>
 </head>
 
 <body>
@@ -23,18 +24,30 @@
 
         <div id="extBody">
 
-            <!-- Site Row -->
-            <div class="site-row">
-                <div class="site-group" id="siteGroup">
-                    <button class="site-btn btn-animego active" id="btn-animego" data-site="AnimeGO">AnimeGO</button>
-                    <button class="site-btn btn-jutsu" id="btn-jutsu" data-site="JUT-SU">JUT-SU</button>
+            <!-- Текущий сайт + список всех сайтов (масштабируется на любое число сайтов) -->
+            <div class="site-bar">
+                <div class="site-current" id="siteCurrent">
+                    <span class="site-badge" id="siteCurrentBadge" aria-hidden="true">+</span>
+                    <div class="site-current-text">
+                        <div class="site-current-name" id="siteCurrentName">Сайт не открыт</div>
+                        <div class="status-dot-row" id="status-box">
+                            <span class="dot" id="status-dot"></span>
+                            <span id="status-text">откройте поддерживаемый сайт</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="status-dot-row" id="status-box">
-                    <span class="dot" id="status-dot"></span>
-                    <span id="status-text">активно</span>
-                </div>
+                <button type="button" class="sites-toggle" id="sitesToggle" aria-expanded="false" aria-controls="sitesPanel">
+                    Сайты <span class="sites-count" id="sitesCount"></span>
+                    <span class="sites-chevron" aria-hidden="true">▾</span>
+                </button>
+            </div>
+            <div class="sites-panel" id="sitesPanel" hidden>
+                <input type="search" class="sites-filter" id="sitesFilter" placeholder="Найти сайт…" aria-label="Поиск сайта" autocomplete="off">
+                <ul class="sites-list" id="sitesList"></ul>
+                <div class="sites-empty" id="sitesEmpty" hidden>Ничего не найдено</div>
             </div>
             <div class="toast" id="siteToast"></div>
+            <div class="selector-health" id="selectorHealth" hidden></div>
 
             <!-- Shikimori Profile -->
             <div class="profile" id="shiki-auth-box">

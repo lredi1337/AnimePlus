@@ -6,6 +6,34 @@ let cachedScheduleTime = 0;
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней TTL для кэша ссылок
 
+// Последовательное обновление объекта в chrome.storage.
+// Параллельные get → изменить → set (например, 100 карточек Топа одновременно) теряли записи друг друга.
+// Все изменения одного ключа выстраиваются в очередь; maxEntries ограничивает рост кэша
+// (удаляются самые старые: по полю ts, иначе по порядку добавления ключей).
+const storageWriteQueues = new Map();
+
+function updateStorageObject(key, mutator, { area = chrome.storage.local, maxEntries = 0 } = {}) {
+    const prev = storageWriteQueues.get(key) || Promise.resolve();
+    const next = prev.catch(() => {}).then(async () => {
+        const res = await area.get([key]);
+        const obj = (res[key] && typeof res[key] === 'object') ? res[key] : {};
+        const out = (await mutator(obj)) || obj;
+        if (maxEntries > 0) {
+            const keys = Object.keys(out);
+            if (keys.length > maxEntries) {
+                const hasTs = keys.every(k => out[k] && typeof out[k].ts === 'number');
+                const ordered = hasTs ? keys.sort((a, b) => out[a].ts - out[b].ts) : keys;
+                ordered.slice(0, keys.length - maxEntries).forEach(k => delete out[k]);
+            }
+        }
+        await area.set({ [key]: out });
+        return out;
+    });
+    storageWriteQueues.set(key, next);
+    next.finally(() => { if (storageWriteQueues.get(key) === next) storageWriteQueues.delete(key); });
+    return next;
+}
+
 async function getDirectUrlFromCache(key) {
     if (!key) return null;
     try {
@@ -93,102 +121,44 @@ async function findJutsuDirectUrl(queryTitle, origTitle, targetYear, kind) {
             return cachedUrl;
         }
 
-        const extractSeasonNumber = (str) => {
-            if (!str) return null;
-            const s = String(str).toLowerCase().trim();
+        const { pickBest, extractSeason } = globalThis.AgTitleMatch;
+        const targetSeason = extractSeason(queryTitle) || extractSeason(origTitle);
 
-            const matchEndNum = s.match(/(?:\s+|^)(\d{1,2})\s*$/);
-            if (matchEndNum) {
-                const num = parseInt(matchEndNum[1]);
-                if (num > 0 && num < 20) return num;
+        const parseJutsuSearchCards = (html) => {
+            const cards = new Map();
+            const re = /<a\b([^>]*\bjutsu-item__title\b[^>]*)>([\s\S]*?)<\/a>(?:\s*<div[^>]*jutsu-item__subtitle[^>]*>\s*(\d{4}))?/gi;
+            for (const m of html.matchAll(re)) {
+                const hrefMatch = m[1].match(/href="([^"]+\.html)"/i);
+                if (!hrefMatch) continue;
+                const href = new URL(hrefMatch[1], 'https://jut-su.net').href;
+                if (cards.has(href)) continue;
+                cards.set(href, { href, title: m[2].replace(/<[^>]+>/g, '').trim(), year: m[3] || '' });
             }
-
-            const matchSeason = s.match(/(\d+)\s*(?:st|nd|rd|th)?\s*(?:-?\s*й|-?\s*го)?\s*(?:сезон|season)/i);
-            if (matchSeason) return parseInt(matchSeason[1]);
-
-            const matchTv = s.match(/(?:тв|tv|part|часть)-?\s*(\d+)\b/i);
-            if (matchTv) return parseInt(matchTv[1]);
-
-            const matchUrlSeason = s.match(/(?:season-?|сезон-?|-)(\d+)(?:\.html|\/|$)/i);
-            if (matchUrlSeason) {
-                const num = parseInt(matchUrlSeason[1]);
-                if (num > 0 && num < 20) return num;
+            if (cards.size === 0) {
+                // Резерв на случай смены классов: любые ссылки на страницы тайтлов вида /123-slug.html
+                for (const m of html.matchAll(/<a[^>]+href="((?:https:\/\/jut-su\.net)?\/\d+-[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+                    const href = new URL(m[1], 'https://jut-su.net').href;
+                    const title = m[2].replace(/<[^>]+>/g, '').trim();
+                    if (!title || cards.has(href)) continue;
+                    cards.set(href, { href, title, year: '' });
+                }
             }
-
-            const romanMap = { ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
-            const words = s.split(/[^a-z0-9]/i);
-            for (let i = words.length - 1; i >= 0; i--) {
-                const w = words[i].toLowerCase();
-                if (romanMap[w]) return romanMap[w];
-            }
-            return null;
+            return [...cards.values()];
         };
-
-        const targetSeason = extractSeasonNumber(queryTitle) || extractSeasonNumber(origTitle);
-
-        const cleanStr = (s) => (s || '').toLowerCase().replace(/[:.,\-\—!?()]/g, ' ').replace(/\s+/g, ' ').trim();
 
         const searchJutsu = async (searchQuery) => {
             if (!searchQuery || !searchQuery.trim()) return null;
-            const resp = await fetch(`https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery.trim())}`, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
-                }
-            });
+            const resp = await fetch(`https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery.trim())}`);
             if (!resp.ok) return null;
-            const html = await resp.text();
+            const cards = parseJutsuSearchCards(await resp.text());
+            if (cards.length === 0) return null;
 
-            let bestUrl = null;
-            let bestScore = 0;
-
-            const qClean = cleanStr(searchQuery);
-
-            const cardMatches = Array.from(html.matchAll(/<a[^>]+href="(https:\/\/jut-su\.net\/[^"]+\.html)"[^>]*>([\s\S]*?)<\/a>/gi));
-
-            for (const m of cardMatches) {
-                const href = m[1];
-                const rawText = m[2].replace(/<[^>]+>/g, '').trim();
-
-                if (!href || href.includes('/page/') || href.includes('/tags/')) continue;
-                if (!rawText || rawText.length < 2) continue;
-
-                const candClean = cleanStr(rawText);
-                let score = 0;
-
-                const isExact = candClean === qClean;
-                const isStart = candClean.startsWith(qClean) || qClean.startsWith(candClean);
-                const isInclude = candClean.includes(qClean) || qClean.includes(candClean);
-
-                if (isExact) score += 400;
-                else if (isStart) score += 250;
-                else if (isInclude) score += 150;
-
-                const candSeason = extractSeasonNumber(rawText) || extractSeasonNumber(href);
-
-                if (targetSeason !== null) {
-                    if (candSeason === targetSeason) {
-                        score += 300;
-                    } else if (candSeason !== null && candSeason !== targetSeason) {
-                        score -= 500;
-                    } else if (targetSeason === 1 && candSeason === null) {
-                        score += 100;
-                    }
-                } else {
-                    if (candSeason !== null && candSeason > 1) {
-                        score -= 200;
-                    }
-                }
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestUrl = href;
-                }
-            }
-
-            if (bestUrl && bestScore > 0) {
-                return bestUrl;
-            }
-            return null;
+            const best = pickBest(cards, {
+                titles: [queryTitle, origTitle, searchQuery].filter(Boolean),
+                year: targetYear,
+                season: targetSeason
+            });
+            return best ? best.href : null;
         };
 
         let url = queryTitle ? await searchJutsu(queryTitle) : null;
