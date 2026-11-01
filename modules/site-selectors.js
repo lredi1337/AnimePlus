@@ -28,7 +28,8 @@
             // Каркас сайта
             headerNav: ['header nav.header-navbar-nav', 'header .navbar-nav.header-navbar-nav', 'header .navbar-nav', 'header nav'],
             mobileMenu: ['#mmenu .nav.flex-column'],
-            main: ['main.content', 'main']
+            // На главной нет <main>: содержимое лежит прямо в .wrapper[data-dynamic-content]
+            main: ['main.content', 'main', '.wrapper[data-dynamic-content]']
         },
         jutsu: {
             title: ['.jutsu-page__title-text h1', '.title_video', 'h1'],

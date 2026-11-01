@@ -22,9 +22,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (info) {
             if (info.poster && notifPoster) notifPoster.src = info.poster;
-            if (info.episode && notifBadge) notifBadge.textContent = `🔥 Вышла ${info.episode} серия`;
+            if (info.episode && notifBadge) notifBadge.textContent = `Вышла ${info.episode} серия`;
             if (info.russianName && notifTitle) notifTitle.textContent = info.russianName;
-            if (info.voiceovers && notifVoiceovers) notifVoiceovers.textContent = `🎤 ${info.voiceovers}`;
+            if (info.voiceovers && notifVoiceovers) notifVoiceovers.textContent = info.voiceovers;
 
             if (notifBtns) {
                 notifBtns.innerHTML = '';

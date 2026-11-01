@@ -1,9 +1,7 @@
 /* shiki-auth.css - Declarative CSS injected at document_start */
 html, body {
-    background-color: #0a0e17 !important;
-    background: #0a0e17 !important;
-    background-image: radial-gradient(circle at center, #161c2b 0%, #0a0e17 100%) !important;
-    color: #ffffff !important;
+    background: #0f1218 !important;
+    color: #f1f3f7 !important;
     min-height: 100vh !important;
     margin: 0 !important;
     padding: 0 !important;

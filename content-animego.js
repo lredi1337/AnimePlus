@@ -119,7 +119,7 @@
         catch (err) { console.error(`[AnimeGO+] Module error in ${name}:`, err); }
     };
 
-    safeRun(() => window.agInitTopPageEnhancer && window.agInitTopPageEnhancer(), 'TopPageEnhancer');
+    safeRun(() => window.agMountLegacyTop('animego', settings), 'TopOverlay');
     safeRun(() => window.agInjectHeaderGearButton && window.agInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
     safeRun(() => window.agInitRandomAnimeButton && window.agInitRandomAnimeButton(), 'RandomAnimeButton');
     safeRun(() => window.agInitVoiceAutoSelect && window.agInitVoiceAutoSelect(settings), 'VoiceAutoSelect');
@@ -142,7 +142,6 @@
     // Один наблюдатель с объединением мутаций (раньше все модули вызывались на каждую мутацию DOM)
     const runDomTasks = () => {
         safeRun(ensureAgLogoPlus, 'LogoPlus');
-        safeRun(() => window.agInjectTopButtons && window.agInjectTopButtons(), 'TopButtons');
         safeRun(() => window.agInjectHeaderGearButton && window.agInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
         safeRun(() => window.checkNoVideoAndInjectJutsuButton && window.checkNoVideoAndInjectJutsuButton(), 'NoVideoJutsuButton');
         safeRun(() => window.agInitVoiceAutoSelect && window.agInitVoiceAutoSelect(settings), 'VoiceAutoSelect');

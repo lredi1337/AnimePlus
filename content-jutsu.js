@@ -67,7 +67,7 @@
             gear.type = 'button';
             gear.className = 'icon icon-cog flex-grow-0';
             gear.style.cssText = `max-width: 45px; margin-left: 10px; padding: 0 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(30,30,30,0.5); color: #fff; cursor: pointer;`;
-            gear.title = 'Настройки JUT-SU+';
+            gear.title = 'Настройки Anime+';
             gear.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -128,7 +128,6 @@
         safeRun(() => window.jtInjectHeaderGearButton && window.jtInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
         safeRun(customizeLogo, 'Logo');
         safeRun(autoSelectKodik, 'AutoSelectKodik');
-        safeRun(() => window.jtInjectTopButtons && window.jtInjectTopButtons(), 'TopButtons');
         safeRun(() => window.agBindPostersIn && window.agBindPostersIn(document), 'Posters');
         safeRun(() => window.replaceCoversWithStandard && window.replaceCoversWithStandard(settings), 'ReplaceCovers');
     }, { root: document.body, wait: 200 });
@@ -142,7 +141,7 @@
     safeRun(() => window.initJutsuShikimoriAutoSync && window.initJutsuShikimoriAutoSync(), 'ShikimoriAutoSync');
     safeRun(() => window.handleRankIndexFallback && window.handleRankIndexFallback(), 'RankIndexFallback');
     safeRun(() => window.handleJutsuSearch && window.handleJutsuSearch(), 'JutsuSearch');
-    safeRun(() => window.jtInitTopPageEnhancer && window.jtInitTopPageEnhancer(), 'TopPageEnhancer');
+    safeRun(() => window.agMountLegacyTop('jutsu', settings), 'TopOverlay');
     safeRun(customizeLogo, 'Logo');
     safeRun(injectGearButton, 'GearButton');
 

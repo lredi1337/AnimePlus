@@ -1,0 +1,50 @@
+/* Единый набор значений интерфейса Anime+: окно расширения, настройки, Топ, кнопки, уведомления.
+   Подключается и на страницах сайтов, поэтому все имена с префиксом --ap-.
+   Акцент на странице задаёт modules/shared/ui-kit.js по цвету сайта из реестра. */
+:root {
+    /* Поверхности: фон → карточка → приподнятый элемент */
+    --ap-bg: #0f1218;
+    --ap-surface: #161a22;
+    --ap-raised: #1f242e;
+    --ap-hover: rgba(255, 255, 255, 0.07);
+    --ap-scrim: rgba(6, 8, 12, 0.72);
+
+    /* Линии */
+    --ap-line: rgba(255, 255, 255, 0.1);
+    --ap-line-strong: rgba(255, 255, 255, 0.22);
+
+    /* Текст (контраст на --ap-surface не ниже 4.5:1) */
+    --ap-text: #f1f3f7;
+    --ap-text-2: #b6bcc9;
+    --ap-text-3: #8f96a6;
+
+    /* Акцент */
+    --ap-accent: #ef4444;
+    --ap-accent-soft: rgba(239, 68, 68, 0.16);
+    --ap-accent-line: rgba(239, 68, 68, 0.5);
+    --ap-on-accent: #ffffff;
+
+    /* Состояния */
+    --ap-success: #34d399;
+    --ap-success-soft: rgba(52, 211, 153, 0.15);
+    --ap-warning: #fbbf24;
+    --ap-warning-soft: rgba(251, 191, 36, 0.13);
+    --ap-danger: #f87171;
+    --ap-danger-soft: rgba(248, 113, 113, 0.15);
+
+    /* Шрифт: системный, чтобы окно не ходило в сеть при каждом открытии */
+    --ap-font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ap-fs-xs: 11px;
+    --ap-fs-sm: 12px;
+    --ap-fs-md: 13px;
+    --ap-fs-lg: 14px;
+    --ap-fs-xl: 16px;
+    --ap-fs-2xl: 20px;
+
+    /* Форма */
+    --ap-radius-sm: 6px;
+    --ap-radius: 8px;
+    --ap-radius-lg: 14px;
+    --ap-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+    --ap-ease: 0.15s ease;
+}

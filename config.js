@@ -1,8 +1,8 @@
 (async function () {
     'use strict';
 
-    window.AG_RED = "#ff4a4a";
-    window.AG_FONT = '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+    window.AG_RED = "#ef4444";
+    window.AG_FONT = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif';
 
     window.DEFAULT_SETTINGS = {
         global_enabled: true,

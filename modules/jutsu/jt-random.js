@@ -14,7 +14,7 @@
             e.stopImmediatePropagation();
 
             const originalText = link.textContent;
-            link.textContent = "⌛ Подбираем...";
+            link.textContent = "Подбираем…";
             link.style.pointerEvents = "none";
 
             chrome.runtime.sendMessage({ action: "get_random_shikimori_anime" }, (res) => {

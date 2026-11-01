@@ -42,7 +42,7 @@ async function startRuntime({ url, html, settings = {} }) {
         switch (msg.action) {
             case 'resolve_shikimori_id': return { id: 61987, episodes: 12 };
             case 'fetch_shikimori':
-                if (/order=ranked&page=1/.test(msg.url)) return { status: 200, data: TOP };
+                if (/order=ranked.*[&?]page=1(&|$)/.test(msg.url)) return { status: 200, data: TOP };
                 if (/order=ranked/.test(msg.url)) return { status: 200, data: [] };
                 return { status: 200, data: { id: 61987, score: '8.92' } };
             case 'resolve_shiki_posters': return { posters: { 100: 'https://shikimori.io/uploads/poster/animes/100/main.webp' } };
@@ -316,7 +316,7 @@ test('runtime: Настройки Anime+ в выпадающем меню ru.yum
     assert.ok(overlay);
     assert.equal(overlay.style.display, 'block', 'оверлей открыт');
 
-    assert.match(modal.textContent, /Настройки YummyAnime\+/);
+    assert.match(modal.textContent, /Настройки Anime\+[\s\S]*YummyAnime/);
     assert.ok(modal.querySelector('.ag-tabs-nav'), 'вкладки настроек присутствуют');
     assert.ok(modal.querySelector('[data-tab="playback"]'), 'вкладка Плеер');
     assert.ok(modal.querySelector('[data-tab="voice"]'), 'вкладка Озвучка');
@@ -381,7 +381,7 @@ test('runtime: Настройки Anime+ в меню навигации old.yumm
     const modal = doc.getElementById('ag-settings-modal');
     assert.ok(modal, 'модальное окно настроек создано');
     assert.equal(modal.style.display, 'block', 'модальное окно открыто');
-    assert.match(modal.textContent, /Настройки YummyAnime\+/);
+    assert.match(modal.textContent, /Настройки Anime\+[\s\S]*YummyAnime/);
 
     modal.querySelector('#ag-save').click();
     assert.equal(modal.style.display, 'none');

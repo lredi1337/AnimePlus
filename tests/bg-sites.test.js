@@ -77,3 +77,20 @@ test('resolveAllSites: результат по каждому сайту, отр
     await ctx.resolveAllSites(query, { siteIds: ['yummy_ru', 'yummy_old'] });
     assert.equal(fetched.length, before, 'повторный запрос обслуживается из кэша');
 });
+
+test('сбой сети: результат помечается как «нет ответа» и не запоминается', async () => {
+    const session = {};
+    const ctx = loadInContext(['modules/shared/sites.js', 'modules/shared/title-match.js'], {
+        fetch: async () => { throw new Error('network'); },
+        fetchShikimoriApi: async () => null,
+        updateStorageObject: async (key, fn) => { const obj = session[key] || {}; fn(obj); session[key] = obj; },
+        chrome: { storage: { session: { get: async () => ({}), set: async () => {} } } },
+        findJutsuDirectUrl: async () => null,
+        findAnimeGoDirectUrl: async () => null
+    });
+    require('node:vm').runInContext(`${read('modules/bg-sites.js')};globalThis.resolveAll = resolveAllSites;`, ctx);
+    const [res] = await ctx.resolveAll({ titles: ['Наруто'], year: '2002' }, { siteIds: ['yummy_ru'], timeoutMs: 1000 });
+    assert.equal(res.url, null);
+    assert.equal(res.timedOut, true);
+    assert.equal(session.ag_site_url_cache, undefined);
+});

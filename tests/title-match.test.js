@@ -67,3 +67,33 @@ test('pickBest: minScore для автоперехода со страницы �
     // Частичное совпадение без года не дотягивает до 250 → автоперехода нет
     assert.equal(M.pickBest(cards, { titles: ['битва'] }, { minScore: 250 }), null);
 });
+
+test('pickBest: основной тайтл важнее спецвыпусков с тем же началом названия', () => {
+    const cards = [
+        { title: 'Стальной алхимик: Братство — Спецвыпуски', href: '/2327-specvypuski.html' },
+        { title: 'Стальной алхимик: Братство (Ремейк, 2009)', href: '/52-bratstvo.html' }
+    ];
+    assert.equal(M.pickBest(cards, { titles: ['Стальной алхимик: Братство'] }).href, '/52-bratstvo.html');
+    assert.equal(M.pickBest(cards, { titles: ['Стальной алхимик: Братство — Спецвыпуски'] }).href, '/2327-specvypuski.html');
+});
+
+test('isSameTitle: общее начало — не совпадение, запись сезона может отличаться', () => {
+    assert.equal(M.isSameTitle('Монолог фармацевта', 'Монолог фармацевта: Сокровище покойной наложницы'), false);
+    assert.equal(M.isSameTitle('Монолог фармацевта', 'Монолог фармацевта 2'), false);
+    assert.equal(M.isSameTitle('Bakuman. 3rd Season', 'Bakuman Season 3'), true);
+    assert.equal(M.isSameTitle('Гинтама 2', 'Гинтама 2'), true);
+});
+
+test('isSameTitle: пометки сайта не мешают, фильм не подменяет сериал', () => {
+    assert.equal(M.isSameTitle('Стальной алхимик: Братство (Ремейк, 2009)', 'Стальной алхимик: Братство'), true);
+    assert.equal(M.isSameTitle('Гинтама (4 сезон)', 'Гинтама 4'), true);
+    assert.equal(M.isSameTitle('Клинок: Бесконечный поезд', 'Клинок: Бесконечный поезд. Фильм'), true);
+    assert.equal(M.isSameTitle('Монолог фармацевта. Фильм', 'Монолог фармацевта'), false);
+    assert.equal(M.isSameTitle('Тетрадь смерти', 'Тетрадь смерти: Перезапись'), false);
+});
+
+test('findSameTitle: другой год отсеивается, совпавший год идёт первым', () => {
+    const cards = [{ title: 'Ван-Пис', year: '2027', href: '/remake' }, { title: 'Ван-Пис', year: '1999', href: '/old' }];
+    assert.deepEqual(M.findSameTitle(cards, { titles: ['Ван-Пис'], year: '1999' }).map(c => c.href), ['/old']);
+    assert.equal(M.findSameTitle(cards, { titles: ['Ван-Пис: Героини'], year: '1999' }).length, 0);
+});

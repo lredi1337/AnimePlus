@@ -8,38 +8,33 @@
     style.textContent = `
         @keyframes agSpin { to { transform: rotate(360deg); } }
         .ag-auth-btn-primary {
-            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            background: #ef4444 !important;
             color: #ffffff !important;
             border: none !important;
-            padding: 12px 28px !important;
-            border-radius: 12px !important;
-            font-weight: 700 !important;
-            font-size: 14px !important;
+            height: 38px !important;
+            padding: 0 20px !important;
+            border-radius: 8px !important;
+            font: 600 13px inherit !important;
             cursor: pointer !important;
-            transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4) !important;
-            outline: none !important;
+            transition: background 0.15s ease !important;
         }
         .ag-auth-btn-primary:hover {
-            transform: translateY(-1px) !important;
-            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6) !important;
-            background: linear-gradient(135deg, #f87171, #ef4444) !important;
+            background: #f15e5e !important;
         }
         .ag-auth-btn-secondary {
-            background: rgba(255, 255, 255, 0.08) !important;
-            color: #94a3b8 !important;
+            background: transparent !important;
+            color: #b6bcc9 !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            padding: 12px 24px !important;
-            border-radius: 12px !important;
-            font-weight: 600 !important;
-            font-size: 14px !important;
+            height: 38px !important;
+            padding: 0 20px !important;
+            border-radius: 8px !important;
+            font: 600 13px inherit !important;
             cursor: pointer !important;
-            transition: all 0.15s ease !important;
-            outline: none !important;
+            transition: background 0.15s ease !important;
         }
         .ag-auth-btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15) !important;
-            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.07) !important;
+            color: #f1f3f7 !important;
         }
     `;
     (document.documentElement || document.head).appendChild(style);
@@ -52,25 +47,23 @@
             backdrop.style.cssText = `
                 position: fixed;
                 inset: 0;
-                background: #0a0e17 !important;
-                background: radial-gradient(circle at center, #161c2b 0%, #0a0e17 100%) !important;
+                background: #0f1218 !important;
                 z-index: 2147483647;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-family: "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
                 opacity: 1 !important;
             `;
 
             const card = document.createElement('div');
             card.id = 'animeplus-autoauth-card';
             card.style.cssText = `
-                background: linear-gradient(145deg, #131722, #1b2030);
-                color: #ffffff;
-                padding: 36px 40px;
-                border-radius: 24px;
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 40px rgba(239, 68, 68, 0.15);
+                background: #161a22;
+                color: #f1f3f7;
+                padding: 28px 32px;
+                border-radius: 14px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
                 text-align: center;
                 max-width: 440px;
                 width: 90%;
@@ -92,16 +85,9 @@
             : '';
 
         const logoHeaderHtml = `
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
-                ${logoUrl ? `
-                    <div style="position: relative;">
-                        <img src="${logoUrl}" alt="Anime+" style="width: 72px; height: 72px; border-radius: 20px; box-shadow: 0 12px 32px rgba(239, 68, 68, 0.4), 0 0 24px rgba(239, 68, 68, 0.25); border: 2px solid rgba(239, 68, 68, 0.4); background: #131722; padding: 4px; object-fit: contain;" />
-                    </div>
-                ` : ''}
-                <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
-                    <span style="font-size: 30px; font-weight: 900; color: #ffffff; font-family: 'Nunito', sans-serif; letter-spacing: -0.5px;">Anime<span style="color: #ef4444;">+</span></span>
-                    <span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Shikimori Sync</span>
-                </div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                ${logoUrl ? `<img src="${logoUrl}" alt="" style="width: 36px; height: 36px; object-fit: contain;" />` : ''}
+                <span style="font-size: 20px; font-weight: 700; color: #f1f3f7;">Anime<span style="color: #ef4444;">+</span></span>
             </div>
         `;
 
@@ -109,12 +95,12 @@
             card.innerHTML = `
                 ${logoHeaderHtml}
 
-                <div id="ag-auth-title" style="font-size: 20px; font-weight: 800; color: #f8fafc; margin-top: 4px;">Привязать аккаунт Shikimori?</div>
-                <div id="ag-auth-desc" style="font-size: 13.5px; color: #94a3b8; line-height: 1.5; margin-bottom: 4px;">
+                <div id="ag-auth-title" style="font-size: 16px; font-weight: 600; color: #f1f3f7; margin-top: 4px;">Привязать аккаунт Shikimori?</div>
+                <div id="ag-auth-desc" style="font-size: 13px; color: #b6bcc9; line-height: 1.5; margin-bottom: 4px;">
                     Расширение <b>Anime+</b> запрашивает доступ для автоматического отслеживания серий и синхронизации вашего списка.
                 </div>
 
-                <div style="display: flex; gap: 12px; width: 100%; justify-content: center; margin-top: 8px;">
+                <div style="display: flex; gap: 8px; width: 100%; justify-content: center; margin-top: 8px;">
                     <button id="ag-btn-allow-auth" class="ag-auth-btn-primary">Разрешить доступ</button>
                     <button id="ag-btn-deny-auth" class="ag-auth-btn-secondary">Отмена</button>
                 </div>
@@ -185,11 +171,11 @@
             card.innerHTML = `
                 ${logoHeaderHtml}
                 
-                <div id="ag-auth-spinner" style="width: 52px; height: 52px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #ef4444; border-radius: 50%; animation: agSpin 0.9s infinite linear; margin: 8px 0;"></div>
-                <div id="ag-auth-icon" style="font-size: 52px; display: none; line-height: 1;"></div>
+                <div id="ag-auth-spinner" style="width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #ef4444; border-radius: 50%; animation: agSpin 0.9s infinite linear; margin: 8px 0;"></div>
+                <div id="ag-auth-icon" style="display: none; width: 36px; height: 36px; line-height: 36px; border-radius: 50%; font-size: 18px; font-weight: 700; text-align: center;"></div>
 
-                <div id="ag-auth-title" style="font-size: 20px; font-weight: 800; color: #f8fafc; margin-top: 4px;">Выполняем авторизацию...</div>
-                <div id="ag-auth-desc" style="font-size: 13.5px; color: #94a3b8; line-height: 1.5;">Связываем ваш аккаунт Shikimori с расширением Anime+. Пожалуйста, подождите.</div>
+                <div id="ag-auth-title" style="font-size: 16px; font-weight: 600; color: #f1f3f7; margin-top: 4px;">Выполняем авторизацию…</div>
+                <div id="ag-auth-desc" style="font-size: 13px; color: #b6bcc9; line-height: 1.5;">Связываем ваш аккаунт Shikimori с расширением Anime+. Пожалуйста, подождите.</div>
             `;
         }
 
@@ -212,18 +198,19 @@
             if (res && res.success) {
                 if (spinner) spinner.style.display = 'none';
                 if (icon) {
-                    icon.textContent = '🎉';
+                    icon.textContent = '✓';
+                    icon.style.color = '#34d399';
+                    icon.style.background = 'rgba(52, 211, 153, 0.15)';
                     icon.style.display = 'block';
                 }
                 if (title) {
-                    title.textContent = 'Авторизация успешна!';
-                    title.style.color = '#34d399';
+                    title.textContent = 'Аккаунт привязан';
                 }
                 
                 let secondsLeft = 3;
                 const updateCountdown = () => {
                     if (desc) {
-                        desc.innerHTML = `Ваш аккаунт Shikimori успешно привязан.<br>Вкладка закроется через <b style="color: #ffffff; font-size: 15px;">${secondsLeft} сек...</b>`;
+                        desc.innerHTML = `Ваш аккаунт Shikimori успешно привязан.<br>Вкладка закроется через <b style="color: #f1f3f7;">${secondsLeft} сек...</b>`;
                     }
                 };
                 updateCountdown();
@@ -240,12 +227,13 @@
             } else {
                 if (spinner) spinner.style.display = 'none';
                 if (icon) {
-                    icon.textContent = '❌';
+                    icon.textContent = '✕';
+                    icon.style.color = '#f87171';
+                    icon.style.background = 'rgba(248, 113, 113, 0.15)';
                     icon.style.display = 'block';
                 }
                 if (title) {
                     title.textContent = 'Ошибка авторизации';
-                    title.style.color = '#f87171';
                 }
                 if (desc) {
                     desc.textContent = (res && res.error) ? res.error : 'Сбой обмена токенов. Попробуйте еще раз в окне расширения.';

@@ -46,7 +46,6 @@
             document.querySelectorAll('.error-page').forEach(el => el.style.display = 'none');
             document.body.prepend(document.adoptNode(wrapper));
             ensureAgLogoPlus(document);
-            if (window.agInjectTopButtons) window.agInjectTopButtons();
             return document.querySelector('main');
         })().catch((e) => {
             console.error('[AnimeGO+] Failed to build site shell:', e);
@@ -102,7 +101,7 @@
             studios: Array.isArray(raw.studios) ? raw.studios.map(s => s.name) : [],
             videos: Array.isArray(raw.videos) ? raw.videos : [],
             screenshots,
-            jutsuUrl: `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(raw.name || raw.russian || '')}&ag_from=animeplus`
+            english: Array.isArray(raw.english) ? raw.english.filter(Boolean) : []
         };
     };
 
@@ -150,7 +149,7 @@
             <div class="d-flex flex-column flex-md-row gap-4" id="ag-synthetic-page-container">
                 <div style="flex: 0 0 240px; max-width: 240px;">
                     <img referrerpolicy="no-referrer" src="${escapeHtml(data.poster)}" alt="${escapeHtml(data.russian)}" data-ag-poster-id="${data.id}" data-ag-poster-ru="${escapeHtml(data.russian)}" data-ag-poster-en="${escapeHtml(data.name)}" class="rounded w-100" style="aspect-ratio: 5/7; object-fit: cover;">
-                    <a href="${data.jutsuUrl}" id="ag-synthetic-jutsu-side-btn" class="btn btn-danger w-100 fw-bold mt-2">Смотреть на Jut.su</a>
+                    <a href="#ag-watch-choice" id="ag-synthetic-watch-side-btn" class="btn btn-danger w-100 fw-bold mt-2">Смотреть онлайн</a>
                 </div>
                 <div class="flex-grow-1 mw-0">
                     <div class="entity__title mb-3">
@@ -164,25 +163,131 @@
                         ${escapeHtml(data.kind)} · ${data.episodes || 'выходит'} эп. · ${escapeHtml(data.airedOn || '—')} · ${escapeHtml(data.genres.join(', '))}
                     </div>
                     <div class="description mb-4">${data.description || 'Описание отсутствует.'}</div>
-                    <a href="${data.jutsuUrl}" id="ag-synthetic-jutsu-btn" class="btn btn-danger btn-lg fw-bold">▶ Открыть плеер на Jut-Su</a>
+                    <div id="ag-watch-choice"></div>
                 </div>
             </div>
         `;
     };
 
-    const bindJutsuClick = (btnId, data) => {
-        const btn = document.getElementById(btnId);
-        if (!btn) return;
-        btn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const response = await window.agSendMessage({
-                action: 'search_jutsu_direct',
-                queryTitle: data.russian || data.name,
-                origTitle: data.name,
-                targetYear: data.airedOn
-            });
-            window.open((response && response.url) ? response.url : data.jutsuUrl, '_blank');
+    const injectWatchChoiceStyle = () => {
+        if (document.getElementById('ag-watch-choice-style')) return;
+        const style = document.createElement('style');
+        style.id = 'ag-watch-choice-style';
+        // Цвета страницы — из темы AnimeGO: у сайта есть и светлая, и тёмная
+        style.textContent = `
+            .ag-wc { font-family: var(--ap-font); }
+            .ag-wc__note { margin: 0 0 12px; font-size: var(--ap-fs-lg); color: var(--bs-secondary-color); }
+            .ag-wc__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 8px; }
+            .ag-wc__item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px 8px 8px; border-radius: var(--ap-radius); background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); color: var(--bs-body-color) !important; text-decoration: none !important; transition: border-color var(--ap-ease); }
+            a.ag-wc__item:hover { border-color: var(--ap-accent); }
+            .ag-wc__badge { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: var(--ap-radius-sm); font-size: var(--ap-fs-sm); font-weight: 700; }
+            .ag-wc__name { flex: 1; min-width: 0; font-size: var(--ap-fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .ag-wc__state { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: var(--ap-fs-sm); color: var(--bs-secondary-color); }
+            .ag-wc__item.is-found .ag-wc__state { color: var(--ap-accent); font-weight: 600; }
+            .ag-wc__item.is-pending, .ag-wc__item.is-missing { opacity: .6; }
+        `;
+        document.head.appendChild(style);
+    };
+
+    const siteSearchUrl = (site, data) => (site.dle && site.dle.searchPath
+        ? `${site.home}${site.dle.searchPath}${encodeURIComponent(data.russian || data.name)}&ag_from=animeplus`
+        : null);
+
+    // Выбор сайта для просмотра: тайтла нет на AnimeGO, поэтому ищем его на остальных включённых сайтах
+    window.agRenderWatchChoice = async function (box, data) {
+        injectWatchChoiceStyle();
+        const note = document.createElement('p');
+        note.className = 'ag-wc__note';
+        box.className = 'ag-wc';
+
+        const settings = await window.getSettings();
+        const sites = window.AgSites.list.filter(s => s.id !== 'animego' && window.AgSites.isEnabled(settings, s.id));
+        if (sites.length === 0) {
+            note.textContent = 'Все остальные сайты выключены в настройках Anime+.';
+            box.replaceChildren(note);
+            return;
+        }
+
+        const makeRow = (site, { state, url = null, cls }) => {
+            const row = document.createElement(url ? 'a' : 'div');
+            row.className = `ag-wc__item ${cls}`;
+            row.dataset.site = site.id;
+            if (url) {
+                row.href = url;
+                row.target = '_blank';
+                row.rel = 'noopener';
+                row.addEventListener('click', () => {
+                    window.agSendMessage({ action: 'add_watch_history', item: { russian: data.russian, name: data.name, url } });
+                });
+            }
+            const badge = document.createElement('span');
+            badge.className = 'ag-wc__badge';
+            badge.style.background = site.color;
+            badge.style.color = window.AgUI.onAccent(site.color);
+            badge.textContent = site.short;
+            const name = document.createElement('span');
+            name.className = 'ag-wc__name';
+            name.textContent = site.name;
+            const stateEl = document.createElement('span');
+            stateEl.className = 'ag-wc__state';
+            stateEl.textContent = state;
+            if (url) stateEl.prepend(window.AgUI.iconEl('external', 13));
+            row.append(badge, name, stateEl);
+            return row;
+        };
+
+        const list = document.createElement('div');
+        list.className = 'ag-wc__list';
+        note.textContent = 'Этого аниме нет в плеере AnimeGO. Ищем его на других сайтах…';
+        list.append(...sites.map(site => makeRow(site, { state: 'ищем…', cls: 'is-pending' })));
+        box.replaceChildren(note, list);
+
+        const res = await window.agSendMessage({
+            action: 'resolve_all_sites',
+            siteIds: sites.map(s => s.id),
+            titles: [...new Set([data.name, data.russian, ...(data.english || [])].filter(Boolean))],
+            year: data.airedOn,
+            shikimoriId: data.id
         });
+        if (!box.isConnected) return;
+
+        const results = (res && res.results) || [];
+        const resultOf = (site) => results.find(r => r.siteId === site.id) || {};
+        const urlOf = (site) => resultOf(site).url || null;
+        // Найденные — первыми
+        const ordered = [...sites.filter(urlOf), ...sites.filter(s => !urlOf(s))];
+        list.replaceChildren(...ordered.map((site) => {
+            const url = urlOf(site);
+            if (url) return makeRow(site, { state: 'смотреть', url, cls: 'is-found' });
+            const search = siteSearchUrl(site, data);
+            return search
+                ? makeRow(site, { state: 'искать', url: search, cls: 'is-search' })
+                : makeRow(site, { state: resultOf(site).timedOut ? 'нет ответа' : 'нет на сайте', cls: 'is-missing' });
+        }));
+        note.textContent = sites.some(urlOf)
+            ? 'Этого аниме нет в плеере AnimeGO. Выберите, где смотреть:'
+            : 'Этого аниме нет в плеере AnimeGO, и прямых ссылок на других сайтах не нашлось. Попробуйте поиск:';
+    };
+
+    // Блок выбора и кнопка под постером, которая к нему ведёт
+    const mountWatchChoice = (root, data) => {
+        let box = root.querySelector('#ag-watch-choice');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'ag-watch-choice';
+            box.style.margin = '20px 0';
+            const anchor = root.querySelector('.description');
+            if (anchor) anchor.after(box);
+            else root.appendChild(box);
+        }
+        const sideBtn = root.querySelector('#ag-synthetic-watch-side-btn');
+        if (sideBtn) {
+            sideBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+        }
+        window.agRenderWatchChoice(box, data);
     };
 
     window.renderSyntheticAnimePage = async function () {
@@ -200,7 +305,7 @@
         const loader = document.createElement('div');
         loader.id = 'ag-synthetic-loader';
         loader.innerHTML = `
-            <div style="text-align: center; padding: 80px 20px; color: #94a3b8; font-size: 18px;">
+            <div style="text-align: center; padding: 80px 20px; color: var(--ap-text-2); font-size: 18px;">
                 <div class="spinner-border text-danger mb-3" role="status"></div>
                 <div>Загрузка информации об аниме...</div>
             </div>
@@ -218,7 +323,7 @@
 
         if (!data) {
             host.innerHTML = `
-                <div class="py-5 text-center" style="color: #f87171;">
+                <div class="py-5 text-center" style="color: var(--ap-accent);">
                     <h2>Не удалось загрузить данные об аниме</h2>
                     <p class="text-muted mt-2">Возможно, такого аниме нет в базе Shikimori или сервер временно недоступен.</p>
                     <a href="/" class="btn btn-outline-light mt-3">Вернуться на главную</a>
@@ -232,8 +337,7 @@
         const nativeDoc = nativeHtml ? new DOMParser().parseFromString(nativeHtml, 'text/html') : null;
         if (!main || !isUsableTemplate(nativeDoc)) {
             renderFallbackPage(main || document.body, data);
-            bindJutsuClick('ag-synthetic-jutsu-btn', data);
-            bindJutsuClick('ag-synthetic-jutsu-side-btn', data);
+            mountWatchChoice(main || document.body, data);
             return;
         }
 
@@ -296,10 +400,10 @@
                                 posterOverlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(8, 10, 14, 0.94); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); z-index: 999999; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);';
                                 posterOverlay.innerHTML = `
                                     <div style="position: absolute; top: 0; left: 0; width: 100%; padding: 24px 36px; display: flex; justify-content: flex-end; align-items: center; z-index: 100; box-sizing: border-box;">
-                                        <button class="ag-poster-close" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.25s ease;" onmouseover="this.style.background='rgba(239,68,68,0.9)'; this.style.borderColor='rgba(239,68,68,1)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.08)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='none';">✕</button>
+                                        <button class="ag-poster-close" style="background: var(--ap-hover); border: 1px solid var(--ap-line); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.25s ease;" onmouseover="this.style.background='var(--ap-accent-line)'; this.style.borderColor='var(--ap-accent-line)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='var(--ap-hover)'; this.style.borderColor='var(--ap-line)'; this.style.transform='none';">✕</button>
                                     </div>
                                     <div class="ag-poster-content" style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; align-items: center; justify-content: center;">
-                                        <img referrerpolicy="no-referrer" src="${escapeHtml(data.poster)}" style="height: 85vh; max-height: 88vh; max-width: 88vw; border-radius: 18px; box-shadow: 0 35px 100px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.15); object-fit: contain; user-select: none;">
+                                        <img referrerpolicy="no-referrer" src="${escapeHtml(data.poster)}" style="height: 85vh; max-height: 88vh; max-width: 88vw; border-radius: 18px; box-shadow: 0 35px 100px rgba(0,0,0,0.95), 0 0 0 1px var(--ap-line-strong); object-fit: contain; user-select: none;">
                                     </div>
                                 `;
                                 document.body.appendChild(posterOverlay);
@@ -330,11 +434,11 @@
                     // Watch Online button under poster
                     const watchBtn = nativeContentPage.querySelector('a[href*="#player"], .entity__sticky a.btn-primary');
                     if (watchBtn) {
-                        watchBtn.href = '#player';
-                        watchBtn.id = 'ag-synthetic-jutsu-side-btn';
-                        watchBtn.innerHTML = `<span>Смотреть на Jut.su</span>`;
+                        watchBtn.href = '#ag-watch-choice';
+                        watchBtn.id = 'ag-synthetic-watch-side-btn';
+                        watchBtn.innerHTML = `<span>Смотреть онлайн</span>`;
                         watchBtn.className = 'btn btn-danger icon-link gap-2 text-nowrap mw-0 justify-content-center w-100 fw-bold';
-                        watchBtn.style.cssText = 'background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; font-weight: 700; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 6px;';
+                        watchBtn.style.cssText = 'background: var(--ap-accent); border: none; font-weight: 700; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 6px;';
                     }
 
                     // Hide lists button collapse
@@ -435,14 +539,14 @@
                                         <div class="ag-lb-counter" style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.65); letter-spacing: 1.5px; text-transform: uppercase; font-family: system-ui, -apple-system, sans-serif;">
                                             <span id="ag-lb-curr">1</span> / <span id="ag-lb-total">${data.screenshots.length}</span>
                                         </div>
-                                        <button class="ag-lb-close" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 42px; height: 42px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.25s ease;" onmouseover="this.style.background='rgba(239,68,68,0.9)'; this.style.borderColor='rgba(239,68,68,1)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.08)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='none';">✕</button>
+                                        <button class="ag-lb-close" style="background: var(--ap-hover); border: 1px solid var(--ap-line); color: #fff; width: 42px; height: 42px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.25s ease;" onmouseover="this.style.background='var(--ap-accent-line)'; this.style.borderColor='var(--ap-accent-line)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='var(--ap-hover)'; this.style.borderColor='var(--ap-line)'; this.style.transform='none';">✕</button>
                                     </div>
-                                    <button class="ag-lb-prev" style="position: absolute; left: 36px; top: 50%; transform: translateY(-50%); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 54px; height: 54px; border-radius: 50%; font-size: 22px; cursor: pointer; z-index: 10; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.background='rgba(255, 255, 255, 0.18)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.06)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='translateY(-50%)';">❮</button>
+                                    <button class="ag-lb-prev" style="position: absolute; left: 36px; top: 50%; transform: translateY(-50%); background: var(--ap-hover); border: 1px solid var(--ap-line); color: #fff; width: 54px; height: 54px; border-radius: 50%; font-size: 22px; cursor: pointer; z-index: 10; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.background='var(--ap-line-strong)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='var(--ap-hover)'; this.style.borderColor='var(--ap-line)'; this.style.transform='translateY(-50%)';">❮</button>
                                     <div class="ag-lightbox-content" style="position: relative; max-width: 82vw; max-height: 76vh; display: flex; align-items: center; justify-content: center;">
-                                        <img class="ag-lb-img" referrerpolicy="no-referrer" src="" style="max-width: 82vw; max-height: 76vh; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.1); object-fit: contain; user-select: none; transition: opacity 0.2s ease, transform 0.2s ease;">
+                                        <img class="ag-lb-img" referrerpolicy="no-referrer" src="" style="max-width: 82vw; max-height: 76vh; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px var(--ap-line); object-fit: contain; user-select: none; transition: opacity 0.2s ease, transform 0.2s ease;">
                                     </div>
-                                    <button class="ag-lb-next" style="position: absolute; right: 36px; top: 50%; transform: translateY(-50%); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); color: #fff; width: 54px; height: 54px; border-radius: 50%; font-size: 22px; cursor: pointer; z-index: 10; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.background='rgba(255, 255, 255, 0.18)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.06)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='translateY(-50%)';">❯</button>
-                                    <div class="ag-lb-strip" style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; padding: 8px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 30px; backdrop-filter: blur(16px); z-index: 10;">
+                                    <button class="ag-lb-next" style="position: absolute; right: 36px; top: 50%; transform: translateY(-50%); background: var(--ap-hover); border: 1px solid var(--ap-line); color: #fff; width: 54px; height: 54px; border-radius: 50%; font-size: 22px; cursor: pointer; z-index: 10; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.background='var(--ap-line-strong)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='var(--ap-hover)'; this.style.borderColor='var(--ap-line)'; this.style.transform='translateY(-50%)';">❯</button>
+                                    <div class="ag-lb-strip" style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; padding: 8px 14px; background: var(--ap-hover); border: 1px solid var(--ap-line); border-radius: 30px; backdrop-filter: blur(16px); z-index: 10;">
                                         ${data.screenshots.map((src, i) => `
                                             <div class="ag-lb-dot" data-idx="${i}" style="width: 44px; height: 28px; border-radius: 6px; overflow: hidden; opacity: 0.4; border: 2px solid transparent; cursor: pointer; transition: all 0.2s ease;">
                                                 <img referrerpolicy="no-referrer" src="${escapeHtml(src)}" style="width: 100%; height: 100%; object-fit: cover;">
@@ -477,7 +581,7 @@
                                     dots.forEach((dot, idx) => {
                                         if (idx === currentIndex) {
                                             dot.style.opacity = '1';
-                                            dot.style.borderColor = '#ef4444';
+                                            dot.style.borderColor = 'var(--ap-accent)';
                                             dot.style.transform = 'scale(1.1)';
                                         } else {
                                             dot.style.opacity = '0.4';
@@ -548,16 +652,13 @@
                         playerBlock.style.maxWidth = '100%';
 
                         playerBlock.innerHTML = `
-                            <div class="container-xxl container-xl container my-4">
+                            <div>
                                 <h2 class="h5 font-weight-bold mb-3">Смотреть аниме «${escapeHtml(data.russian)}» онлайн</h2>
-                                <div class="p-4 text-center rounded-3 bg-body-tertiary" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px;">
-                                    <p class="text-body-tertiary mb-3" style="font-size: 0.95rem; line-height: 1.5;">Данное аниме отсутствует в нативном плеере AnimeGO, но доступно для просмотра на Jut-Su:</p>
-                                    <a href="${data.jutsuUrl}" target="_blank" id="ag-synthetic-jutsu-btn" class="btn btn-danger btn-lg px-4 py-2" style="font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 1.05rem; cursor: pointer; text-decoration: none; border: none;">
-                                        <span>▶ Открыть плеер на Jut-Su</span>
-                                    </a>
-                                </div>
+                                <div id="ag-watch-choice"></div>
                             </div>
                         `;
+                        // Сразу под описанием тайтла: в шаблоне плеер стоит в самом низу страницы, за «Связанным»
+                        if (fieldContainer) fieldContainer.after(playerBlock);
                     }
 
                     // Remove comments/reviews
@@ -584,26 +685,7 @@
                     ensureAgLogoPlus(document);
                     setTimeout(() => ensureAgLogoPlus(document), 300);
 
-                    const bindJutsuClick = (btnId) => {
-                        const btn = document.getElementById(btnId);
-                        if (btn) {
-                            btn.addEventListener('click', (e) => {
-                                e.preventDefault();
-                                chrome.runtime.sendMessage({
-                                    action: "search_jutsu_direct",
-                                    queryTitle: data.russian || data.name,
-                                    origTitle: data.name,
-                                    targetYear: data.airedOn
-                                }, (response) => {
-                                    const targetUrl = (response && response.url) ? response.url : data.jutsuUrl;
-                                    window.open(targetUrl, '_blank');
-                                });
-                            });
-                        }
-                    };
-
-                    bindJutsuClick('ag-synthetic-jutsu-btn');
-                    bindJutsuClick('ag-synthetic-jutsu-side-btn');
+                    mountWatchChoice(nativeContentPage, data);
 
                     // Async fetch and render correct related anime from Shikimori
                     chrome.runtime.sendMessage({ action: "get_shikimori_anime_related", id: data.id }, (res) => {
@@ -626,7 +708,7 @@
                                     <h2 class="mb-3 h5 font-weight-bold">Связанное</h2>
                                     <div class="d-flex flex-wrap gap-3">
                                         ${res.related.slice(0, 8).map(item => `
-                                            <a href="/anime/shiki-${item.id}" class="d-flex align-items-center gap-3 p-2 rounded bg-body-tertiary text-decoration-none text-reset" style="width: 260px; border: 1px solid rgba(255,255,255,0.08); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                                            <a href="/anime/shiki-${item.id}" class="d-flex align-items-center gap-3 p-2 rounded bg-body-tertiary text-decoration-none text-reset" style="width: 260px; border: 1px solid var(--ap-hover); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
                                                 <img referrerpolicy="no-referrer" src="${escapeHtml(item.poster || '')}" style="width: 48px; height: 68px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="${escapeHtml(item.russian)}" data-ag-poster-id="${item.id}" data-ag-poster-ru="${escapeHtml(item.russian)}">
                                                 <div class="overflow-hidden">
                                                     <div class="fw-bold text-truncate small">${escapeHtml(item.russian)}</div>
@@ -689,8 +771,8 @@
         const btn = document.createElement('a');
         btn.id = 'ag-jutsu-switch-btn';
         btn.className = 'btn btn-primary btn-lg mt-3 w-100 fw-bold';
-        btn.style.cssText = 'background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); border: none; border-radius: 10px; color: #fff; padding: 14px 20px; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(76,175,80,0.3);';
-        btn.innerHTML = '<span>🎬 Смотреть этот тайтл на Jut-Su</span>';
+        btn.style.cssText = 'background: var(--ap-accent); border: none; border-radius: 10px; color: #fff; padding: 14px 20px; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(76,175,80,0.3);';
+        btn.innerHTML = '<span>Смотреть этот тайтл на Jut-Su</span>';
         btn.href = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(queryTitle)}&ag_from=animeplus`;
         btn.target = '_blank';
         btn.rel = 'noopener';

@@ -115,14 +115,15 @@ async function findJutsuDirectUrl(queryTitle, origTitle, targetYear, kind) {
     try {
         if (!queryTitle && !origTitle) return null;
 
-        const cacheKey = getCacheKey(queryTitle, origTitle, targetYear);
+        const cacheKey = `js_v2_${getCacheKey(queryTitle, origTitle, targetYear)}`;
         const cachedUrl = await getDirectUrlFromCache(cacheKey);
         if (cachedUrl) {
             return cachedUrl;
         }
 
-        const { pickBest, extractSeason } = globalThis.AgTitleMatch;
+        const { pickBest, findSameTitle, extractSeason } = globalThis.AgTitleMatch;
         const targetSeason = extractSeason(queryTitle) || extractSeason(origTitle);
+        const titles = [queryTitle, origTitle].filter(Boolean);
 
         const parseJutsuSearchCards = (html) => {
             const cards = new Map();
@@ -153,11 +154,11 @@ async function findJutsuDirectUrl(queryTitle, origTitle, targetYear, kind) {
             const cards = parseJutsuSearchCards(await resp.text());
             if (cards.length === 0) return null;
 
-            const best = pickBest(cards, {
-                titles: [queryTitle, origTitle, searchQuery].filter(Boolean),
-                year: targetYear,
-                season: targetSeason
-            });
+            const [same] = findSameTitle(cards, { titles, year: targetYear });
+            if (same) return same.href;
+            // Поиск по оригинальному названию отдаёт русские заголовки: единственному результату доверяем
+            if (cards.length !== 1 || /[а-яё]/i.test(searchQuery)) return null;
+            const best = pickBest(cards, { titles, year: targetYear, season: targetSeason });
             return best ? best.href : null;
         };
 
@@ -178,18 +179,36 @@ async function findJutsuDirectUrl(queryTitle, origTitle, targetYear, kind) {
     }
 }
 
-async function findAnimeGoDirectUrl(queryTitle, origTitle, targetYear) {
+/** Карточки выдачи поиска AnimeGO: русское и оригинальное название, год */
+function parseAnimeGoSearchCards(html) {
+    const clean = (t) => t.replace(/<[^>]+>/g, ' ').replace(/&#0?39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    const cards = [];
+    for (const block of html.split(/(?=<div class="ani-grid__item\s)/).slice(1)) {
+        const titleMatch = block.match(/ani-grid__item-title[^>]*>\s*<a\b[^>]*href="(\/anime\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+        if (!titleMatch) continue;
+        const body = block.slice(block.indexOf('ani-grid__item-body'));
+        const origMatch = body.match(/<div class="fw-lighter[^>]*>([\s\S]*?)<\/div>/);
+        const yearMatch = block.match(/ani-grid__item-genres__link">\s*((?:19|20)\d{2})\s*</);
+        cards.push({
+            href: titleMatch[1],
+            title: clean(titleMatch[2]),
+            orig: origMatch ? clean(origMatch[1]) : '',
+            year: yearMatch ? yearMatch[1] : ''
+        });
+    }
+    return cards;
+}
+
+async function findAnimeGoDirectUrl(queryTitle, origTitle, targetYear, extraTitles = []) {
     try {
         if (!queryTitle && !origTitle) return null;
-        const cacheKey = `ag_${getCacheKey(queryTitle, origTitle, targetYear)}`;
+        const cacheKey = `ag_v2_${getCacheKey(queryTitle, origTitle, targetYear)}`;
         const cachedUrl = await getDirectUrlFromCache(cacheKey);
         if (cachedUrl) {
             return cachedUrl;
         }
 
-        const cleanStr = (s) => (s || '').toLowerCase().replace(/[:.,\-\—!?()]/g, ' ').replace(/\s+/g, ' ').trim();
-        const qRuClean = cleanStr(queryTitle);
-        const qEnClean = cleanStr(origTitle);
+        const titles = [queryTitle, origTitle, ...extraTitles].filter(Boolean);
 
         const searchAnimeGo = async (searchQuery) => {
             if (!searchQuery || !searchQuery.trim()) return null;
@@ -199,52 +218,13 @@ async function findAnimeGoDirectUrl(queryTitle, origTitle, targetYear) {
                 }
             });
             if (!resp.ok) return null;
-            const html = await resp.text();
-
-            let bestUrl = null;
-            let bestScore = 0;
-
-            const linkMatches = Array.from(html.matchAll(/<a[^>]+href="(\/anime\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi));
-            for (const m of linkMatches) {
-                let href = m[1];
-                const rawText = m[2].replace(/<[^>]+>/g, '').trim();
-                if (!rawText || rawText.length < 2) continue;
-
-                const candClean = cleanStr(rawText);
-                let score = 0;
-
-                const isExactRu = qRuClean && candClean === qRuClean;
-                const isExactEn = qEnClean && candClean === qEnClean;
-
-                if (isExactRu || isExactEn) {
-                    score += 500;
-                } else if ((qRuClean && candClean.startsWith(qRuClean)) || (qEnClean && candClean.startsWith(qEnClean))) {
-                    score += 350;
-                } else if ((qRuClean && candClean.includes(qRuClean)) || (qEnClean && candClean.includes(qEnClean))) {
-                    score += 200;
-                } else {
-                    const qWords = (qRuClean || qEnClean).split(' ').filter(w => w.length > 2);
-                    let matchCount = 0;
-                    qWords.forEach(w => { if (candClean.includes(w)) matchCount++; });
-                    if (qWords.length > 0 && (matchCount / qWords.length) >= 0.5) {
-                        score += 150;
-                    }
-                }
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestUrl = href.startsWith('http') ? href : 'https://animego.me' + href;
-                }
-            }
-
-            if (bestUrl && bestScore > 0) {
-                return bestUrl;
-            }
-            return null;
+            // Поиск всегда что-то возвращает: на английский запрос выдача часто состоит из посторонних тайтлов
+            const [card] = globalThis.AgTitleMatch.findSameTitle(parseAnimeGoSearchCards(await resp.text()), { titles, year: targetYear });
+            return card ? 'https://animego.me' + card.href : null;
         };
 
         let url = origTitle ? await searchAnimeGo(origTitle) : null;
-        if (!url && queryTitle) {
+        if (!url && queryTitle && queryTitle !== origTitle) {
             url = await searchAnimeGo(queryTitle);
         }
 

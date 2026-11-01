@@ -73,7 +73,7 @@ test('окно настроек AnimeGO: колбэк получает свеж�
 });
 
 test('окно настроек Jut-Su: сохранение не откатывает изменения из popup', async () => {
-    const { w, store } = makePage(['modules/ui-utils.js', 'modules/jutsu/jt-settings.js'], { ...STALE });
+    const { w, store } = makePage(['modules/ui-utils.js', 'modules/animego/ag-settings.js', 'modules/jutsu/jt-settings.js'], { ...STALE });
     w.jtOpenJutsuSettingsModal(JSON.parse(JSON.stringify(STALE)), () => {});
     Object.assign(store.ag_settings, CHANGED_ELSEWHERE);
 

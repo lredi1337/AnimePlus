@@ -1,7 +1,7 @@
 (function () {
     const { AgSites } = window;
-    const CHOICE_BG ='linear-gradient(135deg, #2b333e 0%, #1e242c 100%)';
-    const CHOICE_HOVER = 'linear-gradient(135deg, #3b4656 0%, #252d37 100%)';
+    const CHOICE_BG = 'var(--ap-raised)';
+    const CHOICE_HOVER = 'color-mix(in srgb, var(--ap-raised) 88%, white)';
 
     // Заголовок Shikimori: «Русское / Английское». Разделитель отбит пробелами,
     // а косая черта внутри названия (Fate/stay night) — нет
@@ -58,22 +58,20 @@
             min-width: 0;
             width: 100%;
             background: ${bgGradient};
-            color: #fff;
-            padding: 10px 14px;
-            border-radius: 8px;
+            color: var(--ap-text);
+            padding: 9px 12px;
+            border-radius: var(--ap-radius);
             text-decoration: none;
-            font-weight: 700;
-            font-size: 13.5px;
+            font-weight: 600;
+            font-size: var(--ap-fs-md);
             cursor: pointer;
             border: 1px solid ${borderColor};
-            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-            transition: all 0.2s ease;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            transition: background var(--ap-ease);
+            font-family: var(--ap-font);
             text-align: center;
             box-sizing: border-box;
             white-space: nowrap;
         `;
-
 
         btn.onclick = (e) => {
             e.preventDefault();
@@ -86,16 +84,8 @@
             e.stopPropagation();
         };
 
-        btn.onmouseover = () => {
-            btn.style.background = hoverBg;
-            btn.style.transform = 'translateY(-1px)';
-            btn.style.boxShadow = '0 6px 8px rgba(0,0,0,0.3)';
-        };
-        btn.onmouseout = () => {
-            btn.style.background = bgGradient;
-            btn.style.transform = 'translateY(0)';
-            btn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.2)';
-        };
+        btn.onmouseover = () => { btn.style.background = hoverBg; };
+        btn.onmouseout = () => { btn.style.background = bgGradient; };
 
         return btn;
     }
@@ -129,12 +119,12 @@
 
         let isSearching = false;
 
-        const mainBg = 'linear-gradient(135deg, #456484 0%, #2b3e55 100%)';
-        const mainBorder = '#5a7b9e';
-        const mainHover = 'linear-gradient(135deg, #577b9e 0%, #365270 100%)';
+        const mainBg = 'var(--ap-accent)';
+        const mainBorder = 'transparent';
+        const mainHover = 'color-mix(in srgb, var(--ap-accent) 86%, white)';
 
         const mainBtn = createWatchButton(
-            '▶ Смотреть&nbsp;с&nbsp;<b>Anime+</b>',
+            '▶&nbsp;Смотреть&nbsp;с&nbsp;<b>Anime+</b>',
             mainBg,
             mainBorder,
             mainHover,
@@ -142,7 +132,7 @@
                 if (isSearching) return;
                 isSearching = true;
                 const mainText = mainBtn.innerHTML;
-                mainBtn.innerHTML = '▶ Ищем на сайтах...';
+                mainBtn.innerHTML = 'Ищем на сайтах…';
                 mainBtn.style.opacity = '0.75';
                 mainBtn.style.pointerEvents = 'none';
 
@@ -163,7 +153,7 @@
                 };
 
                 const addNote = (text) => {
-                    const note = createWatchButton(text, CHOICE_BG, 'rgba(255, 255, 255, 0.2)', CHOICE_HOVER, () => {});
+                    const note = createWatchButton(text, CHOICE_BG, 'var(--ap-line)', CHOICE_HOVER, () => {});
                     note.style.opacity = '0.75';
                     note.style.pointerEvents = 'none';
                     note.style.whiteSpace = 'normal';
@@ -209,6 +199,7 @@
 
 
 
+        mainBtn.style.color = 'var(--ap-on-accent)';
         btnContainer.appendChild(mainBtn);
 
         if (hostname.includes('shikimori')) {

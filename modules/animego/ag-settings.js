@@ -3,8 +3,7 @@
 
 (function () {
     'use strict';
-    const AG_RED = window.AG_RED || '#ef4444';
-    const AG_FONT = window.AG_FONT || "'Inter', system-ui, sans-serif";
+    const icon = (name, size) => (window.AgUI ? window.AgUI.icon(name, size) : '');
 
     function injectSettingsStyles() {
         if (document.getElementById('ag-settings-styles')) return;
@@ -14,31 +13,29 @@
             #ag-modal-overlay {
                 position: fixed !important;
                 inset: 0 !important;
-                background: rgba(0, 0, 0, 0.7) !important;
+                background: var(--ap-scrim) !important;
                 z-index: 9999999 !important;
                 display: none;
-                backdrop-filter: blur(8px) !important;
-                -webkit-backdrop-filter: blur(8px) !important;
             }
 
             #ag-settings-modal {
-                --ag-set-accent: ${AG_RED};
-                --ag-set-accent-dark: #b32a2a;
                 position: fixed !important;
                 top: 50% !important;
                 left: 50% !important;
                 transform: translate(-50%, -50%) !important;
-                background: linear-gradient(145deg, #131722, #1b2030) !important;
-                color: #fff !important;
-                padding: 24px !important;
-                border-radius: 16px !important;
+                background: var(--ap-surface) !important;
+                color: var(--ap-text) !important;
+                padding: 20px !important;
+                border-radius: var(--ap-radius-lg) !important;
                 z-index: 10000001 !important;
                 display: none;
-                width: 540px !important;
+                width: 560px !important;
                 max-width: 92vw !important;
-                font-family: ${AG_FONT} !important;
-                border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8) !important;
+                font-family: var(--ap-font) !important;
+                color-scheme: dark !important;
+                font-size: var(--ap-fs-md) !important;
+                border: 1px solid var(--ap-line) !important;
+                box-shadow: var(--ap-shadow) !important;
                 box-sizing: border-box !important;
                 line-height: normal !important;
                 text-align: left !important;
@@ -54,7 +51,7 @@
                 all: unset !important;
                 box-sizing: border-box !important;
                 cursor: pointer !important;
-                font-family: ${AG_FONT} !important;
+                font-family: var(--ap-font) !important;
                 text-transform: none !important;
                 letter-spacing: normal !important;
                 line-height: normal !important;
@@ -75,90 +72,113 @@
                 font-weight: inherit !important;
                 border-radius: 0 !important;
             }
+            #ag-settings-modal button:focus-visible,
+            #ag-settings-modal input:focus-visible + .ag-slider {
+                outline: 2px solid var(--ap-accent) !important;
+                outline-offset: 1px !important;
+            }
+
+            #ag-settings-modal .ag-set-head {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                margin-bottom: 16px !important;
+            }
+            #ag-settings-modal .ag-set-brand {
+                display: flex !important;
+                align-items: center !important;
+                gap: 12px !important;
+            }
+            #ag-settings-modal .ag-set-logo {
+                display: grid !important;
+                place-items: center !important;
+                width: 36px !important;
+                height: 36px !important;
+                border-radius: var(--ap-radius) !important;
+                background: var(--ap-accent-soft) !important;
+                color: var(--ap-accent) !important;
+            }
+            #ag-settings-modal .ag-set-title {
+                margin: 0 !important;
+                padding: 0 !important;
+                color: var(--ap-text) !important;
+                font-family: var(--ap-font) !important;
+                font-size: var(--ap-fs-xl) !important;
+                font-weight: 700 !important;
+                line-height: 1.25 !important;
+                text-transform: none !important;
+            }
+            #ag-settings-modal .ag-set-title span { color: var(--ap-accent) !important; }
+            #ag-settings-modal .ag-set-sub {
+                display: block !important;
+                margin-top: 1px !important;
+                color: var(--ap-text-3) !important;
+                font-size: var(--ap-fs-sm) !important;
+            }
 
             #ag-settings-modal .ag-modal-close-btn {
-                all: unset !important;
-                box-sizing: border-box !important;
                 width: 30px !important;
                 height: 30px !important;
                 min-width: 30px !important;
                 max-width: 30px !important;
-                border-radius: 8px !important;
+                border-radius: var(--ap-radius) !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                color: #94a3b8 !important;
-                font-size: 20px !important;
-                line-height: 1 !important;
+                color: var(--ap-text-2) !important;
                 cursor: pointer !important;
-                transition: all 0.2s ease !important;
-                background: rgba(255, 255, 255, 0.05) !important;
-                border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                padding: 0 !important;
-                margin: 0 !important;
+                transition: background var(--ap-ease), color var(--ap-ease) !important;
             }
             #ag-settings-modal .ag-modal-close-btn:hover {
-                color: #fff !important;
-                background: rgba(255, 255, 255, 0.12) !important;
-                border-color: rgba(255, 255, 255, 0.2) !important;
-                transform: scale(1.05) !important;
+                color: var(--ap-text) !important;
+                background: var(--ap-hover) !important;
             }
 
             #ag-settings-modal .ag-tabs-nav {
                 display: flex !important;
-                background: rgba(0, 0, 0, 0.25) !important;
-                padding: 4px !important;
-                border-radius: 10px !important;
-                margin-bottom: 20px !important;
-                border: 1px solid rgba(255, 255, 255, 0.05) !important;
-                gap: 3px !important;
+                background: var(--ap-bg) !important;
+                padding: 3px !important;
+                border-radius: var(--ap-radius) !important;
+                margin-bottom: 14px !important;
+                gap: 2px !important;
                 width: 100% !important;
-                box-sizing: border-box !important;
             }
 
             #ag-settings-modal .ag-tab-btn {
-                all: unset !important;
-                box-sizing: border-box !important;
                 flex: 1 1 0 !important;
                 min-width: 0 !important;
-                padding: 8px 4px !important;
-                border-radius: 8px !important;
-                border: none !important;
-                background: transparent !important;
-                color: #8892b0 !important;
-                font-weight: 700 !important;
+                height: 32px !important;
+                padding: 0 4px !important;
+                border-radius: var(--ap-radius-sm) !important;
+                color: var(--ap-text-2) !important;
+                font-weight: 600 !important;
                 cursor: pointer !important;
-                transition: all 0.25s ease !important;
-                font-size: 11.5px !important;
-                font-family: ${AG_FONT} !important;
+                transition: background var(--ap-ease), color var(--ap-ease) !important;
+                font-size: var(--ap-fs-sm) !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                gap: 4px !important;
+                gap: 6px !important;
                 white-space: nowrap !important;
-                text-transform: none !important;
-                letter-spacing: normal !important;
-                box-shadow: none !important;
-                height: auto !important;
-                line-height: 1.2 !important;
-                margin: 0 !important;
             }
             #ag-settings-modal .ag-tab-btn:hover {
-                color: #fff !important;
-                background: rgba(255, 255, 255, 0.04) !important;
+                color: var(--ap-text) !important;
+                background: var(--ap-hover) !important;
             }
             #ag-settings-modal .ag-tab-btn.active {
-                background: linear-gradient(135deg, var(--ag-set-accent), var(--ag-set-accent-dark)) !important;
-                color: #fff !important;
-                box-shadow: 0 4px 12px rgba(227, 68, 68, 0.3) !important;
+                background: var(--ap-raised) !important;
+                color: var(--ap-text) !important;
+                box-shadow: inset 0 0 0 1px var(--ap-line) !important;
             }
+            #ag-settings-modal .ag-tab-btn.active svg { color: var(--ap-accent) !important; }
 
             #ag-settings-modal .ag-tab-content {
                 display: none;
-                height: 330px !important;
+                height: 340px !important;
                 overflow-y: auto !important;
-                padding-right: 4px !important;
-                box-sizing: border-box !important;
+                padding-right: 6px !important;
+                scrollbar-width: thin !important;
+                scrollbar-color: var(--ap-line-strong) transparent !important;
             }
             #ag-settings-modal .ag-tab-content.active {
                 display: block !important;
@@ -170,41 +190,74 @@
                 padding-right: 0 !important;
             }
 
-            #ag-settings-modal .ag-tab-content::-webkit-scrollbar { width: 4px; }
-            #ag-settings-modal .ag-tab-content::-webkit-scrollbar-track { background: transparent; }
-            #ag-settings-modal .ag-tab-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 2px; }
-
             #ag-settings-modal .ag-set-row {
                 display: flex !important;
                 justify-content: space-between !important;
                 align-items: center !important;
-                margin: 12px 0 4px 0 !important;
-                font-size: 15px !important;
-                font-weight: bold !important;
-                color: #fff !important;
+                gap: 12px !important;
+                margin: 10px 0 3px 0 !important;
+                font-size: var(--ap-fs-lg) !important;
+                font-weight: 600 !important;
+                color: var(--ap-text) !important;
                 text-transform: none !important;
                 letter-spacing: normal !important;
-                line-height: 1.4 !important;
+                line-height: 1.35 !important;
+            }
+            #ag-settings-modal .ag-set-row-stack {
+                align-items: flex-start !important;
+                flex-direction: column !important;
+                gap: 8px !important;
             }
             #ag-settings-modal .ag-set-desc {
-                font-size: 11px !important;
-                color: #7e8b9b !important;
-                margin-bottom: 16px !important;
+                font-size: var(--ap-fs-sm) !important;
+                color: var(--ap-text-2) !important;
+                margin-bottom: 14px !important;
                 line-height: 1.4 !important;
-                padding-right: 20px !important;
+                padding-right: 56px !important;
                 text-transform: none !important;
                 letter-spacing: normal !important;
+            }
+            #ag-settings-modal .ag-set-value { color: var(--ap-accent) !important; }
+            #ag-settings-modal .ag-range {
+                width: 100% !important;
+                margin: 0 0 14px !important;
+                accent-color: var(--ap-accent) !important;
+            }
+            #ag-settings-modal .ag-chips {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+                width: 100% !important;
+            }
+            #ag-settings-modal .ag-chip {
+                display: flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                height: 30px !important;
+                margin: 0 !important;
+                padding: 0 10px !important;
+                font-size: var(--ap-fs-sm) !important;
+                font-weight: 500 !important;
+                color: var(--ap-text-2) !important;
+                background: var(--ap-raised) !important;
+                border-radius: var(--ap-radius-sm) !important;
+                cursor: pointer !important;
+            }
+            #ag-settings-modal .ag-chip input {
+                margin: 0 !important;
+                accent-color: var(--ap-accent) !important;
+                cursor: pointer !important;
             }
 
             #ag-settings-modal .ag-switch {
                 position: relative !important;
-                width: 40px !important;
-                height: 22px !important;
+                flex-shrink: 0 !important;
+                width: 36px !important;
+                height: 20px !important;
                 cursor: pointer !important;
                 display: inline-block !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                box-sizing: border-box !important;
             }
             #ag-settings-modal .ag-switch input {
                 opacity: 0 !important;
@@ -217,11 +270,9 @@
             #ag-settings-modal .ag-slider {
                 position: absolute !important;
                 inset: 0 !important;
-                background: #252c3e !important;
-                border-radius: 20px !important;
-                transition: .3s ease !important;
-                border: 1px solid rgba(255, 255, 255, 0.05) !important;
-                box-sizing: border-box !important;
+                background: var(--ap-raised) !important;
+                border-radius: 999px !important;
+                transition: background var(--ap-ease) !important;
             }
             #ag-settings-modal .ag-slider:before {
                 position: absolute !important;
@@ -230,178 +281,220 @@
                 width: 16px !important;
                 left: 2px !important;
                 bottom: 2px !important;
-                background: white !important;
-                transition: .3s cubic-bezier(0.18, 0.89, 0.35, 1.15) !important;
+                background: var(--ap-text-3) !important;
+                transition: transform var(--ap-ease), background var(--ap-ease) !important;
                 border-radius: 50% !important;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
             }
             #ag-settings-modal input:checked + .ag-slider {
-                background: linear-gradient(135deg, var(--ag-set-accent), var(--ag-set-accent-dark)) !important;
+                background: var(--ap-accent) !important;
             }
             #ag-settings-modal input:checked + .ag-slider:before {
-                transform: translateX(18px) !important;
+                background: #fff !important;
+                transform: translateX(16px) !important;
             }
 
             #ag-settings-modal .ag-key-btn {
-                all: unset !important;
-                box-sizing: border-box !important;
-                background: #252c3e !important;
-                border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                color: #e2e8f0 !important;
-                padding: 6px 12px !important;
-                border-radius: 8px !important;
-                font-size: 12px !important;
+                flex-shrink: 0 !important;
+                background: var(--ap-raised) !important;
+                border: 1px solid var(--ap-line) !important;
+                color: var(--ap-text) !important;
+                height: 30px !important;
+                line-height: 28px !important;
+                padding: 0 12px !important;
+                border-radius: var(--ap-radius-sm) !important;
+                font-size: var(--ap-fs-sm) !important;
+                font-weight: 600 !important;
                 cursor: pointer !important;
                 min-width: 80px !important;
                 text-align: center !important;
-                transition: all 0.2s ease !important;
-                font-family: monospace !important;
+                transition: border-color var(--ap-ease) !important;
+                font-family: ui-monospace, "Cascadia Mono", Consolas, monospace !important;
                 text-transform: uppercase !important;
-                box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3) !important;
-                font-weight: bold !important;
                 display: inline-block !important;
-                height: auto !important;
-                line-height: normal !important;
             }
             #ag-settings-modal .ag-key-btn:hover {
-                border-color: var(--ag-set-accent) !important;
-                color: var(--ag-set-accent) !important;
-                background: #2e374f !important;
+                border-color: var(--ap-line-strong) !important;
             }
             #ag-settings-modal .ag-key-btn.listening {
-                background: var(--ag-set-accent) !important;
-                color: white !important;
-                border-color: var(--ag-set-accent) !important;
-                animation: pulse 1s infinite !important;
-                box-shadow: none !important;
+                background: var(--ap-accent) !important;
+                color: var(--ap-on-accent) !important;
+                border-color: transparent !important;
+                animation: agSetPulse 1s infinite !important;
             }
 
             #ag-settings-modal .ag-footer-btns {
                 display: flex !important;
-                gap: 12px !important;
-                margin-top: 28px !important;
+                justify-content: flex-end !important;
+                gap: 8px !important;
+                margin-top: 16px !important;
+                padding-top: 14px !important;
+                border-top: 1px solid var(--ap-line) !important;
                 width: 100% !important;
-                box-sizing: border-box !important;
             }
             #ag-settings-modal .ag-btn-main {
-                all: unset !important;
-                box-sizing: border-box !important;
-                flex: 1 1 0 !important;
-                padding: 12px 20px !important;
-                border-radius: 10px !important;
+                height: 36px !important;
+                line-height: 36px !important;
+                padding: 0 18px !important;
+                border-radius: var(--ap-radius) !important;
                 cursor: pointer !important;
-                border: none !important;
-                font-weight: 700 !important;
-                font-family: ${AG_FONT} !important;
-                font-size: 14px !important;
-                transition: all 0.2s ease !important;
+                font-weight: 600 !important;
+                font-size: var(--ap-fs-md) !important;
+                transition: background var(--ap-ease), color var(--ap-ease) !important;
                 text-align: center !important;
-                text-transform: none !important;
-                letter-spacing: normal !important;
-                height: auto !important;
-                line-height: normal !important;
                 display: block !important;
             }
             #ag-settings-modal #ag-save {
-                background: linear-gradient(135deg, var(--ag-set-accent), var(--ag-set-accent-dark)) !important;
-                color: white !important;
-                box-shadow: 0 4px 12px rgba(227, 68, 68, 0.3) !important;
+                background: var(--ap-accent) !important;
+                color: var(--ap-on-accent) !important;
             }
             #ag-settings-modal #ag-save:hover {
-                transform: translateY(-1px) !important;
-                box-shadow: 0 6px 16px rgba(227, 68, 68, 0.4) !important;
+                background: color-mix(in srgb, var(--ap-accent) 86%, white) !important;
             }
             #ag-settings-modal #ag-reset {
-                background: rgba(255, 255, 255, 0.05) !important;
-                border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                color: #b4c6ef !important;
-                box-shadow: none !important;
+                background: transparent !important;
+                color: var(--ap-text-2) !important;
+                margin-right: auto !important;
             }
             #ag-settings-modal #ag-reset:hover {
-                background: rgba(255, 255, 255, 0.08) !important;
-                color: #fff !important;
+                background: var(--ap-hover) !important;
+                color: var(--ap-text) !important;
             }
 
+            #ag-settings-modal .ag-vp-box {
+                display: flex !important;
+                flex-direction: column !important;
+                flex: 1 !important;
+                min-height: 0 !important;
+                gap: 8px !important;
+                padding: 10px !important;
+                background: var(--ap-bg) !important;
+                border-radius: var(--ap-radius) !important;
+            }
+            #ag-settings-modal .ag-vp-head {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                font-size: var(--ap-fs-md) !important;
+                font-weight: 600 !important;
+            }
+            #ag-settings-modal .ag-vp-hint {
+                font-size: var(--ap-fs-sm) !important;
+                font-weight: 400 !important;
+                color: var(--ap-text-3) !important;
+            }
+            #ag-settings-modal .ag-vp-list {
+                flex: 1 !important;
+                min-height: 0 !important;
+                overflow-y: auto !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 4px !important;
+                padding-right: 4px !important;
+                scrollbar-width: thin !important;
+                scrollbar-color: var(--ap-line-strong) transparent !important;
+            }
+            #ag-settings-modal .ag-vp-item {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                gap: 8px !important;
+                padding: 5px 6px 5px 8px !important;
+                background: var(--ap-surface) !important;
+                border-radius: var(--ap-radius-sm) !important;
+                font-size: var(--ap-fs-md) !important;
+            }
+            #ag-settings-modal .ag-vp-name {
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                min-width: 0 !important;
+                font-weight: 500 !important;
+            }
+            #ag-settings-modal .ag-vp-rank {
+                min-width: 20px !important;
+                font-size: var(--ap-fs-sm) !important;
+                font-weight: 700 !important;
+                color: var(--ap-accent) !important;
+            }
+            #ag-settings-modal .ag-vp-actions {
+                display: flex !important;
+                flex-shrink: 0 !important;
+                gap: 2px !important;
+            }
+            #ag-settings-modal .ag-vp-add {
+                display: flex !important;
+                gap: 6px !important;
+            }
+            #ag-settings-modal #ag-new-voice-input {
+                flex: 1 !important;
+                min-width: 0 !important;
+                height: 32px !important;
+                margin: 0 !important;
+                padding: 0 10px !important;
+                font-family: var(--ap-font) !important;
+                font-size: var(--ap-fs-sm) !important;
+                color: var(--ap-text) !important;
+                background: var(--ap-surface) !important;
+                border: 1px solid var(--ap-line) !important;
+                border-radius: var(--ap-radius-sm) !important;
+                outline: none !important;
+            }
+            #ag-settings-modal #ag-new-voice-input:focus { border-color: var(--ap-accent) !important; }
             #ag-settings-modal #ag-add-voice-btn {
-                all: unset !important;
-                box-sizing: border-box !important;
-                background: linear-gradient(135deg, var(--ag-set-accent), var(--ag-set-accent-dark)) !important;
-                border: none !important;
-                border-radius: 8px !important;
-                color: #fff !important;
-                font-weight: bold !important;
-                padding: 7px 14px !important;
+                flex-shrink: 0 !important;
+                height: 32px !important;
+                line-height: 32px !important;
+                padding: 0 12px !important;
+                background: var(--ap-accent) !important;
+                color: var(--ap-on-accent) !important;
+                border-radius: var(--ap-radius-sm) !important;
+                font-size: var(--ap-fs-sm) !important;
+                font-weight: 600 !important;
                 cursor: pointer !important;
-                font-size: 12px !important;
-                font-family: ${AG_FONT} !important;
-                box-shadow: 0 3px 10px rgba(239, 68, 68, 0.3) !important;
-                text-transform: none !important;
-                height: auto !important;
-                line-height: normal !important;
-                display: inline-block !important;
             }
             #ag-settings-modal .ag-vp-up,
-            #ag-settings-modal .ag-vp-down {
-                all: unset !important;
-                box-sizing: border-box !important;
-                background: rgba(255, 255, 255, 0.08) !important;
-                border: 1px solid rgba(255, 255, 255, 0.1) !important;
-                color: #fff !important;
-                border-radius: 6px !important;
-                width: 24px !important;
-                height: 24px !important;
-                min-width: 24px !important;
-                max-width: 24px !important;
-                cursor: pointer !important;
-                font-size: 10px !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                padding: 0 !important;
-                box-shadow: none !important;
-                text-transform: none !important;
-                line-height: 1 !important;
-            }
+            #ag-settings-modal .ag-vp-down,
             #ag-settings-modal .ag-vp-del {
-                all: unset !important;
-                box-sizing: border-box !important;
-                background: rgba(239, 68, 68, 0.15) !important;
-                border: 1px solid rgba(239, 68, 68, 0.3) !important;
-                color: #ef4444 !important;
-                border-radius: 6px !important;
-                width: 24px !important;
-                height: 24px !important;
-                min-width: 24px !important;
-                max-width: 24px !important;
+                width: 26px !important;
+                height: 26px !important;
+                min-width: 26px !important;
+                max-width: 26px !important;
+                color: var(--ap-text-2) !important;
+                border-radius: var(--ap-radius-sm) !important;
                 cursor: pointer !important;
-                font-size: 12px !important;
-                font-weight: 700 !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                padding: 0 !important;
-                box-shadow: none !important;
-                text-transform: none !important;
-                line-height: 1 !important;
+            }
+            #ag-settings-modal .ag-vp-up:hover,
+            #ag-settings-modal .ag-vp-down:hover {
+                color: var(--ap-text) !important;
+                background: var(--ap-hover) !important;
+            }
+            #ag-settings-modal .ag-vp-del:hover {
+                color: var(--ap-danger) !important;
+                background: var(--ap-danger-soft) !important;
+            }
+            #ag-settings-modal .ag-vp-up:disabled,
+            #ag-settings-modal .ag-vp-down:disabled {
+                opacity: 0.3 !important;
+                cursor: default !important;
+                background: transparent !important;
             }
 
-            @keyframes pulse { 0% {opacity:1;} 50% {opacity:0.7;} 100% {opacity:1;} }
+            @keyframes agSetPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
-            #ag-settings-modal .ag-custom-dropdown { position: relative !important; display: inline-block !important; width: 210px !important; font-family: ${AG_FONT} !important; user-select: none !important; text-transform: none !important; }
-            #ag-settings-modal .ag-dropdown-trigger { width: 100% !important; box-sizing: border-box !important; background: rgba(255, 255, 255, 0.06) !important; color: #f1f5f9 !important; border: 1px solid rgba(255, 255, 255, 0.14) !important; border-radius: 10px !important; padding: 8px 14px !important; font-size: 13px !important; font-weight: 600 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; cursor: pointer !important; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important; text-transform: none !important; line-height: normal !important; height: auto !important; }
-            #ag-settings-modal .ag-dropdown-trigger:hover { background: rgba(255, 255, 255, 0.12) !important; border-color: rgba(255, 255, 255, 0.28) !important; transform: translateY(-1px) !important; }
-            #ag-settings-modal .ag-custom-dropdown.open .ag-dropdown-trigger { border-color: var(--ag-set-accent) !important; box-shadow: 0 0 16px rgba(239, 68, 68, 0.35) !important; background: rgba(255, 255, 255, 0.12) !important; }
-            #ag-settings-modal .ag-dropdown-arrow { font-size: 10px !important; transition: transform 0.25s ease !important; opacity: 0.7 !important; margin-left: 8px !important; }
-            #ag-settings-modal .ag-custom-dropdown.open .ag-dropdown-arrow { transform: rotate(180deg) !important; opacity: 1 !important; color: var(--ag-set-accent) !important; }
-            #ag-settings-modal .ag-dropdown-menu { position: absolute !important; top: calc(100% + 6px) !important; left: 0 !important; right: 0 !important; width: 100% !important; box-sizing: border-box !important; background: #141824 !important; border: 1px solid rgba(255, 255, 255, 0.16) !important; border-radius: 12px !important; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05) !important; padding: 6px !important; z-index: 10000030 !important; display: none; max-height: 150px !important; overflow-y: auto !important; backdrop-filter: blur(20px) !important; -webkit-backdrop-filter: blur(20px) !important; text-transform: none !important; }
-            #ag-settings-modal .ag-custom-dropdown.open .ag-dropdown-menu { display: block !important; animation: agDropdownPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important; }
-            @keyframes agDropdownPop { from { opacity: 0; transform: translateY(-8px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-            #ag-settings-modal .ag-dropdown-menu::-webkit-scrollbar { width: 4px; }
-            #ag-settings-modal .ag-dropdown-menu::-webkit-scrollbar-track { background: transparent; }
-            #ag-settings-modal .ag-dropdown-menu::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
-            #ag-settings-modal .ag-dropdown-item { padding: 8px 12px !important; color: #cbd5e1 !important; border-radius: 8px !important; font-size: 13px !important; font-weight: 500 !important; cursor: pointer !important; transition: all 0.15s ease !important; display: flex !important; align-items: center !important; justify-content: space-between !important; margin-bottom: 2px !important; text-transform: none !important; line-height: normal !important; }
-            #ag-settings-modal .ag-dropdown-item:hover { background: rgba(255, 255, 255, 0.08) !important; color: #ffffff !important; padding-left: 16px !important; }
-            #ag-settings-modal .ag-dropdown-item.selected { background: var(--ag-set-accent) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important; }
+            #ag-settings-modal .ag-custom-dropdown { position: relative !important; display: inline-block !important; flex-shrink: 0 !important; width: 210px !important; user-select: none !important; text-transform: none !important; }
+            #ag-settings-modal .ag-dropdown-trigger { width: 100% !important; background: var(--ap-raised) !important; color: var(--ap-text) !important; border: 1px solid var(--ap-line) !important; border-radius: var(--ap-radius-sm) !important; height: 30px !important; padding: 0 10px !important; font-size: var(--ap-fs-sm) !important; font-weight: 500 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; cursor: pointer !important; transition: border-color var(--ap-ease) !important; text-transform: none !important; line-height: normal !important; }
+            #ag-settings-modal .ag-dropdown-trigger:hover { border-color: var(--ap-line-strong) !important; }
+            #ag-settings-modal .ag-custom-dropdown.open .ag-dropdown-trigger { border-color: var(--ap-accent) !important; }
+            #ag-settings-modal .ag-dropdown-arrow { display: inline-flex !important; transition: transform var(--ap-ease) !important; color: var(--ap-text-3) !important; margin-left: 8px !important; }
+            #ag-settings-modal .ag-custom-dropdown.open .ag-dropdown-arrow { transform: rotate(180deg) !important; }
+            #ag-settings-modal .ag-dropdown-menu { position: absolute !important; top: calc(100% + 4px) !important; left: 0 !important; right: 0 !important; width: 100% !important; background: var(--ap-raised) !important; border: 1px solid var(--ap-line-strong) !important; border-radius: var(--ap-radius) !important; box-shadow: var(--ap-shadow) !important; padding: 4px !important; z-index: 10000030 !important; display: none; max-height: 170px !important; overflow-y: auto !important; text-transform: none !important; scrollbar-width: thin !important; scrollbar-color: var(--ap-line-strong) transparent !important; }
+            #ag-settings-modal .ag-custom-dropdown.open .ag-dropdown-menu { display: block !important; }
+            #ag-settings-modal .ag-dropdown-item { padding: 6px 8px !important; color: var(--ap-text-2) !important; border-radius: var(--ap-radius-sm) !important; font-size: var(--ap-fs-sm) !important; font-weight: 500 !important; cursor: pointer !important; display: flex !important; align-items: center !important; justify-content: space-between !important; text-transform: none !important; line-height: normal !important; }
+            #ag-settings-modal .ag-dropdown-item:hover { background: var(--ap-hover) !important; color: var(--ap-text) !important; }
+            #ag-settings-modal .ag-dropdown-item.selected { color: var(--ap-accent) !important; font-weight: 600 !important; }
         `;
         document.head.appendChild(style);
     }
@@ -410,9 +503,10 @@
      * Окно настроек расширения. Используется на AnimeGO и на сайтах-провайдерах (features/settings-entry.js).
      * @param {Object} settings
      * @param {Function} onSaveCallback
-     * @param {{ brand?: string, accent?: string, getPlayerWindows?: () => Window[] }} [options]
+     * @param {{ brand?: string, accent?: string, getPlayerWindows?: () => Window[], extraInterfaceRows?: Array<{id: string, title: string, desc: string}> }} [options]
      *        brand — название сайта в заголовке; accent — цвет сайта; getPlayerWindows — куда отправить
-     *        AG_SETTINGS_UPDATE (по умолчанию первый iframe страницы, как было на AnimeGO)
+     *        AG_SETTINGS_UPDATE (по умолчанию первый iframe страницы, как было на AnimeGO);
+     *        extraInterfaceRows — переключатели только для этого сайта на вкладке «Интерфейс»
      */
     window.agOpenAnimeGoSettingsModal = function (settings, onSaveCallback, options = {}) {
         injectSettingsStyles();
@@ -438,23 +532,23 @@
         let activeKeyListener = null;
 
         const html = `
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px; text-align: left;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: rgba(227, 68, 68, 0.12); border: 1px solid rgba(227, 68, 68, 0.25); color: var(--ag-set-accent); font-size: 18px; line-height: 1;">⚙️</div>
-                    <div style="display: flex; flex-direction: column; justify-content: center;">
-                        <h3 style="margin: 0; color: #fff; font-size: 18px; font-weight: 800; line-height: 1.2; letter-spacing: -0.3px; font-family: ${AG_FONT};">Настройки ${window.agEscapeHtml ? window.agEscapeHtml(brand) : brand}<span style="color:var(--ag-set-accent);">+</span></h3>
-                        <span style="font-size: 10.5px; color: #64748b; font-weight: 600; letter-spacing: 0.2px; margin-top: 1px; font-family: ${AG_FONT};">by l_red_i</span>
+            <div class="ag-set-head">
+                <div class="ag-set-brand">
+                    <div class="ag-set-logo">${icon('gear', 20)}</div>
+                    <div>
+                        <h3 class="ag-set-title">Настройки Anime<span>+</span></h3>
+                        <span class="ag-set-sub">${window.agEscapeHtml ? window.agEscapeHtml(brand) : brand} · by l_red_i</span>
                     </div>
                 </div>
-                <button type="button" id="ag-settings-close" class="ag-modal-close-btn" title="Закрыть" aria-label="Закрыть">✕</button>
+                <button type="button" id="ag-settings-close" class="ag-modal-close-btn" title="Закрыть" aria-label="Закрыть">${icon('close', 16)}</button>
             </div>
 
             <div class="ag-tabs-nav">
-                <button type="button" class="ag-tab-btn active" data-tab="playback">📺 Плеер</button>
-                <button type="button" class="ag-tab-btn" data-tab="voice">🎙️ Озвучка</button>
-                <button type="button" class="ag-tab-btn" data-tab="interface">🎨 Интерфейс</button>
-                <button type="button" class="ag-tab-btn" data-tab="options">⚙️ Опции</button>
-                <button type="button" class="ag-tab-btn" data-tab="hotkeys">⌨️ Клавиши</button>
+                <button type="button" class="ag-tab-btn active" data-tab="playback">${icon('tv', 15)}Плеер</button>
+                <button type="button" class="ag-tab-btn" data-tab="voice">${icon('mic', 15)}Озвучка</button>
+                <button type="button" class="ag-tab-btn" data-tab="interface">${icon('sliders', 15)}Интерфейс</button>
+                <button type="button" class="ag-tab-btn" data-tab="options">${icon('gear', 15)}Опции</button>
+                <button type="button" class="ag-tab-btn" data-tab="hotkeys">${icon('keyboard', 15)}Клавиши</button>
             </div>
 
             <!-- Tab 1: Playback -->
@@ -477,21 +571,17 @@
                 </div>
                 <div class="ag-set-desc" style="margin-bottom: 8px;">Автоматически переключать плеер на наиболее предпочтительную доступную озвучку из списка ниже.</div>
 
-                <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-                        <span style="font-weight: 700; font-size: 12.5px; color: #fff; display: flex; align-items: center; gap: 6px;">
-                            🎙️ Приоритет озвучек
-                        </span>
-                        <span style="font-size: 10.5px; font-weight: 600; color: #94a3b8; background: rgba(255, 255, 255, 0.08); padding: 2px 8px; border-radius: 10px;">
-                            #1 = наивысший
-                        </span>
+                <div class="ag-vp-box">
+                    <div class="ag-vp-head">
+                        <span>Приоритет озвучек</span>
+                        <span class="ag-vp-hint">выше — важнее</span>
                     </div>
 
-                    <div id="ag-voice-priority-list-container" style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 6px;"></div>
+                    <div id="ag-voice-priority-list-container" class="ag-vp-list"></div>
 
-                    <div style="display: flex; gap: 8px; margin-top: 2px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
-                        <input type="text" id="ag-new-voice-input" placeholder="Добавить озвучку (напр. HDRezka)..." style="flex: 1; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; color: #fff; padding: 7px 12px; font-size: 12px; font-family: ${AG_FONT}; outline: none;">
-                        <button type="button" id="ag-add-voice-btn" style="background: linear-gradient(135deg, var(--ag-set-accent), var(--ag-set-accent-dark)); border: none; border-radius: 8px; color: #fff; font-weight: bold; padding: 7px 14px; cursor: pointer; font-size: 12px; font-family: ${AG_FONT}; box-shadow: 0 3px 10px rgba(239, 68, 68, 0.3);">+ Добавить</button>
+                    <div class="ag-vp-add">
+                        <input type="text" id="ag-new-voice-input" placeholder="Добавить озвучку, например HDRezka">
+                        <button type="button" id="ag-add-voice-btn">Добавить</button>
                     </div>
                 </div>
             </div>
@@ -502,6 +592,7 @@
                 ${renderRow('showSkipBtn', 'Кнопка +90с', 'Показывать кнопку быстрой перемотки опенинга.')}
                 ${renderRow('showPiP', 'Кнопка PiP', 'Показывать кнопку Картинка-в-Картинке.')}
                 ${renderRow('showCenterBtn', 'Кнопки перемотки', 'Дополнительные кнопки -5с / +5с в центре плеера.')}
+                ${(options.extraInterfaceRows || []).map(r => renderRow(r.id, r.title, r.desc)).join('')}
             </div>
 
             <!-- Tab 4: Options -->
@@ -511,7 +602,7 @@
                     <div class="ag-custom-dropdown" id="s-volStep" data-value="${settings.volStep || 0.05}">
                         <div class="ag-dropdown-trigger">
                             <span class="ag-dropdown-label">${(settings.volStep || 0.05) * 100}%</span>
-                            <span class="ag-dropdown-arrow">▼</span>
+                            <span class="ag-dropdown-arrow"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2 3.5 3 3 3-3"/></svg></span>
                         </div>
                         <div class="ag-dropdown-menu">
                             <div class="ag-dropdown-item ${settings.volStep === 0.01 ? 'selected' : ''}" data-value="0.01">1%</div>
@@ -522,8 +613,8 @@
                 </div>
                 <div class="ag-set-desc">Величина изменения громкости при вращении колесика мыши.</div>
 
-                <div class="ag-set-row" style="margin-top: 15px;">
-                    <span>🎲 Случайное аниме: Мин. рейтинг</span>
+                <div class="ag-set-row">
+                    <span>Случайное аниме: минимальная оценка</span>
                     <div class="ag-custom-dropdown" id="s-randomMinScore" data-value="${settings.random_min_score || '6.0'}">
                         <div class="ag-dropdown-trigger">
                             <span class="ag-dropdown-label">${
@@ -540,7 +631,7 @@
                                     '9.0': 'От 9.0 ★ (Шедевры)', '9': 'От 9.0 ★ (Шедевры)'
                                 }[String(settings.random_min_score)] || 'От 6.0 ★ (Среднее)'
                             }</span>
-                            <span class="ag-dropdown-arrow">▼</span>
+                            <span class="ag-dropdown-arrow"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2 3.5 3 3 3-3"/></svg></span>
                         </div>
                         <div class="ag-dropdown-menu">
                             <div class="ag-dropdown-item ${settings.random_min_score === 'any' ? 'selected' : ''}" data-value="any">Без ограничений</div>
@@ -558,16 +649,16 @@
                 </div>
                 <div class="ag-set-desc">Минимальная оценка на Shikimori для подбора через кнопку «Случайное аниме».</div>
 
-                <div class="ag-set-row" style="margin-top: 15px; align-items: flex-start; flex-direction: column; gap: 8px;">
-                    <span style="font-weight: 600; color: #fff;">🎲 Случайное аниме: Типы контента</span>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 4px;">
+                <div class="ag-set-row ag-set-row-stack">
+                    <span>Случайное аниме: типы</span>
+                    <div class="ag-chips">
                         ${['tv', 'movie', 'ova', 'ona', 'special'].map(k => {
                             const labels = { tv: 'Сериалы (TV)', movie: 'Фильмы', ova: 'OVA', ona: 'ONA', special: 'Спешлы' };
                             const rkArr = Array.isArray(settings.random_kinds) ? settings.random_kinds : ['tv', 'movie', 'ona', 'ova', 'special'];
                             const isChecked = rkArr.includes(k) ? 'checked' : '';
                             return `
-                                <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #ddd; cursor: pointer; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
-                                    <input type="checkbox" class="s-rk" value="${k}" ${isChecked} style="accent-color: var(--ag-set-accent); cursor: pointer;"> ${labels[k]}
+                                <label class="ag-chip">
+                                    <input type="checkbox" class="s-rk" value="${k}" ${isChecked}> ${labels[k]}
                                 </label>
                             `;
                         }).join('')}
@@ -575,16 +666,16 @@
                 </div>
                 <div class="ag-set-desc">Разрешенные типы тайтлов при подборе через кнопку «Случайное аниме».</div>
 
-                <div class="ag-set-row" style="margin-top: 15px;">
-                    <span>Исчезновение меню: <span id="v-ht" style="color:var(--ag-set-accent);">${settings.hideTime / 1000}</span>с</span>
+                <div class="ag-set-row">
+                    <span>Исчезновение меню: <span id="v-ht" class="ag-set-value">${settings.hideTime / 1000}</span>с</span>
                 </div>
                 <div class="ag-set-desc">Задержка до автоматического скрытия панели управления.</div>
-                <input type="range" id="s-hideTime" min="500" max="5000" step="500" value="${settings.hideTime}" style="width:100%; accent-color:var(--ag-set-accent); margin-bottom:16px;">
+                <input type="range" id="s-hideTime" min="500" max="5000" step="500" value="${settings.hideTime}" class="ag-range">
             </div>
 
             <!-- Tab 5: Hotkeys -->
             <div class="ag-tab-content" id="tab-hotkeys">
-                <p style="font-size:11px; color:#7e8b9b; margin-top:-5px; margin-bottom:15px; line-height: 1.4;">Нажмите на клавишу, затем нажмите кнопку на клавиатуре для изменения.</p>
+                <div class="ag-set-desc">Нажмите на кнопку, затем на клавишу, которую хотите назначить.</div>
                 ${renderKeyRow('fs', 'На весь экран', 'Разворачивает плеер в кастомный полноэкранный режим.')}
                 ${renderKeyRow('skip', 'Пропустить (Skip)', 'Пропускает опенинг/эндинг или перематывает на 85 секунд вперед.')}
                 ${renderKeyRow('next', 'След. серия', 'Переключает на следующую серию.')}
@@ -603,8 +694,7 @@
         modal.replaceChildren(...doc.body.childNodes);
 
         if (options.accent) {
-            modal.style.setProperty('--ag-set-accent', options.accent);
-            modal.style.setProperty('--ag-set-accent-dark', `color-mix(in srgb, ${options.accent} 72%, black)`);
+            if (window.AgUI) window.AgUI.applyAccent(options.accent, modal);
         }
         overlay.style.display = modal.style.display = 'block';
         document.body.classList.add('ag-modal-open');
@@ -632,26 +722,16 @@
 
             currentVoiceList.forEach((voiceName, index) => {
                 const item = document.createElement('div');
-                item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:6px 10px; font-size:12.5px; transition:all 0.2s ease;';
-                
-                item.onmouseenter = () => {
-                    item.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04))';
-                    item.style.borderColor = 'rgba(255,74,74,0.35)';
-                };
-                item.onmouseleave = () => {
-                    item.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))';
-                    item.style.borderColor = 'rgba(255,255,255,0.08)';
-                };
-
+                item.className = 'ag-vp-item';
                 item.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="font-size:10.5px; font-weight:800; color:#fff; background:linear-gradient(135deg, var(--ag-set-accent), var(--ag-set-accent-dark)); padding:2px 7px; border-radius:5px; box-shadow:0 2px 6px rgba(227,68,68,0.3);">#${index + 1}</span>
-                        <span style="color:#f8fafc; font-weight:600;">${window.agEscapeHtml ? window.agEscapeHtml(voiceName) : voiceName}</span>
+                    <div class="ag-vp-name">
+                        <span class="ag-vp-rank">${index + 1}</span>
+                        <span>${window.agEscapeHtml ? window.agEscapeHtml(voiceName) : voiceName}</span>
                     </div>
-                    <div style="display:flex; gap:5px;">
-                        <button type="button" class="ag-vp-up" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px; width:24px; height:24px; cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center;" ${index === 0 ? 'disabled style="opacity:0.25; cursor:not-allowed;"' : ''}>▲</button>
-                        <button type="button" class="ag-vp-down" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px; width:24px; height:24px; cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center;" ${index === currentVoiceList.length - 1 ? 'disabled style="opacity:0.25; cursor:not-allowed;"' : ''}>▼</button>
-                        <button type="button" class="ag-vp-del" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#ef4444; border-radius:6px; width:24px; height:24px; cursor:pointer; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;">×</button>
+                    <div class="ag-vp-actions">
+                        <button type="button" class="ag-vp-up" aria-label="Выше" ${index === 0 ? 'disabled' : ''}><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 7.5 3.5-3.5 3.5 3.5"/></svg></button>
+                        <button type="button" class="ag-vp-down" aria-label="Ниже" ${index === currentVoiceList.length - 1 ? 'disabled' : ''}><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 4.5 3.5 3.5 3.5-3.5"/></svg></button>
+                        <button type="button" class="ag-vp-del" aria-label="Удалить">${icon('close', 13)}</button>
                     </div>
                 `;
 
@@ -718,7 +798,7 @@
                 voice_priority_list: currentVoiceList,
                 keys: settings.keys
             };
-            ['autoPlay', 'autoNext', 'autoFS', 'autoSkip', 'showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'showDBL'].forEach(k => {
+            ['autoPlay', 'autoNext', 'autoFS', 'autoSkip', 'showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'showDBL', ...(options.extraInterfaceRows || []).map(r => r.id)].forEach(k => {
                 const el = document.getElementById(`s-${k}`);
                 if (el) patch[k] = el.checked;
             });
@@ -820,7 +900,7 @@
         modal.querySelector('#ag-save').onclick = () => {
             saveSettings();
             closeSettings();
-            if (window.showAgToast) window.showAgToast('Настройки сохранены!');
+            if (window.showAgToast) window.showAgToast('Настройки сохранены');
         };
 
         modal.querySelector('#ag-reset').onclick = () => {
@@ -829,7 +909,7 @@
                 chrome.storage.local.set({ ag_settings: newS });
                 if (typeof onSaveCallback === 'function') onSaveCallback(newS);
                 closeSettings();
-                if (window.showAgToast) window.showAgToast('Настройки сброшены!');
+                if (window.showAgToast) window.showAgToast('Настройки сброшены');
             }
         };
     };
@@ -848,10 +928,10 @@
             btn.id = 'ag-header-settings-gear';
             btn.type = 'button';
             btn.className = 'nav-link d-inline-flex icon-link align-items-center justify-content-center';
-            btn.title = 'Настройки AnimeGO+';
-            btn.setAttribute('aria-label', 'Настройки AnimeGO+');
+            btn.title = 'Настройки Anime+';
+            btn.setAttribute('aria-label', 'Настройки Anime+');
             btn.style.cssText = 'font-size: 18px; cursor: pointer; border: none; background: transparent; padding: 0 8px; transition: transform 0.25s; text-decoration: none;';
-            btn.innerHTML = '⚙️';
+            btn.innerHTML = icon('gear', 18);
 
             btn.onmouseover = () => { btn.style.transform = 'rotate(45deg)'; };
             btn.onmouseout = () => { btn.style.transform = 'rotate(0deg)'; };

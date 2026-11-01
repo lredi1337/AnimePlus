@@ -672,22 +672,21 @@
         setupSmartSkip(v);
 
         const font = window.AG_FONT || 'sans-serif';
-        const redColor = window.AG_RED || '#ff0000';
 
         const style = document.createElement("style");
         style.innerText = `
             #ag-ui { position:absolute; inset:0; pointer-events:none; z-index:9999990; opacity:0; transition:0.5s; display:flex; align-items:center; justify-content:center; font-family:${font}; }
-            .ag-btn { position:absolute; pointer-events:auto; cursor:pointer; background:rgba(30,30,30,0.5); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.1); color:#fff; display:flex; align-items:center; justify-content:center; transition:0.2s; border-radius:15px; user-select:none; opacity:0.3; z-index:9999997; }
-            .ag-btn:hover { opacity:0.8; color:${redColor}; border-color:${redColor}33; }
+            .ag-btn { position:absolute; pointer-events:auto; cursor:pointer; background:rgba(15,18,24,0.6); border:1px solid rgba(255,255,255,0.1); color:#fff; display:flex; align-items:center; justify-content:center; transition:0.15s; border-radius:10px; user-select:none; opacity:0.3; z-index:9999997; }
+            .ag-btn:hover { opacity:1; background:rgba(15,18,24,0.85); border-color:rgba(255,255,255,0.3); }
             .ag-nav { width:80px; height:140px; font-size:35px; top:50%; transform:translateY(-50%); } 
             #ag-skip { left:0; top:calc(50% + 150px); transform:translateY(-50%); width:80px; height:140px; font-size:45px; transition: 0.4s; }
             body.ag-fs-active #ag-skip { top: auto !important; bottom: 80px !important; left: 0 !important; transform: translateY(0) !important; }
             
             #ag-smart-skip {
                 position:fixed; bottom:75px; right:25px; z-index:2147483647; 
-                padding:10px 20px; background:rgba(0,0,0,0.7); color:#fff; 
-                border:1px solid rgba(255,255,255,0.35); border-radius:4px; 
-                cursor:pointer; font-family:sans-serif; font-size:14px; 
+                padding:9px 16px; background:rgba(15,18,24,0.85); color:#fff; 
+                border:1px solid rgba(255,255,255,0.3); border-radius:8px; 
+                cursor:pointer; font-family:${font}; font-size:14px; font-weight:600; 
                 display:none; pointer-events:auto; transition:0.2s; user-select:none;
             }
             #ag-smart-skip:hover {
@@ -729,7 +728,7 @@
         document.head.appendChild(style);
         const ui = document.createElement('div'); ui.id = 'ag-ui';
         const parser = new DOMParser();
-        const doc = parser.parseFromString(`<div class="ag-btn ag-nav" style="left:0" id="ag-p"><span>&lt;</span><div id="ag-pn" class="ag-num"></div></div><div class="ag-btn ag-nav" style="right:0" id="ag-n"><span>&gt;</span><div id="ag-nn" class="ag-num"></div></div><div class="ag-btn" id="ag-skip"><span>»</span></div><div class="ag-btn ag-center-btn" id="ag-c1">«5</div><div class="ag-btn ag-center-btn" id="ag-c2">5»</div><div class="ag-btn" id="ag-pip" title="PiP (Картинка в картинке)"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg></div><div id="ag-flash"></div><div class="ag-click-zone" style="left:0; width:20%;" id="z-p"></div><div class="ag-click-zone" style="right:0; width:20%;" id="z-n"></div><div class="ag-click-zone" style="left:20%; width:60%;" id="z-m"></div><div id="ag-fs-patch"></div><div id="ag-tooltip">AnimeGO+: Расширить плеер</div>`, 'text/html');
+        const doc = parser.parseFromString(`<div class="ag-btn ag-nav" style="left:0" id="ag-p"><span>&lt;</span><div id="ag-pn" class="ag-num"></div></div><div class="ag-btn ag-nav" style="right:0" id="ag-n"><span>&gt;</span><div id="ag-nn" class="ag-num"></div></div><div class="ag-btn" id="ag-skip"><span>»</span></div><div class="ag-btn ag-center-btn" id="ag-c1">«5</div><div class="ag-btn ag-center-btn" id="ag-c2">5»</div><div class="ag-btn" id="ag-pip" title="PiP (Картинка в картинке)"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg></div><div id="ag-flash"></div><div class="ag-click-zone" style="left:0; width:20%;" id="z-p"></div><div class="ag-click-zone" style="right:0; width:20%;" id="z-n"></div><div class="ag-click-zone" style="left:20%; width:60%;" id="z-m"></div><div id="ag-fs-patch"></div><div id="ag-tooltip">Anime+: развернуть плеер</div>`, 'text/html');
         ui.replaceChildren(...doc.body.childNodes);
         document.body.appendChild(ui);
 
@@ -811,7 +810,7 @@
                 if (document.getElementById('ag-nn')) document.getElementById('ag-nn').textContent = nextNum;
 
                 if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
-                    navigator.mediaSession.metadata.title = e.data.currentTitle || 'AnimeGO+';
+                    navigator.mediaSession.metadata.title = e.data.currentTitle || 'Anime+';
                 }
             }
         });
@@ -821,8 +820,8 @@
         if ('mediaSession' in navigator) {
             try {
                 navigator.mediaSession.metadata = new MediaMetadata({
-                    title: 'AnimeGO+',
-                    artist: 'AnimeGO+',
+                    title: 'Anime+',
+                    artist: 'Anime+',
                     album: 'AnimeGO Series'
                 });
 
@@ -847,15 +846,14 @@
                 osd.style = `
                     position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
                     background: rgba(0,0,0,0.7); color: #fff; padding: 10px 20px;
-                    border-radius: 8px; font-size: 20px; z-index: 9999999;
+                    border-radius: 8px; font-size: 16px; font-weight: 600; z-index: 9999999;
                     pointer-events: none; transition: opacity 0.3s;
-                    font-family: ${font}; border: 1px solid rgba(255,255,255,0.2);
-                    backdrop-filter: blur(10px);
+                    font-family: ${font}; border: 1px solid rgba(255,255,255,0.1);
                 `;
                 document.body.appendChild(osd);
             }
             const volPercent = Math.round(vol * 100);
-            osd.innerHTML = `🔊 ${volPercent}%`;
+            osd.innerHTML = `${window.AgUI ? window.AgUI.icon('volume', 20) : ''} ${volPercent}%`;
             osd.style.opacity = '1';
 
             clearTimeout(osd.hideTimeout);

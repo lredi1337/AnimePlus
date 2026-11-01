@@ -1,5 +1,6 @@
 // Реестр сайтов (modules/shared/sites.js подключён в popup.html до этого файла)
 const AgSites = window.AgSites;
+const AgUI = window.AgUI;
 
 // Фолбэк постеров в popup. Inline onerror="" в страницах расширения запрещён CSP Manifest V3,
 // поэтому обработчик вешается через addEventListener. Заглушку Shikimori («лису» /assets/globals/missing_*)
@@ -35,11 +36,12 @@ async function renderSelectorHealth() {
         .filter(([, h]) => h && Array.isArray(h.missing) && h.missing.length > 0 && Date.now() - h.ts < WEEK)
         .map(([site]) => (AgSites.byId(site) || { name: site }).name);
     if (broken.length === 0) return;
-    box.textContent = `⚠ ${broken.join(' и ')}: сайт изменил разметку, часть функций может не работать. Подробности — в консоли страницы.`;
+    box.textContent = `${broken.join(' и ')}: сайт изменил разметку, часть функций может не работать. Подробности — в консоли страницы.`;
     box.hidden = false;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    AgUI.hydrate();
     renderSelectorHealth().catch(() => {});
     // --- State & Settings ---
     const res = await chrome.storage.local.get(['ag_settings']);
@@ -50,7 +52,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const extToggle = document.getElementById('extToggle');
     const extBody = document.getElementById('extBody');
     const extOffNote = document.getElementById('extOffNote');
-    const brandEl = document.getElementById('popup-brand');
     const statusBox = document.getElementById('status-box');
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
@@ -151,8 +152,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (chrome.runtime.lastError || !response) {
                     if (musicLoading) {
                         musicLoading.innerHTML = `
-                            <div>⚠ Не удалось загрузить данные об аниме.</div>
-                            <button id="btn-reload-tab" style="margin-top:6px; padding:5px 10px; font-size:11px; width:auto;">Обновить страницу</button>
+                            <div class="panel-hint">Не удалось загрузить данные об аниме.</div>
+                            <button class="btn-secondary" id="btn-reload-tab">Обновить страницу</button>
                         `;
                         const reloadBtn = document.getElementById('btn-reload-tab');
                         if (reloadBtn) reloadBtn.onclick = () => chrome.tabs.reload(activeTab.id);
@@ -191,25 +192,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sitesEmpty = document.getElementById('sitesEmpty');
     const sitesCount = document.getElementById('sitesCount');
 
-    function hexToRgba(hex, alpha) {
-        const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
-        return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})` : '';
-    }
-
     // Акцент popup = цвет текущего сайта из реестра (раньше — две жёстко заданные темы)
     function applySiteTheme(site) {
         const badge = document.getElementById('siteCurrentBadge');
         const name = document.getElementById('siteCurrentName');
         if (site) {
-            document.body.style.setProperty('--accent', site.color);
-            document.body.style.setProperty('--accent-bg', hexToRgba(site.color, 0.15));
-            if (brandEl) brandEl.innerHTML = `${escapeHtml(site.name)}<span>+</span>`;
+            AgUI.applyAccent(site.color);
             if (badge) { badge.textContent = site.short; badge.classList.remove('is-muted'); }
             if (name) name.textContent = site.name;
         } else {
-            document.body.style.removeProperty('--accent');
-            document.body.style.removeProperty('--accent-bg');
-            if (brandEl) brandEl.innerHTML = 'ANIME<span>+</span>';
+            AgUI.resetAccent();
             if (badge) { badge.textContent = '+'; badge.classList.add('is-muted'); }
             if (name) name.textContent = 'Сайт не открыт';
         }
@@ -253,12 +245,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const li = document.createElement('li');
             li.className = 'site-item' + (isCurrent(site) ? ' is-current' : '') + (enabled ? '' : ' is-disabled');
             li.innerHTML = `
-                <span class="site-badge" style="background:${site.color}">${escapeHtml(site.short)}</span>
+                <span class="site-badge" style="background:${site.color}; color:${AgUI.onAccent(site.color)}">${escapeHtml(site.short)}</span>
                 <div class="site-item-text">
                     <div class="site-item-name">${escapeHtml(site.name)}${isCurrent(site) ? '<span class="site-item-tag">открыт</span>' : ''}</div>
                     <div class="site-item-host">${escapeHtml(site.hosts[0])}</div>
                 </div>
-                <button type="button" class="site-open" title="Открыть ${escapeHtml(site.name)}" aria-label="Открыть ${escapeHtml(site.name)}">↗</button>
+                <button type="button" class="site-open" title="Открыть ${escapeHtml(site.name)}" aria-label="Открыть ${escapeHtml(site.name)}">${AgUI.icon('external', 14)}</button>
                 <label class="site-switch" title="${enabled ? 'Выключить' : 'Включить'} на ${escapeHtml(site.name)}">
                     <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Anime+ на ${escapeHtml(site.name)}">
                     <span></span>
@@ -286,17 +278,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activateBtn) {
         activateBtn.onclick = async () => {
             if (!activeTab) return;
-            activateBtn.textContent = 'Активация...';
+            activateBtn.textContent = 'Активация…';
             try {
                 await chrome.scripting.executeScript({
                     target: { tabId: activeTab.id, allFrames: true },
-                    files: ["config.js", "modules/shared/sites.js", "content-kodik.js"]
+                    files: ["config.js", "modules/shared/sites.js", "modules/shared/ui-kit.js", "content-kodik.js"]
                 });
-                activateBtn.textContent = '✅ Плеер активирован!';
+                activateBtn.textContent = 'Плеер активирован';
                 setTimeout(() => window.close(), 1500);
             } catch (e) {
                 console.error("Activation failed", e);
-                activateBtn.textContent = '❌ Ошибка прав';
+                activateBtn.textContent = 'Нет прав на эту вкладку';
             }
         };
     }
@@ -389,7 +381,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     parentStat.title = 'Нажмите, чтобы сбросить счётчик за сегодня';
                     parentStat.onclick = () => {
                         showCustomConfirm(
-                            "⚠️ Сбросить счётчик?",
+                            "Сбросить счётчик?",
                             "Вы действительно хотите сбросить число серий за сегодня до 0?",
                             () => {
                                 chrome.runtime.sendMessage({ action: "reset_today_count" }, (resetRes) => {
@@ -419,15 +411,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (statusTextEl) {
                     if (res.authError) {
-                        statusTextEl.textContent = '⚠️ Токен истёк';
-                        statusTextEl.style.color = '#f87171';
+                        statusTextEl.textContent = 'Токен истёк, войдите заново';
+                        statusTextEl.className = 'profile-sub is-error';
                     } else if (res.lastSyncTime) {
                         const mins = Math.max(1, Math.floor((Date.now() - res.lastSyncTime) / 60000));
-                        statusTextEl.textContent = `Shikimori · отметка ${mins}m назад 🍃`;
-                        statusTextEl.style.color = '#2dd4a5';
+                        statusTextEl.textContent = `Отметка ${mins} мин назад`;
+                        statusTextEl.className = 'profile-sub is-ok';
                     } else {
-                        statusTextEl.textContent = 'Shikimori · подключено 🍃';
-                        statusTextEl.style.color = '#2dd4a5';
+                        statusTextEl.textContent = 'Shikimori · подключено';
+                        statusTextEl.className = 'profile-sub is-ok';
                     }
                 }
 
@@ -466,12 +458,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             list.forEach(item => {
                 const chip = document.createElement('div');
                 chip.className = 'history-chip';
-                chip.style.cssText = 'flex: 0 0 auto; background: rgba(255,255,255,0.06); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; font-size: 10px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; color: var(--text); transition: background 0.2s;';
                 chip.textContent = item.russian || item.name;
                 chip.title = `Открыть ${item.russian || item.name}`;
-
-                chip.onmouseenter = () => chip.style.background = 'rgba(255,255,255,0.12)';
-                chip.onmouseleave = () => chip.style.background = 'rgba(255,255,255,0.06)';
 
                 chip.onclick = () => {
                     if (item.url) {
@@ -540,7 +528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (item.kind) {
                 const k = item.kind.toUpperCase();
                 const kindName = k === 'TV' ? 'TV' : (k === 'MOVIE' ? 'Фильм' : (k === 'SPECIAL' ? 'Спешл' : k));
-                kindTagHtml = `<span style="font-size:9px; color:var(--text-muted); margin-left:4px;">${escapeHtml(kindName)}</span>`;
+                kindTagHtml = `<span class="anime-kind">${escapeHtml(kindName)}</span>`;
             }
 
             const safeTitle = escapeHtml(item.russian || item.name || '');
@@ -551,11 +539,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             itemDiv.innerHTML = `
                 <img class="anime-thumb" src="${escapeHtml(posterSrc)}" alt="poster">
-                <div style="flex:1; min-width:0;">
+                <div class="anime-row-body">
                     <div class="anime-title" title="${safeTitle}">${safeTitle}${kindTagHtml}</div>
                     <div class="anime-progress">${escapeHtml(epText)}</div>
                 </div>
-                <button class="play-btn" data-title="${safeTitle}">▶</button>
+                <button class="play-btn" data-title="${safeTitle}" aria-label="Смотреть">${AgUI.icon('play', 14)}</button>
             `;
 
             bindPopupPoster(itemDiv.querySelector('img.anime-thumb'), item.animeId || item.id);
@@ -580,7 +568,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     titles: [item.name, item.russian].filter(Boolean),
                     shikimoriId: item.animeId
                 }, (res) => {
-                    watchBtn.textContent = '▶';
+                    watchBtn.innerHTML = AgUI.icon('play', 14);
                     watchBtn.disabled = false;
                     const found = ((res && res.results) || []).filter(r => r.url);
 
@@ -607,6 +595,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         btn.type = 'button';
                         btn.className = 'btn-choice-site';
                         btn.style.background = site.color;
+                        btn.style.color = AgUI.onAccent(site.color);
                         btn.textContent = site.short;
                         btn.title = `Смотреть на ${site.name}`;
                         btn.onclick = (ev) => { ev.stopPropagation(); window.open(r.url, '_blank'); };
@@ -941,11 +930,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const displayName = `${animeOrigTitle || animeTitle} ${typeLabel} ${songNum}`;
         
         div.innerHTML = `
-            <div style="min-width:0; flex:1;">
-                <div class="track-label">${displayType} (Поиск)</div>
+            <div class="track-body">
+                <div class="track-label">${displayType} (поиск)</div>
                 <div class="track-name">${displayName}</div>
             </div>
-            <button class="btn-youtube" title="Искать на YouTube">▶</button>
+            <button class="btn-youtube" title="Искать на YouTube" aria-label="Искать на YouTube">${AgUI.icon('play', 13)}</button>
         `;
         
         div.querySelector('.btn-youtube').onclick = () => {
@@ -1003,11 +992,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cleanedName = cleanTrackName(track);
 
             div.innerHTML = `
-                <div style="min-width:0; flex:1;">
+                <div class="track-body">
                     <div class="track-label">${label}</div>
                     <div class="track-name" title="${cleanedName}">${cleanedName}</div>
                 </div>
-                <button class="btn-youtube" title="Слушать на YouTube">▶</button>
+                <button class="btn-youtube" title="Слушать на YouTube" aria-label="Слушать на YouTube">${AgUI.icon('play', 13)}</button>
             `;
 
             div.querySelector('.btn-youtube').onclick = () => {
@@ -1052,13 +1041,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const imported = JSON.parse(evt.target.result);
                     if (typeof imported === 'object' && imported !== null) {
                         await chrome.storage.local.set({ ag_settings: imported });
-                        showToast(siteToast, "✅ Настройки успешно импортированы!");
+                        showToast(siteToast, "Настройки импортированы");
                         setTimeout(() => window.location.reload(), 1000);
                     } else {
-                        showToast(siteToast, "❌ Неверный формат файла");
+                        showToast(siteToast, "Неверный формат файла");
                     }
                 } catch (err) {
-                    showToast(siteToast, "❌ Ошибка чтения JSON файла");
+                    showToast(siteToast, "Не удалось прочитать файл JSON");
                 }
             };
             reader.readAsText(file);
@@ -1081,14 +1070,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (btnCheckNow) {
         btnCheckNow.onclick = async () => {
-            btnCheckNow.textContent = '⏳ ...';
+            btnCheckNow.textContent = 'Проверяем…';
             btnCheckNow.disabled = true;
             chrome.runtime.sendMessage({ action: 'force_check_episodes' }, () => {
                 setTimeout(async () => {
                     await render24hNotifications();
-                    btnCheckNow.textContent = '✅ Готово';
+                    btnCheckNow.textContent = 'Готово';
                     setTimeout(() => {
-                        btnCheckNow.textContent = '🔄 Проверить';
+                        btnCheckNow.textContent = 'Проверить';
                         btnCheckNow.disabled = false;
                     }, 1200);
                 }, 1000);
@@ -1116,9 +1105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (freshItems.length === 0) {
                 notifPanelItems.innerHTML = `
-                    <div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 12px 0;">
-                        Новых серий за последние 24 часа не выходило
-                    </div>
+                    <div class="panel-note">Новых серий за последние 24 часа не выходило</div>
                 `;
                 return;
             }
@@ -1132,17 +1119,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const posterSrc = (window.agNormalizePosterUrl && typeof window.agNormalizePosterUrl === 'function')
                     ? (window.agNormalizePosterUrl(posterRaw) || posterRaw)
                     : posterRaw;
-                const metaText = item.voiceovers ? `🎤 ${item.voiceovers}` : 'Новая серия';
+                const metaText = item.voiceovers ? item.voiceovers : 'Новая серия';
                 const epLabel = item.episode ? `${item.episode} эп.` : '';
                 const safeTitle = escapeHtml(item.title || '');
 
                 row.innerHTML = `
                     <img src="${posterSrc}" class="anime-thumb" alt="poster">
-                    <div style="min-width: 0; flex: 1;">
-                        <div class="anime-title" title="${safeTitle}">${safeTitle} ${epLabel ? `<small style="color: var(--text-secondary); font-weight: 500;">${epLabel}</small>` : ''}</div>
+                    <div class="anime-row-body">
+                        <div class="anime-title" title="${safeTitle}">${safeTitle} ${epLabel ? `<small>${epLabel}</small>` : ''}</div>
                         <div class="anime-progress">${metaText}</div>
                     </div>
-                    <button class="play-btn" data-title="${safeTitle}">▶</button>
+                    <button class="play-btn" data-title="${safeTitle}" aria-label="Смотреть">${AgUI.icon('play', 14)}</button>
                 `;
 
                 bindPopupPoster(row.querySelector('img.anime-thumb'), item.animeId);

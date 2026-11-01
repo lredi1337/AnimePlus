@@ -4,7 +4,7 @@
 (function () {
     'use strict';
 
-    const AG_RED = '#ef4444';
+    const AG_RED = 'var(--ap-accent)';
     const AG_FONT = "'Inter', system-ui, sans-serif";
     const AG_NO_POSTER_SVG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='140' viewBox='0 0 100 140'><rect width='100' height='140' fill='%231e293b'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='12'>Нет фото</text></svg>";
 
@@ -16,9 +16,9 @@
             /* --- НАСТРОЙКИ РАСПИСАНИЯ (SCHEDULE SETTINGS) --- */
             #ag-schedule-settings-btn {
                 background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                border: 1px solid var(--ap-line);
                 border-radius: 8px;
-                color: #f8fafc;
+                color: var(--ap-text);
                 display: inline-flex;
                 align-items: center;
                 gap: 6px;
@@ -34,10 +34,10 @@
                 outline: none;
             }
             #ag-schedule-settings-btn:hover, #ag-schedule-settings-btn.active {
-                background: rgba(239, 68, 68, 0.15);
-                border-color: rgba(239, 68, 68, 0.45);
-                color: #ff6b6b;
-                box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);
+                background: var(--ap-accent-soft);
+                border-color: var(--ap-accent-line);
+                color: var(--ap-accent);
+                box-shadow: none;
                 transform: translateY(-1px);
             }
             #ag-schedule-settings-btn svg {
@@ -53,14 +53,14 @@
             #ag-schedule-settings-modal {
                 display: none;
                 position: relative;
-                background: linear-gradient(145deg, rgba(17, 22, 34, 0.98) 0%, rgba(25, 31, 46, 0.98) 100%);
-                color: #f8fafc;
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: var(--ap-surface);
+                color: var(--ap-text);
+                border: 1px solid var(--ap-line);
                 border-radius: 14px;
                 padding: 18px 20px;
                 margin-top: 10px;
                 margin-bottom: 18px;
-                box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 24px rgba(239, 68, 68, 0.12);
+                box-shadow: none;
                 z-index: 9999;
                 font-size: 13px;
                 font-family: ${AG_FONT};
@@ -79,33 +79,33 @@
                 align-items: center;
                 margin-bottom: 16px;
                 padding-bottom: 12px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                border-bottom: 1px solid var(--ap-hover);
             }
             .ag-schedule-modal-title {
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                font-weight: 800;
+                font-weight: 700;
                 font-size: 13px;
                 letter-spacing: 0.5px;
                 text-transform: uppercase;
-                color: #f8fafc;
+                color: var(--ap-text);
             }
             .ag-schedule-modal-title .ag-badge-tag {
-                background: linear-gradient(135deg, ${AG_RED} 0%, #b32a2a 100%);
+                background: var(--ap-accent);
                 color: #ffffff;
                 font-size: 10px;
-                font-weight: 800;
+                font-weight: 700;
                 padding: 2px 7px;
                 border-radius: 6px;
                 letter-spacing: 0.3px;
-                box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+                box-shadow: none;
             }
             .ag-schedule-modal-close {
-                background: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: var(--ap-hover);
+                border: 1px solid var(--ap-line);
                 border-radius: 6px;
-                color: #94a3b8;
+                color: var(--ap-text-2);
                 width: 26px;
                 height: 26px;
                 display: flex;
@@ -117,8 +117,8 @@
                 outline: none;
             }
             .ag-schedule-modal-close:hover {
-                background: rgba(239, 68, 68, 0.2);
-                border-color: rgba(239, 68, 68, 0.4);
+                background: var(--ap-accent-soft);
+                border-color: var(--ap-accent-line);
                 color: #ffffff;
                 transform: scale(1.05);
             }
@@ -146,7 +146,7 @@
             }
             .ag-schedule-card-row:hover {
                 background: rgba(255, 255, 255, 0.05);
-                border-color: rgba(255, 255, 255, 0.1);
+                border-color: var(--ap-line);
             }
             .ag-schedule-label-info {
                 display: flex;
@@ -156,11 +156,11 @@
             .ag-schedule-label-title {
                 font-size: 13px;
                 font-weight: 600;
-                color: #e2e8f0;
+                color: var(--ap-text);
             }
             .ag-schedule-label-desc {
                 font-size: 11px;
-                color: #94a3b8;
+                color: var(--ap-text-2);
             }
 
             /* Toggle Switch */
@@ -180,7 +180,7 @@
                 position: absolute;
                 cursor: pointer;
                 top: 0; left: 0; right: 0; bottom: 0;
-                background-color: rgba(255, 255, 255, 0.15);
+                background-color: var(--ap-line-strong);
                 transition: .3s;
                 border-radius: 24px;
             }
@@ -208,12 +208,12 @@
                 user-select: none;
             }
             .ag-dropdown-trigger {
-                background: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                background: var(--ap-hover);
+                border: 1px solid var(--ap-line);
                 border-radius: 8px;
                 padding: 5px 10px;
                 font-size: 12px;
-                color: #e2e8f0;
+                color: var(--ap-text);
                 cursor: pointer;
                 display: flex;
                 align-items: center;
@@ -221,11 +221,11 @@
                 gap: 6px;
             }
             .ag-dropdown-trigger:hover {
-                background: rgba(255, 255, 255, 0.1);
+                background: var(--ap-line);
             }
             .ag-dropdown-arrow {
                 font-size: 9px;
-                color: #94a3b8;
+                color: var(--ap-text-2);
                 transition: transform 0.2s ease;
             }
             .ag-custom-dropdown.open .ag-dropdown-arrow {
@@ -236,8 +236,8 @@
                 position: absolute;
                 right: 0;
                 top: 105%;
-                background: #1e293b;
-                border: 1px solid rgba(255, 255, 255, 0.15);
+                background: var(--ap-raised);
+                border: 1px solid var(--ap-line-strong);
                 border-radius: 8px;
                 box-shadow: 0 10px 25px rgba(0,0,0,0.5);
                 z-index: 10000;
@@ -250,12 +250,12 @@
             .ag-dropdown-item {
                 padding: 7px 12px;
                 font-size: 12px;
-                color: #cbd5e1;
+                color: var(--ap-text-2);
                 cursor: pointer;
                 transition: background 0.15s ease;
             }
             .ag-dropdown-item:hover {
-                background: rgba(239, 68, 68, 0.2);
+                background: var(--ap-accent-soft);
                 color: #fff;
             }
             .ag-dropdown-item.selected {
@@ -278,7 +278,7 @@
                 font-weight: 700;
                 text-transform: uppercase;
                 letter-spacing: 0.6px;
-                color: #94a3b8;
+                color: var(--ap-text-2);
             }
             .ag-schedule-chips-grid {
                 display: flex;
@@ -292,8 +292,8 @@
                 padding: 6px 12px;
                 border-radius: 20px;
                 background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                color: #94a3b8;
+                border: 1px solid var(--ap-line);
+                color: var(--ap-text-2);
                 font-size: 12px;
                 font-weight: 600;
                 cursor: pointer;
@@ -305,21 +305,21 @@
                 display: none;
             }
             .ag-schedule-chip:hover {
-                background: rgba(255, 255, 255, 0.08);
-                border-color: rgba(255, 255, 255, 0.2);
-                color: #f1f5f9;
+                background: var(--ap-hover);
+                border-color: var(--ap-line-strong);
+                color: var(--ap-text);
             }
             .ag-schedule-chip.active {
-                background: linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.35) 100%);
-                border-color: rgba(239, 68, 68, 0.6);
+                background: var(--ap-accent-soft);
+                border-color: var(--ap-accent-line);
                 color: #ffffff;
-                box-shadow: 0 2px 10px rgba(239, 68, 68, 0.2);
+                box-shadow: none;
             }
             .ag-schedule-chip-icon {
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
-                background: #64748b;
+                background: var(--ap-text-3);
                 transition: all 0.2s ease;
             }
             .ag-schedule-chip.active .ag-schedule-chip-icon {
@@ -385,7 +385,7 @@
         const btn = document.createElement('button');
         btn.id = 'ag-schedule-settings-btn';
         btn.type = 'button';
-        btn.title = 'Настройки расписания (AnimeGO+)';
+        btn.title = 'Настройки расписания (Anime+)';
         btn.innerHTML = `
             <svg viewBox="0 0 24 24">
                 <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
@@ -430,11 +430,11 @@
                 modal.innerHTML = `
                     <div class="ag-schedule-modal-header">
                         <div class="ag-schedule-modal-title">
-                            <svg style="width:16px; height:16px; fill:#f87171;" viewBox="0 0 24 24">
+                            <svg style="width:16px; height:16px; fill:var(--ap-accent);" viewBox="0 0 24 24">
                                 <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
                             </svg>
                             <span>Настройки расписания</span>
-                            <span class="ag-badge-tag">AnimeGO+</span>
+                            <span class="ag-badge-tag">Anime+</span>
                         </div>
                         <button class="ag-schedule-modal-close" id="ag-settings-close" title="Закрыть">
                             <svg viewBox="0 0 24 24">
@@ -775,15 +775,15 @@
                         </div>
                         <div class="aw-meta small opacity-75 d-flex align-items-center gap-1 flex-wrap">
                             <span>${epNum}</span>
-                            <span class="badge" style="font-size: 0.65rem; font-weight: 500; background: rgba(239, 68, 68, 0.15) !important; color: #f87171 !important; border: 1px solid rgba(239, 68, 68, 0.3) !important; padding: 1px 5px; border-radius: 4px; vertical-align: middle;">jut-su.net ↗</span>
+                            <span class="badge" style="font-size: 0.65rem; font-weight: 500; background: var(--ap-accent-soft) !important; color: var(--ap-accent) !important; border: 1px solid var(--ap-accent-line) !important; padding: 1px 5px; border-radius: 4px; vertical-align: middle;">jut-su.net ↗</span>
                         </div>
                     </div>
                 `;
             } else {
                 card.className = 'd-flex align-items-center p-2 mb-2 rounded ag-jutsu-schedule-card text-decoration-none';
-                card.style.cssText = 'background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; cursor: pointer; transition: background 0.2s, border-color 0.2s; display: flex;';
-                card.onmouseover = () => { card.style.background = 'rgba(239, 68, 68, 0.08)'; card.style.borderColor = 'rgba(239, 68, 68, 0.5)'; };
-                card.onmouseout = () => { card.style.background = 'rgba(255, 255, 255, 0.03)'; card.style.borderColor = 'rgba(239, 68, 68, 0.25)'; };
+                card.style.cssText = 'background: rgba(255, 255, 255, 0.03); border: 1px solid var(--ap-accent-soft); border-radius: 8px; cursor: pointer; transition: background 0.2s, border-color 0.2s; display: flex;';
+                card.onmouseover = () => { card.style.background = 'var(--ap-accent-soft)'; card.style.borderColor = 'var(--ap-accent-line)'; };
+                card.onmouseout = () => { card.style.background = 'rgba(255, 255, 255, 0.03)'; card.style.borderColor = 'var(--ap-accent-soft)'; };
 
                 card.innerHTML = `
                     <div style="width: 48px; height: 68px; flex-shrink: 0; margin-right: 12px; overflow: hidden; border-radius: 6px; position: relative;">
@@ -791,9 +791,9 @@
                     </div>
                     <div style="flex-grow: 1; min-width: 0;">
                         <div class="text-truncate" style="font-weight: 600; font-size: 0.9rem; color: #fff; margin-bottom: 2px;">${titleStr}</div>
-                        <div class="text-truncate" style="font-size: 0.78rem; color: #94a3b8; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <div class="text-truncate" style="font-size: 0.78rem; color: var(--ap-text-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                             <span>${epNum}</span>
-                            <span class="badge" style="font-size: 0.65rem; font-weight: 500; background: rgba(239, 68, 68, 0.15) !important; color: #f87171 !important; border: 1px solid rgba(239, 68, 68, 0.3) !important; padding: 1px 5px; border-radius: 4px;">jut-su.net ↗</span>
+                            <span class="badge" style="font-size: 0.65rem; font-weight: 500; background: var(--ap-accent-soft) !important; color: var(--ap-accent) !important; border: 1px solid var(--ap-accent-line) !important; padding: 1px 5px; border-radius: 4px;">jut-su.net ↗</span>
                         </div>
                     </div>
                 `;

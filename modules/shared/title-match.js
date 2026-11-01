@@ -7,6 +7,8 @@
     'use strict';
 
     const ROMAN = { ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+    // Побочные выпуски: если их не искали, основной тайтл важнее
+    const SIDE_WORK = /(?:^|\s)(?:спецвыпуск\S*|спешл\S*|фильм\S*|ova|ona|ова|movie|specials?|recap)(?:\s|$)/;
 
     // Нижний регистр, всё кроме букв (латиница/кириллица) и цифр — в пробел
     function normalize(str) {
@@ -62,6 +64,47 @@
         return best;
     }
 
+    // Название без обозначения сезона: «2nd Season», «Season 2», «2 сезон», «ТВ-2», «… 2», «… II»
+    function baseTitle(str) {
+        return normalize(String(str || '')
+            .replace(/\d+\s*(?:st|nd|rd|th)?\s*(?:-?\s*й|-?\s*го)?\s*(?:сезон|season)/ig, ' ')
+            .replace(/(?:сезон|season)\s*\d+/ig, ' ')
+            .replace(/(?:тв|tv)-?\s*\d+\s*$/i, ' ')
+            .replace(/\s+(?:\d{1,2}|ii|iii|iv|v|vi|vii|viii|ix|x)\s*$/i, ' '));
+    }
+
+    // Сайты дописывают к названию пометки, которых нет в Shikimori: «(Ремейк, 2009)», «(2011)»
+    const dropNote = (str) => String(str || '').replace(/\([^)]*(?:ремейк|remake|(?:19|20)\d{2})[^)]*\)/ig, ' ');
+
+    // Это одно и то же название: совпадает текст и номер сезона. Общее начало совпадением не считается:
+    // «Монолог фармацевта» — не фильм «Монолог фармацевта: Сокровище…», «Ван-Пис» — не «Ван-Пис: Героини»
+    function isSameTitle(candidate, wanted) {
+        const cand = dropNote(candidate);
+        const target = dropNote(wanted);
+        const left = normalize(cand);
+        const right = normalize(target);
+        if (!left || !right) return false;
+        if (left === right) return true;
+        // Искали фильм, а на сайте он без пометки. В обратную сторону нельзя: фильм — не сериал с тем же именем
+        if (right.replace(/\s+(?:фильм|movie)$/, '') === left) return true;
+        return baseTitle(cand) !== '' && baseTitle(cand) === baseTitle(target) && (extractSeason(cand) || 1) === (extractSeason(target) || 1);
+    }
+
+    /**
+     * Кандидаты с тем же названием (русским или оригинальным, поле orig), лучшие первыми.
+     * Дата выхода на сайтах может расходиться на границе года, больше — это уже другой тайтл.
+     * @param {Array<{title: string, orig?: string, year?: string|number}>} cands
+     * @param {{titles: string[], year?: string|number}} target
+     */
+    function findSameTitle(cands, { titles, year }) {
+        const wanted = parseInt(year, 10);
+        const same = cands.filter((cand) => {
+            if (wanted && cand.year && Math.abs(parseInt(cand.year, 10) - wanted) > 1) return false;
+            return titles.some(t => isSameTitle(cand.title, t) || (cand.orig && isSameTitle(cand.orig, t)));
+        });
+        return same.sort((x, y) => Number(String(y.year) === String(year)) - Number(String(x.year) === String(year)));
+    }
+
     /**
      * Итоговая оценка кандидата.
      * @param {{title: string, href?: string, year?: string|number}} cand
@@ -84,6 +127,9 @@
         }
 
         if (target.year && cand.year) score += String(cand.year) === String(target.year) ? 150 : -150;
+
+        const wantsSideWork = (target.titles || []).some(t => SIDE_WORK.test(normalize(t)));
+        if (!wantsSideWork && SIDE_WORK.test(normalize(cand.title))) score -= 100;
         return score;
     }
 
@@ -104,5 +150,5 @@
         return null;
     }
 
-    root.AgTitleMatch = { normalize, extractSeason, textScore, scoreCandidate, pickBest };
+    root.AgTitleMatch = { normalize, extractSeason, baseTitle, isSameTitle, findSameTitle, textScore, scoreCandidate, pickBest };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

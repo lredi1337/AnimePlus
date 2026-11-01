@@ -4,7 +4,7 @@
 (function () {
     'use strict';
 
-    window.AG_RED = "#ff4a4a";
+    window.AG_RED = "#ef4444";
     window.AG_FONT = '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
     window.agEscapeHtml = function (str) {
@@ -65,7 +65,7 @@
             const plusSpan = document.createElement('span');
             plusSpan.id = 'ag-logo-plus';
             plusSpan.innerText = '+';
-            plusSpan.style.cssText = `color: ${window.AG_RED}; font-weight: 900; font-size: 32px; line-height: 0.8; margin-left: 2px; padding-bottom: 2px; font-family: 'Nunito', 'Segoe UI', sans-serif; display: inline-block;`;
+            plusSpan.style.cssText = `color: ${window.AG_RED}; font-weight: 700; font-size: 30px; line-height: 0.8; margin-left: 2px; padding-bottom: 2px; font-family: var(--ap-font); display: inline-block;`;
             brandLink.appendChild(plusSpan);
             brandLink.style.display = 'inline-flex';
             brandLink.style.alignItems = 'center';
@@ -92,16 +92,15 @@
 
         const toast = document.createElement('div');
         toast.style.cssText = `
-            background: ${isError ? 'rgba(239, 68, 68, 0.95)' : 'rgba(15, 23, 42, 0.95)'};
-            color: #ffffff;
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-family: ${window.AG_FONT};
-            font-size: 13px;
-            font-weight: 600;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(8px);
+            background: var(--ap-raised);
+            color: ${isError ? 'var(--ap-danger)' : 'var(--ap-text)'};
+            padding: 10px 14px;
+            border-radius: var(--ap-radius);
+            font-family: var(--ap-font);
+            font-size: var(--ap-fs-md);
+            font-weight: 500;
+            box-shadow: var(--ap-shadow);
+            border: 1px solid var(--ap-line-strong);
             transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             opacity: 0;
             transform: translateY(12px) scale(0.95);
@@ -283,13 +282,13 @@
 
         const card = document.createElement('div');
         card.style.cssText = `
-            background: linear-gradient(135deg, rgba(20, 20, 32, 0.96), rgba(28, 28, 44, 0.98));
-            color: #ffffff;
-            padding: 12px 14px;
-            border-radius: 12px;
-            font-family: ${window.AG_FONT};
-            box-shadow: 0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.12);
-            backdrop-filter: blur(16px);
+            background: var(--ap-surface);
+            color: var(--ap-text);
+            padding: 12px;
+            border-radius: var(--ap-radius-lg);
+            font-family: var(--ap-font);
+            box-shadow: var(--ap-shadow);
+            border: 1px solid var(--ap-line-strong);
             display: flex;
             align-items: center;
             gap: 12px;
@@ -306,28 +305,31 @@
         const posterUrl = data.poster || 'https://shikimori.one/favicons/favicon-192x192.png';
         const title = window.agEscapeHtml(data.title || '');
         const episode = window.agEscapeHtml(String(data.episode || ''));
-        const voiceovers = data.voiceovers ? window.agEscapeHtml(`🎤 ${data.voiceovers}`) : '';
+        const voiceovers = data.voiceovers ? window.agEscapeHtml(data.voiceovers) : '';
+
+        const siteLink = (url, siteId) => {
+            const site = window.AgSites.byId(siteId);
+            const onColor = window.AgUI ? window.AgUI.onAccent(site.color) : '#fff';
+            return `<a href="${url}" target="_blank" rel="noopener" style="height: 26px; line-height: 26px; padding: 0 10px; font-size: var(--ap-fs-sm); font-weight: 600; color: ${onColor}; background: ${site.color}; border-radius: var(--ap-radius-sm); text-decoration: none;">${site.name}</a>`;
+        };
 
         let btnsHtml = '';
         if (data.animegoUrl) {
-            btnsHtml += `<a href="${data.animegoUrl}" target="_blank" style="padding: 5px 11px; font-size: 10.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c); border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(239,68,68,0.4); transition: transform 0.15s ease;">▶ AnimeGO</a>`;
+            btnsHtml += siteLink(data.animegoUrl, 'animego');
         }
         if (data.jutsuUrl) {
-            btnsHtml += `<a href="${data.jutsuUrl}" target="_blank" style="padding: 5px 11px; font-size: 10.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(59,130,246,0.4); transition: transform 0.15s ease;">▶ JUT-SU</a>`;
+            btnsHtml += siteLink(data.jutsuUrl, 'jutsu');
         }
 
         card.innerHTML = `
-            <div style="position: absolute; top:0; left:0; width: 4px; height: 100%; background: linear-gradient(180deg, #ef4444, #3b82f6);"></div>
-            <img src="${posterUrl}" style="width: 44px; height: 60px; object-fit: contain; background: rgba(0,0,0,0.3); border-radius: 6px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.5); margin-left: 2px;">
+            <img src="${posterUrl}" alt="" style="width: 46px; height: 64px; object-fit: cover; background: var(--ap-raised); border-radius: var(--ap-radius-sm); flex-shrink: 0;">
             <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 10px; font-weight: 800; color: #ff9800; background: rgba(255, 152, 0, 0.18); border: 1px solid rgba(255,152,0,0.3); padding: 1px 6px; border-radius: 4px;">🔥 ${episode} серия</span>
-                </div>
-                <div style="font-size: 12.5px; font-weight: 700; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</div>
-                ${voiceovers ? `<div style="font-size: 10px; color: #9a99ab; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${voiceovers}</div>` : ''}
+                <div style="font-size: var(--ap-fs-sm); font-weight: 600; color: var(--ap-accent);">Вышла ${episode} серия</div>
+                <div style="font-size: var(--ap-fs-md); font-weight: 600; color: var(--ap-text); padding-right: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</div>
+                ${voiceovers ? `<div style="font-size: var(--ap-fs-sm); color: var(--ap-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${voiceovers}</div>` : ''}
                 <div style="display: flex; gap: 6px; margin-top: 4px;">${btnsHtml}</div>
             </div>
-            <button class="ag-close-btn" style="position: absolute; top: 6px; right: 8px; background: none; border: none; color: #6f6e80; font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px;">✕</button>
+            <button class="ag-close-btn" aria-label="Закрыть" style="position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; background: none; border: none; color: var(--ap-text-3); cursor: pointer;">${window.AgUI ? window.AgUI.icon('close', 14) : '✕'}</button>
         `;
 
         const closeBtn = card.querySelector('.ag-close-btn');

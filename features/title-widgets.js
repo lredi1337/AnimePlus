@@ -11,18 +11,18 @@
         const style = document.createElement('style');
         style.id = STYLE_ID;
         style.textContent = `
-            .ag-tw { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; font: 600 13px/1.2 Inter, system-ui, sans-serif; position: relative; z-index: 5; }
-            .ag-tw__btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12);
-                background: #1f1f2b; color: #fff !important; text-decoration: none !important; cursor: pointer; transition: background .15s, border-color .15s; }
-            .ag-tw__btn:hover, .ag-tw__btn[aria-expanded="true"] { border-color: var(--ag-accent, #10b981); background: #272736; }
-            .ag-tw__menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 260px; max-height: 320px; overflow: auto; padding: 6px;
-                border-radius: 10px; background: #1b1b26; border: 1px solid rgba(255,255,255,.1); box-shadow: 0 12px 32px rgba(0,0,0,.45); }
-            .ag-tw__item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; color: #e8e8f0 !important; text-decoration: none !important; font-weight: 500; }
-            .ag-tw__item:hover { background: rgba(255,255,255,.06); }
-            .ag-tw__item.is-missing { opacity: .45; pointer-events: none; }
-            .ag-tw__badge { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #fff; flex-shrink: 0; }
-            .ag-tw__state { margin-left: auto; font-size: 11px; color: #8b8a9c; }
-            .ag-tw__note { padding: 8px; font-size: 12px; color: #8b8a9c; font-weight: 500; }
+            .ag-tw { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; font: 600 var(--ap-fs-md)/1.2 var(--ap-font); position: relative; z-index: 5; }
+            .ag-tw__btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: var(--ap-radius); border: 1px solid var(--ap-line);
+                background: var(--ap-raised); color: var(--ap-text) !important; text-decoration: none !important; cursor: pointer; text-transform: none; transition: border-color var(--ap-ease); }
+            .ag-tw__btn:hover, .ag-tw__btn[aria-expanded="true"] { border-color: var(--ap-line-strong); background: var(--ap-raised); }
+            .ag-tw__menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 260px; max-height: 320px; overflow: auto; padding: 4px;
+                border-radius: var(--ap-radius); background: var(--ap-raised); border: 1px solid var(--ap-line-strong); box-shadow: var(--ap-shadow); scrollbar-width: thin; }
+            .ag-tw__item { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: var(--ap-radius-sm); color: var(--ap-text) !important; text-decoration: none !important; font-weight: 500; }
+            .ag-tw__item:hover { background: var(--ap-hover); }
+            .ag-tw__item.is-missing { opacity: .5; pointer-events: none; }
+            .ag-tw__badge { width: 24px; height: 24px; border-radius: var(--ap-radius-sm); display: grid; place-items: center; font-size: var(--ap-fs-xs); font-weight: 700; flex-shrink: 0; }
+            .ag-tw__state { display: inline-flex; margin-left: auto; font-size: var(--ap-fs-sm); color: var(--ap-text-3); }
+            .ag-tw__note { padding: 8px; font-size: var(--ap-fs-sm); color: var(--ap-text-2); font-weight: 500; }
         `;
         (document.head || document.documentElement).appendChild(style);
     };
@@ -47,7 +47,7 @@
         if (!host || document.querySelector('.ag-tw')) return;
 
         injectStyle();
-        const bar = scope.own(el('div', { class: 'ag-tw', style: `--ag-accent: ${site.color}` }));
+        const bar = scope.own(el('div', { class: 'ag-tw' }));
         host.appendChild(bar);
 
         const info = await provider.getTitleInfo();
@@ -90,7 +90,7 @@
                 const r = results.find(x => x.siteId === s.id);
                 const item = el('a', { class: 'ag-tw__item' + (r && r.url ? '' : ' is-missing'), role: 'menuitem', href: (r && r.url) || '#', target: '_blank', rel: 'noopener' });
                 item.append(
-                    el('span', { class: 'ag-tw__badge', style: `background:${s.color}` }, s.short),
+                    el('span', { class: 'ag-tw__badge', style: `background:${s.color}; color:${window.AgUI ? window.AgUI.onAccent(s.color) : '#fff'}` }, s.short),
                     el('span', {}, s.name),
                     el('span', { class: 'ag-tw__state' }, r && r.url ? '↗' : (r && r.timedOut ? 'нет ответа' : 'не найдено'))
                 );

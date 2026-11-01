@@ -2,7 +2,7 @@
 // Поиск тайтла на любом сайте из реестра (modules/shared/sites.js) — для переходов между сайтами,
 // Топа Shikimori и кнопки «Смотреть» в popup.
 //   - yani: JSON API /api/search → точное совпадение по remote_ids.shikimori_id, иначе по названию;
-//   - dle:  страница поиска DLE → разбор карточек → AgTitleMatch.pickBest;
+//   - dle:  страница поиска DLE → разбор карточек → то же название (AgTitleMatch.findSameTitle);
 //   - animego: существующий findAnimeGoDirectUrl (bg-cache.js).
 // Service worker не имеет DOMParser, поэтому HTML разбирается регулярными выражениями.
 
@@ -44,23 +44,50 @@ function parseDleSearchCards(html, site) {
     return [...cards.values()].filter(c => c.title);
 }
 
+/** Ремейк часто называется так же, а в карточках некоторых сайтов нет года: смотрим на сами страницы */
+async function pickByPageYear(cards, year) {
+    for (const card of cards.slice(0, 3)) {
+        try {
+            const res = await fetch(card.href);
+            if (!res.ok) continue;
+            const html = await res.text();
+            const start = html.indexOf('<h1');
+            if (start >= 0 && stripTags(html.slice(start, start + 6000)).includes(String(year))) return card;
+        } catch (e) {}
+    }
+    return cards[0];
+}
+
 async function searchDleSite(site, { titles, year }) {
-    const { pickBest, extractSeason } = globalThis.AgTitleMatch;
+    const { pickBest, findSameTitle, extractSeason } = globalThis.AgTitleMatch;
     const season = titles.map(extractSeason).find(Boolean) || null;
+    let unreachable = false;
     for (const query of titles.slice(0, 3)) {
         try {
             const res = await fetch(site.home + site.dle.searchPath + encodeURIComponent(query));
             if (!res.ok) continue;
             const cards = parseDleSearchCards(await res.text(), site);
-            const best = cards.length ? pickBest(cards, { titles, year, season }) : null;
-            if (best) return best.href;
-        } catch (e) {}
+            // Рядом с выдачей бывают блоки популярного: похожее название оттуда — чужой тайтл
+            const same = findSameTitle(cards, { titles, year });
+            if (same.length > 0) {
+                const undated = same.length > 1 && year && !same[0].year;
+                return (undated ? await pickByPageYear(same, year) : same[0]).href;
+            }
+            // Поиск по оригинальному названию отдаёт русские заголовки: единственному результату доверяем
+            if (cards.length === 1 && !/[а-яё]/i.test(query)) {
+                const best = pickBest(cards, { titles, year, season });
+                if (best) return best.href;
+            }
+        } catch (e) { unreachable = true; }
     }
+    // Сайт не ответил: это не «тайтла нет», и такой результат нельзя запоминать
+    if (unreachable) throw new Error(`${site.id} unreachable`);
     return null;
 }
 
 async function searchYaniSite(site, { titles, year, shikimoriId }) {
     const { pickBest } = globalThis.AgTitleMatch;
+    let unreachable = false;
     for (const query of titles.slice(0, 3)) {
         try {
             const res = await fetch(`${site.home}/api/search?q=${encodeURIComponent(query)}&limit=20`);
@@ -73,8 +100,9 @@ async function searchYaniSite(site, { titles, year, shikimoriId }) {
             }
             const best = pickBest(list.map(a => ({ href: `${site.home}/catalog/item/${a.anime_url}`, title: a.title, year: a.year })), { titles, year });
             if (best) return best.href;
-        } catch (e) {}
+        } catch (e) { unreachable = true; }
     }
+    if (unreachable) throw new Error(`${site.id} unreachable`);
     return null;
 }
 
@@ -101,7 +129,7 @@ async function resolveSiteUrl(siteId, query) {
     }
     if (titles.length === 0) return null;
 
-    const cacheKey = `${siteId}|${shikimoriId || ''}|${titles[0].toLowerCase()}|${year}`;
+    const cacheKey = `v3|${siteId}|${shikimoriId || ''}|${titles[0].toLowerCase()}|${year}`;
     const { ag_site_url_cache: cache = {} } = await chrome.storage.session.get(['ag_site_url_cache']);
     const hit = cache[cacheKey];
     if (hit && Date.now() - hit.ts < SITE_URL_CACHE_TTL) return hit.url;
@@ -111,10 +139,10 @@ async function resolveSiteUrl(siteId, query) {
         url = await searchYaniSite(site, { titles, year, shikimoriId });
     } else if (site.platform === 'dle') {
         url = site.id === 'jutsu'
-            ? await findJutsuDirectUrl(titles[0], titles[1] || '', year)
+            ? await findJutsuDirectUrl(titles.find(t => /[а-яё]/i.test(t)) || titles[0], titles.find(t => !/[а-яё]/i.test(t)) || '', year)
             : await searchDleSite(site, { titles, year });
     } else if (site.platform === 'animego') {
-        url = await findAnimeGoDirectUrl(titles.find(t => /[а-яё]/i.test(t)) || titles[0], titles.find(t => !/[а-яё]/i.test(t)) || titles[0], year);
+        url = await findAnimeGoDirectUrl(titles.find(t => /[а-яё]/i.test(t)) || titles[0], titles.find(t => !/[а-яё]/i.test(t)) || titles[0], year, titles);
     }
 
     // Отрицательный результат тоже кэшируем (url: null), чтобы не повторять поиск при каждом клике
@@ -127,7 +155,7 @@ async function resolveAllSites(query, { siteIds, timeoutMs = 12000 } = {}) {
     const ids = siteIds && siteIds.length ? siteIds : AgSites.list.map(s => s.id);
     const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), timeoutMs));
     const results = await Promise.all(ids.map(async (id) => {
-        const url = await Promise.race([resolveSiteUrl(id, query).catch(() => null), timeout]);
+        const url = await Promise.race([resolveSiteUrl(id, query).catch(() => 'timeout'), timeout]);
         return { siteId: id, url: url === 'timeout' ? null : url, timedOut: url === 'timeout' };
     }));
     return results;

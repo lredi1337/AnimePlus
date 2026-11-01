@@ -39,7 +39,7 @@
 
             const labelEl = link.querySelector('span, .fP') || link;
             const originalText = labelEl.textContent;
-            labelEl.textContent = '⌛ Подбираем…';
+            labelEl.textContent = 'Подбираем…';
             const prevPointerEvents = link.style.pointerEvents;
             link.style.pointerEvents = 'none';
 

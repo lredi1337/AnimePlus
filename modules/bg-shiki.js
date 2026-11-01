@@ -982,7 +982,7 @@ async function checkNewEpisodeNotifications(isManual = false) {
                         chrome.notifications.create(item.notifId, {
                             type: 'basic',
                             iconUrl: item.poster,
-                            title: `🔥 Вышла ${item.nextEp} серия!`,
+                            title: `Вышла ${item.nextEp} серия`,
                             message: item.notifMessage,
                             buttons: item.toastButtons,
                             priority: 2
