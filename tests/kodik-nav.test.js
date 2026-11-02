@@ -47,6 +47,7 @@ async function startKodik(current, panelOptions) {
         if (e.target.closest('.serial-next-button')) clicked.push('next-button');
     }, true);
 
+    frame.eval(read('modules/kodik/skip-memory.js'));
     frame.eval(read('content-kodik.js'));
     await new Promise(r => setTimeout(r, 150));
 

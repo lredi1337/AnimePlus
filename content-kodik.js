@@ -47,6 +47,9 @@
     let hideTimeout, rewindSum = 0, rewindTimer = null, clickCount = 0, clickTimer = null;
     let canAutoPlay = false;
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
+    const skipMemory = globalThis.AgSkipMemory.create();
+    // Перехват на всём документе: видео рекламы и серии — разные элементы, а события видео не всплывают
+    document.addEventListener('seeking', (e) => skipMemory.onSeek(e.target.currentTime), true);
     let currentSkipTarget = null;
     let playerShell = null;
     let siteListsReady = false;
@@ -611,6 +614,9 @@
         if (skipData.ed.end > 0) createZone(skipData.ed.start, skipData.ed.end, "Эндинг");
     }
 
+    // Метка Kodik без известных таймингов: примерная длина песни для запоминания возврата к ней
+    const NATIVE_SKIP_RANGE_SEC = 120;
+
     function setupSmartSkip(v) {
         if (document.getElementById('ag-smart-skip')) return;
         const btn = document.createElement('div');
@@ -622,31 +628,20 @@
         undoBtn.id = 'ag-skip-undo';
         undoBtn.innerText = '↩ Вернуться';
         document.body.appendChild(undoBtn);
-        const autoSkipped = { op: false, ed: false };
-        const keepWatching = { op: false, ed: false };
         let undoTimer = null;
         const showUndo = (part, startOfSong) => {
             undoBtn.style.display = 'block';
             undoBtn.onclick = (e) => {
                 e.stopPropagation();
-                keepWatching[part] = true;
+                skipMemory.keepWatching(part);
                 undoBtn.style.display = 'none';
                 v.currentTime = startOfSong;
             };
             clearTimeout(undoTimer);
             undoTimer = setTimeout(() => { undoBtn.style.display = 'none'; }, 6000);
         };
-        v.addEventListener('seeked', () => {
-            for (const part of ['op', 'ed']) {
-                const range = skipData[part];
-                if (autoSkipped[part] && range.end > 0 && v.currentTime >= range.start && v.currentTime < range.end - 1) keepWatching[part] = true;
-            }
-        });
         v.addEventListener('loadstart', () => {
-            for (const part of ['op', 'ed']) {
-                autoSkipped[part] = false;
-                keepWatching[part] = false;
-            }
+            skipMemory.reset();
             undoBtn.style.display = 'none';
         });
 
@@ -671,6 +666,9 @@
             const isOpTarget = skipData.op.end > 0 && cur >= skipData.op.start && cur <= skipData.op.end;
             const isEdTarget = skipData.ed.end > 0 && cur >= skipData.ed.start && cur <= skipData.ed.end;
 
+            const part = isOpTarget ? 'op' : (isEdTarget ? 'ed' : null);
+            // Зритель вернулся к песне сам: значит, хочет её посмотреть, и пропустить её можно только кнопкой
+            const kept = !!part && skipMemory.isKept(part);
             let skipTarget = null;
             let nativeSkip = null;
 
@@ -689,7 +687,8 @@
             if (nativeSkip) {
                 btn.style.display = "none";
                 currentSkipTarget = null;
-                if (settings.autoSkip && settings[isEdTarget ? 'autoSkipEd' : 'autoSkipOp'] !== false) {
+                if (settings.autoSkip && !kept && settings[isEdTarget ? 'autoSkipEd' : 'autoSkipOp'] !== false) {
+                    skipMemory.markSkipped(part, skipData[part]);
                     const timeBeforeClick = v.currentTime;
                     const skipEndTime = isEdTarget ? skipData.ed.end : skipData.op.end;
                     const opts = { bubbles: true, cancelable: true, view: window };
@@ -705,14 +704,6 @@
                 return;
             }
 
-            const part = isOpTarget ? 'op' : (isEdTarget ? 'ed' : null);
-            // Пользователь вернулся к песне сам: значит, хочет её посмотреть
-            if (part && keepWatching[part]) {
-                currentSkipTarget = null;
-                btn.style.display = "none";
-                return;
-            }
-
             if (isOpTarget) {
                 btn.innerText = "Пропустить опенинг";
                 skipTarget = skipData.op.end;
@@ -724,10 +715,10 @@
             currentSkipTarget = skipTarget;
 
             if (skipTarget) {
-                const manualOnly = skipData[part].manual || settings[part === 'op' ? 'autoSkipOp' : 'autoSkipEd'] === false;
+                const manualOnly = kept || skipData[part].manual || settings[part === 'op' ? 'autoSkipOp' : 'autoSkipEd'] === false;
                 if (settings.autoSkip && !manualOnly) {
                     const startOfSong = skipData[part].start;
-                    autoSkipped[part] = true;
+                    skipMemory.markSkipped(part, skipData[part]);
                     v.currentTime = skipTarget;
                     btn.style.display = "none";
                     showUndo(part, startOfSong);
@@ -1091,11 +1082,16 @@
                 const lastSkipTime = parseFloat(btn.dataset.agSkipTime) || -999;
 
                 // Если кнопка видима, текст подходит и с прошлого клика прошло больше 30 секунд
-                const nativePart = video && video.duration && curTime >= video.duration / 2 ? 'autoSkipEd' : 'autoSkipOp';
-                if (isVisible && settings[nativePart] !== false && (text.includes('пропустить') || text.includes('skip')) && Math.abs(curTime - lastSkipTime) > 30) {
+                const nativePart = video && video.duration && curTime >= video.duration / 2 ? 'ed' : 'op';
+                const nativeSetting = nativePart === 'ed' ? 'autoSkipEd' : 'autoSkipOp';
+                // После перемотки кнопка Kodik ещё мгновение активна и вернула бы зрителя к концу старой песни
+                const nativeRange = skipData[nativePart];
+                const outsideSong = nativeRange.end > 0 && (curTime < nativeRange.start - 1 || curTime >= nativeRange.end - 1);
+                if (isVisible && !outsideSong && !skipMemory.isKept(nativePart) && settings[nativeSetting] !== false && (text.includes('пропустить') || text.includes('skip')) && Math.abs(curTime - lastSkipTime) > 30) {
 
                     // Записываем текущее время как время последнего скипа
                     btn.dataset.agSkipTime = curTime.toString();
+                    skipMemory.markSkipped(nativePart, skipData[nativePart].end > 0 ? skipData[nativePart] : { start: curTime, end: curTime + NATIVE_SKIP_RANGE_SEC });
 
                     const seekTime = btn.getAttribute('data-seek-to');
                     if (seekTime && video) {

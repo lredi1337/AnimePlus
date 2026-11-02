@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/GitHub_Код-v9.5.0-blue?style=for-the-badge&logo=github" alt="GitHub Код" />
+  <img src="https://img.shields.io/badge/GitHub_Код-v9.5.1-blue?style=for-the-badge&logo=github" alt="GitHub Код" />
   <a href="https://chromewebstore.google.com/detail/anime+/mgcaideibpbdddnbedoefmabladoaajg?hl=ru" target="_blank">
     <img src="https://img.shields.io/chrome-web-store/v/mgcaideibpbdddnbedoefmabladoaajg?style=for-the-badge&label=Chrome_Store&color=brightgreen&logo=googlechrome" alt="Версия в Chrome Store" />
   </a>
@@ -47,6 +47,13 @@
 **Anime+** — это мощное браузерное расширение, расширяющее возможности просмотра аниме на AnimeGO, jut-su.net, YummyAnime и других сайтах. Проект объединяет функционал аниме-порталов, интегрирует базу **Shikimori**, умный мульти-поиск и переходы между сайтами, предлагая единый современный интерфейс, который **автоматически подстраивает акцентный цвет под открытый сайт**.
 
 ---
+
+## 🆕 Что нового в 9.5.1
+
+- **Всё управление прямо из полного экрана:** на AnimeGO и YummyAnime (ru и old) серии, озвучка и выбор плеера открываются в панелях плеера, выходить из полного экрана больше не нужно.
+- **Кнопка +89 секунд** слева на панели плеера: ручной пропуск опенинга или эндинга.
+- **Автопропуск уважает ваш выбор:** если вы сами вернулись к пропущенному опенингу или эндингу, плеер больше не перекинет вас вперёд. Пропустить песню можно кнопкой.
+- **Исправлено:** после перемотки вперёд плеер мог отбросить назад, к концу опенинга.
 
 ## 🆕 Что нового в 9.5.0
 
