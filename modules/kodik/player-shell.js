@@ -166,7 +166,7 @@
         .rail i { position: absolute; top: 0; bottom: 0; left: 0; display: block; border-radius: 2px; }
         .buffer { background: rgba(255,255,255,.3); }
         .zone { background: rgba(255,255,255,.55); }
-        .done { background: #fff; }
+        .done { background: #ef4444; }
         .thumb { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; transform: scale(.75); transition: transform .1s; }
         .track:hover .thumb, .track.drag .thumb { transform: scale(1); }
         .tip { position: absolute; bottom: 24px; transform: translateX(-50%); padding: 5px; border-radius: 8px; background: #101319; text-align: center; white-space: nowrap; display: none; pointer-events: none; }
@@ -207,7 +207,7 @@
         .ep:hover { background: rgba(255,255,255,.16); }
         .ep.seen { color: rgba(255,255,255,.55); }
         .ep.seen::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 4px; height: 2px; border-radius: 1px; background: rgba(255,255,255,.45); }
-        .ep.now { background: #fff; color: #111; font-weight: 600; }
+        .ep.now { background: #ef4444; color: #fff; font-weight: 600; }
         .row { display: flex; width: 100%; align-items: center; gap: 8px; padding: 9px 8px; border-radius: 7px; justify-content: flex-start; min-height: 38px; }
         button.row:hover { background: rgba(255,255,255,.09); }
         .row.on { background: rgba(255,255,255,.12); font-weight: 600; }

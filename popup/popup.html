@@ -22,6 +22,12 @@
                 <img src="../icons/icon48.png" alt="">
                 <div class="logo" id="popup-brand">Anime<span>+</span></div>
             </div>
+            <button type="button" class="sites-toggle" id="sitesToggle" aria-expanded="false" aria-controls="sitesPanel">
+                <span class="status-dot-row" id="status-box"><span class="dot" id="status-dot"></span><span class="visually-hidden" id="status-text">откройте поддерживаемый сайт</span></span>
+                <span class="site-current-name" id="siteCurrentName">Сайт не открыт</span>
+                <span class="sites-count" id="sitesCount"></span>
+                <span class="sites-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2 3.5 3 3 3-3"/></svg></span>
+            </button>
             <button class="toggle" id="extToggle" aria-label="Вкл/выкл расширение">
                 <div class="toggle-knob"></div>
             </button>
@@ -29,23 +35,7 @@
 
         <div id="extBody">
 
-            <!-- Текущий сайт + список всех сайтов (масштабируется на любое число сайтов) -->
-            <div class="site-bar">
-                <div class="site-current" id="siteCurrent">
-                    <span class="site-badge" id="siteCurrentBadge" aria-hidden="true">+</span>
-                    <div class="site-current-text">
-                        <div class="site-current-name" id="siteCurrentName">Сайт не открыт</div>
-                        <div class="status-dot-row" id="status-box">
-                            <span class="dot" id="status-dot"></span>
-                            <span id="status-text">откройте поддерживаемый сайт</span>
-                        </div>
-                    </div>
-                </div>
-                <button type="button" class="sites-toggle" id="sitesToggle" aria-expanded="false" aria-controls="sitesPanel">
-                    Сайты <span class="sites-count" id="sitesCount"></span>
-                    <span class="sites-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2 3.5 3 3 3-3"/></svg></span>
-                </button>
-            </div>
+            <!-- Список всех сайтов (масштабируется на любое число сайтов) -->
             <div class="sites-panel" id="sitesPanel" hidden>
                 <input type="search" class="sites-filter" id="sitesFilter" placeholder="Найти сайт…" aria-label="Поиск сайта" autocomplete="off">
                 <ul class="sites-list" id="sitesList"></ul>
@@ -53,6 +43,19 @@
             </div>
             <div class="toast" id="siteToast"></div>
             <div class="selector-health" id="selectorHealth" hidden></div>
+
+            <!-- Продолжить просмотр -->
+            <div class="continue" id="continueCard" hidden>
+                <img class="continue-bg" id="continueBg" alt="">
+                <img class="continue-poster" id="continuePoster" alt="">
+                <div class="continue-body">
+                    <div class="continue-label">Продолжить</div>
+                    <div class="continue-title" id="continueTitle"></div>
+                    <div class="continue-meta" id="continueMeta"></div>
+                    <div class="progress" id="continueProgress"><i id="continueBar"></i></div>
+                </div>
+                <button class="continue-play" id="continuePlay" aria-label="Продолжить просмотр"></button>
+            </div>
 
             <!-- Shikimori Profile -->
             <div class="profile" id="shiki-auth-box">
@@ -97,17 +100,14 @@
                     <div class="status-group" id="statusGroup">
                         <button class="status-btn" id="btn-tab-watching"><span class="ap-inline-icon" data-ap-icon="list" data-ap-size="14"></span>Смотрю</button>
                         <button class="status-btn" id="btn-tab-rewatching"><span class="ap-inline-icon" data-ap-icon="refresh" data-ap-size="14"></span>Пересматриваю</button>
-                    </div>
-                    <div id="history-wrapper" class="history-wrapper" style="display: none;">
-                        <div class="history-label"><span class="ap-inline-icon" data-ap-icon="clock" data-ap-size="13"></span>Недавно просмотрено</div>
-                        <div id="history-items" class="history-items"></div>
+                        <button class="status-search" id="btn-list-search" aria-label="Поиск в списке" aria-expanded="false"><span class="ap-inline-icon" data-ap-icon="search" data-ap-size="15"></span></button>
                     </div>
                 </div>
             </div>
 
             <!-- Search & Filters -->
             <div id="shiki-search-wrapper" style="display: none;">
-                <div class="search-wrap">
+                <div class="search-wrap" id="listSearchBox" hidden>
                     <input type="text" id="shiki-list-search" placeholder="Поиск в списке…">
                 </div>
                 <div class="filter-group" id="shiki-filter-pills">
@@ -167,6 +167,7 @@
             </div>
 
             <div class="footer">
+                <span class="saved-time" id="savedTime" title="Сколько времени автопропуск сэкономил в этом месяце" hidden></span>
                 <button class="tracker-link" id="btn-shiki">Открыть Shikimori</button>
             </div>
             <div class="toast toast-center" id="trackerToast"></div>

@@ -8,12 +8,32 @@ const { parseNativeMarks, splitNativeMarks, songInEpisode, chooseTimings } = glo
 
 const SR = FP.SAMPLE_RATE;
 
+test('метка сайта для этой озвучки важнее общей базы и узнанной песни', () => {
+    const site = { start: 0, end: 89, source: 'site' };
+    assert.deepStrictEqual(chooseTimings({ native: site, shared: { start: 5, end: 95 }, hit: null, mark: null }), site);
+    assert.equal(chooseTimings({ native: { start: 1, end: 90 } }).source, 'kodik');
+});
+
 test('метки Kodik: обе части, часы и пустая строка', () => {
     const script = 'playerSettings.skipButton = parseSkipButton("03:15-04:46,22:42-24:12", "anime");';
     assert.deepStrictEqual(parseNativeMarks(script), [{ start: 195, end: 286 }, { start: 1362, end: 1452 }]);
     assert.deepStrictEqual(parseNativeMarks('parseSkipButton("1:02:03-1:03:33", "anime")'), [{ start: 3723, end: 3813 }]);
     assert.deepStrictEqual(parseNativeMarks('parseSkipButton("", "anime")'), []);
     assert.deepStrictEqual(parseNativeMarks('нет меток'), []);
+});
+
+test('метка с начала серии без минут: 00-01:30', () => {
+    assert.deepStrictEqual(parseNativeMarks('parseSkipButton("00-01:30,24:20-25:59", "anime")'), [{ start: 0, end: 90 }, { start: 1460, end: 1559 }]);
+});
+
+test('метки сайта в адресе кадра: название части и секунды', () => {
+    assert.deepStrictEqual(parseNativeMarks('parseSkipButton("[opening]0-89,[ending]1335-1425")'), [{ start: 0, end: 89 }, { start: 1335, end: 1425 }]);
+    assert.deepStrictEqual(parseNativeMarks('parseSkipButton("[opening]01:05-02:34")'), [{ start: 65, end: 154 }]);
+});
+
+test('заглушка сайта и титры озвучки не считаются метками песни', () => {
+    assert.deepStrictEqual(parseNativeMarks('parseSkipButton("[opening]999999-1000000,[ending]999999-1000000,[intro]999999-1000000,[credits]999999-1000000")'), []);
+    assert.deepStrictEqual(parseNativeMarks('parseSkipButton("[opening]0-89,[ending]1428-1442")'), [{ start: 0, end: 89 }]);
 });
 
 test('метка только на одной части: вторую оставляем поиску', () => {

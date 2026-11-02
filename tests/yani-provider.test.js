@@ -68,7 +68,11 @@ test('yani: переключение серии кликает следующу�
 test('yani: таймкоды опенинга/эндинга с сайта для текущей озвучки', async () => {
     const { provider } = makeYani();
     const skip = await provider.getSkipData('2');
-    assert.deepEqual(JSON.parse(JSON.stringify(skip)), { op: { start: 0, end: 89 }, ed: { start: 1424, end: 1443 } });
+    // Опенинг песни надёжен, а 19 секунд в конце файла — это титры озвучки, а не эндинг
+    const plain = JSON.parse(JSON.stringify(skip));
+    assert.equal(plain.op.start, 0);
+    assert.equal(plain.op.end, 89);
+    assert.deepEqual(plain.ed, { start: 0, end: 0 });
 });
 
 test('yani: страница не тайтла', () => {

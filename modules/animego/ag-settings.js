@@ -554,10 +554,10 @@
             <!-- Tab 1: Playback -->
             <div class="ag-tab-content active" id="tab-playback">
                 ${renderRow('kodikShell', 'Новый плеер', 'Современный вид плеера Kodik: серии, озвучка и настройки в одной панели. Изменения применятся после перезагрузки серии.')}
-                ${renderRow('autoPlay', 'Авто-плей', 'Автоматически нажимает Play при открытии серии.')}
-                ${renderRow('autoNext', 'Авто-переход', 'Автоматически переключает на следующую серию в конце.')}
-                ${renderRow('autoFS', 'Псевдо-фуллскрин', 'Улучшенный фуллскрин без рамок.')}
-                ${renderRow('autoSkip', 'Авто-скип', 'Автоматически пропускает опенинги и эндинги. Если выключить, появится кнопка пропуска.')}
+                ${renderRow('autoPlay', 'Автозапуск', 'Серия начинается сама, без нажатия на Play.')}
+                ${renderRow('autoNext', 'Автопереход', 'Серия закончилась, сразу включается следующая.')}
+                ${renderRow('autoFS', 'Полный экран без рамок', 'На весь экран только плеер, смена серии его не сбрасывает.')}
+                ${renderRow('autoSkip', 'Автопропуск', 'Опенинги и эндинги пропускаются сами. Если выключить, останется кнопка.')}
                 ${renderRow('audioSkip', 'Пропуск по звуку', 'Узнаёт песню по звуку серии, точнее меток, но первые секунды будут слышны. Звук анализируется только на этом устройстве.')}
                 ${renderRow('showDBL', 'Двойной клик', 'Перемотка по краям и фуллскрин в центре по двойному клику.')}
             </div>
@@ -696,7 +696,8 @@
         modal.replaceChildren(...doc.body.childNodes);
 
         if (options.accent) {
-            if (window.AgUI) window.AgUI.applyAccent(options.accent, modal);
+            // Цвет настроек один на все сайты: красный цвет бренда
+            if (window.AgUI) window.AgUI.applyAccent('#ef4444', modal);
         }
         overlay.style.display = modal.style.display = 'block';
         document.body.classList.add('ag-modal-open');

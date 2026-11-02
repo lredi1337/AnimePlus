@@ -63,6 +63,16 @@ test('опенинг и эндинг запоминаются отдельно',
     assert.equal(memory.isKept('op'), false);
 });
 
+test('сэкономленное время копится за месяц и начинается заново в новом', () => {
+    const { addSaved } = globalThis.AgSkipMemory;
+    const nov = new Date(2026, 10, 2);
+    const first = addSaved(null, 89.4, nov);
+    assert.deepEqual(first, { month: '2026-11', seconds: 89 });
+    assert.equal(addSaved(first, 90, nov).seconds, 179);
+    assert.deepEqual(addSaved(first, 90, new Date(2026, 11, 1)), { month: '2026-12', seconds: 90 });
+    assert.equal(addSaved(first, -5, nov).seconds, 89);
+});
+
 test('новое видео сбрасывает память', () => {
     const memory = skippedAt();
     memory.onSeek(230, LATER);

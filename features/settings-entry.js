@@ -83,7 +83,6 @@
                 currentSettings = newS;
             }, {
                 brand: (site.name || 'Anime+').replace(/\s+Old$/i, ''),
-                accent: site.color || '#ef4444',
                 getPlayerWindows: () => (provider.getPlayerWindows ? provider.getPlayerWindows() : [])
             });
         };

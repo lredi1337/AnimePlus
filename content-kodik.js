@@ -48,6 +48,11 @@
     let canAutoPlay = false;
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
     const skipMemory = globalThis.AgSkipMemory.create();
+    const recordSavedTime = (seconds) => {
+        chrome.storage.local.get('ag_saved_time')
+            .then(data => chrome.storage.local.set({ ag_saved_time: globalThis.AgSkipMemory.addSaved(data.ag_saved_time, seconds) }))
+            .catch(() => {});
+    };
     // Перехват на всём документе: видео рекламы и серии — разные элементы, а события видео не всплывают
     document.addEventListener('seeking', (e) => skipMemory.onSeek(e.target.currentTime), true);
     let currentSkipTarget = null;
@@ -420,6 +425,7 @@
         else if (combo === settings.keys.skip) {
             e.preventDefault(); e.stopPropagation();
             if (currentSkipTarget) {
+                recordSavedTime(currentSkipTarget - v.currentTime);
                 v.currentTime = currentSkipTarget;
                 showFlash("Skipped!");
             } else {
@@ -689,6 +695,7 @@
                 currentSkipTarget = null;
                 if (settings.autoSkip && !kept && settings[isEdTarget ? 'autoSkipEd' : 'autoSkipOp'] !== false) {
                     skipMemory.markSkipped(part, skipData[part]);
+                    recordSavedTime(skipData[part].end - v.currentTime);
                     const timeBeforeClick = v.currentTime;
                     const skipEndTime = isEdTarget ? skipData.ed.end : skipData.op.end;
                     const opts = { bubbles: true, cancelable: true, view: window };
@@ -719,11 +726,12 @@
                 if (settings.autoSkip && !manualOnly) {
                     const startOfSong = skipData[part].start;
                     skipMemory.markSkipped(part, skipData[part]);
+                    recordSavedTime(skipTarget - v.currentTime);
                     v.currentTime = skipTarget;
                     btn.style.display = "none";
                     showUndo(part, startOfSong);
                 }
-                else { btn.style.display = "block"; btn.onclick = (e) => { e.stopPropagation(); v.currentTime = skipTarget; }; }
+                else { btn.style.display = "block"; btn.onclick = (e) => { e.stopPropagation(); recordSavedTime(skipTarget - v.currentTime); v.currentTime = skipTarget; }; }
             } else { btn.style.display = "none"; }
         });
 
@@ -1091,7 +1099,8 @@
 
                     // Записываем текущее время как время последнего скипа
                     btn.dataset.agSkipTime = curTime.toString();
-                    skipMemory.markSkipped(nativePart, skipData[nativePart].end > 0 ? skipData[nativePart] : { start: curTime, end: curTime + NATIVE_SKIP_RANGE_SEC });
+                    skipMemory.markSkipped(nativePart, nativeRange.end > 0 ? nativeRange : { start: curTime, end: curTime + NATIVE_SKIP_RANGE_SEC });
+                    recordSavedTime(nativeRange.end > 0 ? nativeRange.end - curTime : 0);
 
                     const seekTime = btn.getAttribute('data-seek-to');
                     if (seekTime && video) {

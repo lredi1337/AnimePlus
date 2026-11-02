@@ -95,17 +95,25 @@
 
     const clockToSec = (s) => s.split(':').reduce((sum, x) => sum * 60 + Number(x), 0);
 
-    /** Метки из страницы плеера Kodik: parseSkipButton("03:15-04:46,22:42-24:12", "anime") */
+    // Короче этого метка отмечает не песню, а, например, титры озвучки в самом конце файла
+    const MIN_MARK_SEC = 60;
+    // Сайт отключает метки Kodik значениями вроде [opening]999999-1000000: таких длинных серий не бывает
+    const MAX_MARK_START_SEC = 6 * 60 * 60;
+
+    /**
+     * Метки из страницы плеера Kodik: parseSkipButton("03:15-04:46,22:42-24:12", "anime").
+     * Сайт может передать свои в адресе кадра, с названием части и в секундах: "[opening]0-89,[ending]1335-1425"
+     */
     function parseNativeMarks(text) {
         const m = String(text || '').match(/parseSkipButton\(\s*["']([^"']*)["']/);
         if (!m) return [];
         const out = [];
         for (const part of m[1].split(',')) {
-            const r = part.trim().match(/^(\d{1,2}(?::\d{1,2}){1,2})\s*-\s*(\d{1,2}(?::\d{1,2}){1,2})$/);
+            const r = part.trim().match(/^(?:\[[^\]]*\])?\s*(\d+(?::\d{1,2}){0,2})\s*-\s*(\d+(?::\d{1,2}){0,2})$/);
             if (!r) continue;
             const start = clockToSec(r[1]);
             const end = clockToSec(r[2]);
-            if (end > start) out.push({ start, end });
+            if (end - start >= MIN_MARK_SEC && start < MAX_MARK_START_SEC) out.push({ start, end });
         }
         return out;
     }
@@ -139,7 +147,7 @@
 
     /** Итоговое время для части серии: чистая логика, проверяется тестами */
     function chooseTimings({ native, shared, hit, mark, hasSong, listening, currentTime }) {
-        if (native) return { ...native, source: 'kodik' };
+        if (native) return { ...native, source: native.source || 'kodik' };
         if (shared) return { start: shared.start, end: shared.end, source: 'shared' };
         const m = mark || { start: 0, end: 0 };
         if (hit) {
@@ -184,7 +192,9 @@
 
         const hasSongs = (type) => !!(songs && songs.some(s => s.type === type));
         const listening = (video) => !!(video && listeners.get(video));
-        const nativeFor = (part, video) => (native ? splitNativeMarks(native.ranges, video && video.duration)[part] : null);
+        // Метка самого сайта для этого видео и озвучки надёжна так же, как метка Kodik
+        const siteMark = (part) => (aniskip[part] && aniskip[part].trusted && aniskip[part].end > 0 ? { start: aniskip[part].start, end: aniskip[part].end, source: 'site' } : null);
+        const nativeFor = (part, video) => (native && splitNativeMarks(native.ranges, video && video.duration)[part]) || siteMark(part);
         const resolved = (part, video) => !!(nativeFor(part, video) || shared[part]);
         const seriesInfo = (video) => {
             const episode = options.getEpisode ? String(options.getEpisode() || '') : '';

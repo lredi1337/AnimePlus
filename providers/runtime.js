@@ -102,7 +102,6 @@
                 if (typeof window.agOpenAnimeGoSettingsModal === 'function') {
                     window.agOpenAnimeGoSettingsModal(settings, async (newS) => { settings = newS; }, {
                         brand: site.name || 'YummyAnime',
-                        accent: site.color || '#ef4444',
                         getPlayerWindows: () => (provider.getPlayerWindows ? provider.getPlayerWindows() : [])
                     });
                 }

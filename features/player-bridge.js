@@ -176,14 +176,20 @@
             const episode = provider.getEpisode();
             const info = await provider.getTitleInfo();
             if (!info) return;
-            const key = `${info.pageKey}#${episode}`;
+            const key = `${info.pageKey}#${episode}#${provider.getSkipKey ? provider.getSkipKey() : ''}`;
             if (skipCache.key !== key) {
                 let shikimoriId = info.shikimoriId;
                 if (!shikimoriId) {
                     const resolved = await window.agSendMessage({ action: 'resolve_shikimori_id', titles: info.titles, year: info.year, kind: info.kind });
                     shikimoriId = resolved && resolved.id;
                 }
-                const data = (await provider.getSkipData(episode)) || (await fetchAniSkip(shikimoriId, episode)) || NO_MARKS;
+                const own = await provider.getSkipData(episode);
+                // Чего нет у сайта, ищем в AniSkip: своя часть сайта при этом остаётся
+                const other = own && own.op.end > 0 && own.ed.end > 0 ? null : await fetchAniSkip(shikimoriId, episode);
+                const data = {
+                    op: own && own.op.end > 0 ? own.op : (other || NO_MARKS).op,
+                    ed: own && own.ed.end > 0 ? own.ed : (other || NO_MARKS).ed
+                };
                 skipCache = { key, data, malId: shikimoriId };
             }
             if (scope.disposed) return;

@@ -30,6 +30,7 @@
 
     // ---------- Меню «Озвучка» и «Плеер» (react-select): пункты появляются только при открытии ----------
 
+    const SITE_MARK_MIN_SEC = 60;
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const MENU_HIDE_ID = 'ag-shell-menu-hide';
 
@@ -258,14 +259,22 @@
             return true;
         }
 
+        /** Тайминги сайта зависят от озвучки, а она меняет адрес кадра */
+        getSkipKey() {
+            return findKodikFrame()?.src || '';
+        }
+
         // Таймкоды опенинга/эндинга есть прямо в API сайта — точнее, чем AniSkip
         async getSkipData(episode) {
             const api = await this.loadApi();
             const videos = (api?.videos || []).filter(v => String(v.number) === String(episode) && v.skips);
             const src = findKodikFrame()?.src || '';
-            const video = videos.find(v => v.iframe_url && src.includes(v.iframe_url.replace(/^https?:/, '').split('?')[0])) || videos.find(v => v.skips.opening || v.skips.ending);
+            const exact = videos.find(v => v.iframe_url && src.includes(v.iframe_url.replace(/^https?:/, '').split('?')[0]));
+            const video = exact || videos.find(v => v.skips.opening || v.skips.ending);
             if (!video) return null;
-            const toRange = (s) => s ? { start: s.time, end: s.time + s.length } : { start: 0, end: 0 };
+            // Метка этой озвучки точна, а у другой озвучки время может быть сдвинуто. Короткий эндинг сайта — это
+            // титры озвучки в конце файла, а не песня: такую часть провайдер не отдаёт, и её время берётся из AniSkip
+            const toRange = (s) => s && s.length >= SITE_MARK_MIN_SEC ? { start: s.time, end: s.time + s.length, ...(exact ? { trusted: true } : {}) } : { start: 0, end: 0 };
             return { op: toRange(video.skips.opening), ed: toRange(video.skips.ending) };
         }
 
@@ -311,6 +320,13 @@
 
         mount(scope) {
             this.msgEpisode = null;
+            if (this.settings.kodikShell === false) return;
+            // ru.yummyani.me кладёт поверх Kodik свою кнопку полного экрана, и она дублирует кнопку новой оболочки.
+            // Классы меняются при каждой сборке сайта, поэтому узнаём её по значку
+            const style = document.createElement('style');
+            style.textContent = 'body:has(iframe[src*="kodik"]) button:has(> svg > path[d^="M2.75 2.5a.25"]) { display: none !important; }';
+            document.head.appendChild(style);
+            scope.add(() => style.remove());
         }
     }
 

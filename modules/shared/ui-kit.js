@@ -89,10 +89,4 @@
     };
 
     root.AgUI = AgUI;
-
-    // На страницах сайтов акцент — цвет сайта. В окнах расширения его выбирает сам код окна
-    const site = root.AgSites && root.location && /^https?:$/.test(root.location.protocol)
-        ? root.AgSites.byHost(root.location.hostname)
-        : null;
-    if (site) AgUI.applyAccent(site.color);
 })(typeof globalThis !== 'undefined' ? globalThis : window);

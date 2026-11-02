@@ -110,7 +110,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateToggleState() {
         const isEnabled = settings.global_enabled !== false;
         if (extToggle) extToggle.classList.toggle('off', !isEnabled);
-        if (extBody) extBody.style.display = isEnabled ? 'block' : 'none';
+        if (extBody) extBody.style.display = isEnabled ? 'flex' : 'none';
+        document.getElementById('popupApp').classList.toggle('ext-off', !isEnabled);
+        document.getElementById('sitesToggle').hidden = !isEnabled;
         if (extOffNote) extOffNote.style.display = isEnabled ? 'none' : 'block';
     }
 
@@ -192,19 +194,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sitesEmpty = document.getElementById('sitesEmpty');
     const sitesCount = document.getElementById('sitesCount');
 
-    // Акцент popup = цвет текущего сайта из реестра (раньше — две жёстко заданные темы)
+    // Цвет окна один на все сайты: красный цвет бренда из tokens.css, цветом сайта отмечен только его значок в списке
     function applySiteTheme(site) {
-        const badge = document.getElementById('siteCurrentBadge');
+        AgUI.resetAccent();
         const name = document.getElementById('siteCurrentName');
-        if (site) {
-            AgUI.applyAccent(site.color);
-            if (badge) { badge.textContent = site.short; badge.classList.remove('is-muted'); }
-            if (name) name.textContent = site.name;
-        } else {
-            AgUI.resetAccent();
-            if (badge) { badge.textContent = '+'; badge.classList.add('is-muted'); }
-            if (name) name.textContent = 'Сайт не открыт';
-        }
+        if (name) name.textContent = site ? site.name : 'Сайт не открыт';
     }
 
     // Состояние переключателя без учёта глобального выключателя (он отображается отдельно)
@@ -282,7 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 await chrome.scripting.executeScript({
                     target: { tabId: activeTab.id, allFrames: true },
-                    files: ["config.js", "modules/shared/sites.js", "modules/shared/ui-kit.js", "content-kodik.js"]
+                    files: ["config.js", "modules/shared/sites.js", "modules/shared/ui-kit.js", "modules/kodik/skip-memory.js", "content-kodik.js"]
                 });
                 activateBtn.textContent = 'Плеер активирован';
                 setTimeout(() => window.close(), 1500);
@@ -396,6 +390,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
+            document.getElementById('popupApp').classList.toggle('has-list', !!(res.isLoggedIn && res.user));
+
             if (res.isLoggedIn && res.user) {
                 shikiLoggedOut.style.display = 'none';
                 shikiLoggedIn.style.display = 'block';
@@ -438,44 +434,76 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Карточка «Продолжить»: последний открытый тайтл, а если истории нет, первый недосмотренный из списка
     async function loadWatchHistory() {
-        const historyWrapper = document.getElementById('history-wrapper');
-        const historyItems = document.getElementById('history-items');
-        if (!historyWrapper || !historyItems) return;
-
+        const card = document.getElementById('continueCard');
+        if (!card) return;
         try {
             const data = await chrome.storage.local.get(['ag_watch_history']);
-            const list = Array.isArray(data.ag_watch_history) ? data.ag_watch_history : [];
-
-            if (list.length === 0) {
-                historyWrapper.style.display = 'none';
+            const last = Array.isArray(data.ag_watch_history) ? data.ag_watch_history[0] : null;
+            const unfinished = (i) => !i.episodesTotal || i.episodesWatched < i.episodesTotal;
+            const item = last
+                ? watchingItems.find(i => [i.russian, i.name].includes(last.russian) || (last.name && i.name === last.name))
+                : watchingItems.find(unfinished);
+            if (!last && !item) {
+                card.hidden = true;
                 return;
             }
 
-            historyWrapper.style.display = 'block';
-            historyItems.innerHTML = '';
+            const title = (last && last.russian) || item.russian || item.name;
+            const posterRaw = (item && item.poster) || (last && last.poster) || POPUP_PLACEHOLDER_POSTER;
+            const poster = (window.agNormalizePosterUrl && window.agNormalizePosterUrl(posterRaw)) || posterRaw;
+            for (const id of ['continueBg', 'continuePoster']) {
+                const img = document.getElementById(id);
+                img.src = poster;
+                bindPopupPoster(img, item && (item.animeId || item.id));
+            }
+            document.getElementById('continueTitle').textContent = title;
+            document.getElementById('continueMeta').textContent = item && unfinished(item)
+                ? `Серия ${item.episodesWatched + 1}${item.episodesTotal ? ` из ${item.episodesTotal}` : ''}`
+                : 'Недавно смотрели';
+            const hasProgress = !!(item && item.episodesTotal);
+            document.getElementById('continueProgress').hidden = !hasProgress;
+            if (hasProgress) document.getElementById('continueBar').style.width = `${Math.min(100, Math.round(item.episodesWatched / item.episodesTotal * 100))}%`;
 
-            list.forEach(item => {
-                const chip = document.createElement('div');
-                chip.className = 'history-chip';
-                chip.textContent = item.russian || item.name;
-                chip.title = `Открыть ${item.russian || item.name}`;
-
-                chip.onclick = () => {
-                    if (item.url) {
-                        window.open(item.url, '_blank');
-                    } else {
-                        window.open(`https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(item.russian || item.name)}&ag_from=animeplus`, '_blank');
-                    }
-                };
-
-                historyItems.appendChild(chip);
-            });
+            let play = document.getElementById('continuePlay');
+            if (!play) {
+                // Прошлый выбор сайта заменил кнопку: возвращаем её
+                card.querySelector('.shiki-portal-choice')?.remove();
+                play = document.createElement('button');
+                play.id = 'continuePlay';
+                play.className = 'continue-play';
+                play.setAttribute('aria-label', 'Продолжить просмотр');
+                card.appendChild(play);
+            }
+            play.innerHTML = AgUI.icon('play', 18);
+            play.onclick = () => {
+                if (last && last.url) window.open(last.url, '_blank');
+                else if (item) watchItem(item, play, 18);
+                else window.open(`https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(title)}&ag_from=animeplus`, '_blank');
+            };
+            card.hidden = false;
         } catch (e) {}
     }
 
+    // Сэкономленное за месяц время: считает content-kodik.js при каждом пропуске опенинга или эндинга
+    async function renderSavedTime() {
+        const box = document.getElementById('savedTime');
+        if (!box) return;
+        const { ag_saved_time: saved } = await chrome.storage.local.get(['ag_saved_time']);
+        const now = new Date();
+        const month = `${now.getFullYear()}-${now.getMonth() + 1}`;
+        const minutes = saved && saved.month === month ? Math.floor(saved.seconds / 60) : 0;
+        box.hidden = minutes < 1;
+        if (minutes < 1) return;
+        const hours = Math.floor(minutes / 60);
+        box.innerHTML = `${AgUI.icon('clock', 13)}<span>Сэкономлено: <b>${hours ? `${hours} ч ` : ''}${minutes % 60} мин</b></span>`;
+    }
+    renderSavedTime().catch(() => {});
+
     let activeTabStatus = null;
     let currentLoadedItems = [];
+    let watchingItems = [];
     let currentLoadedStatus = null;
     let activeKindFilter = 'all';
 
@@ -489,21 +517,64 @@ document.addEventListener('DOMContentLoaded', async () => {
             .replace(/'/g, '&#039;');
     }
 
-    function showSkeletonLoader(container, count = 3) {
+    function showSkeletonLoader(container, count = 6) {
         if (!container) return;
-        let html = '';
-        for (let i = 0; i < count; i++) {
-            html += `
-                <div class="skeleton-row">
-                    <div class="skeleton-thumb"></div>
-                    <div class="skeleton-lines">
-                        <div class="skeleton-text-1"></div>
-                        <div class="skeleton-text-2"></div>
-                    </div>
-                </div>
-            `;
-        }
-        container.innerHTML = html;
+        container.innerHTML = '<div class="poster-skeleton"></div>'.repeat(count);
+    }
+
+    // Поиск тайтла на включённых сайтах; кнопка показывает ход поиска, а при нескольких сайтах уступает место выбору
+    function watchItem(item, watchBtn, iconSize = 14) {
+        showToast(playToast, `Ищу «${item.russian}» на сайтах…`);
+        watchBtn.textContent = '…';
+        watchBtn.disabled = true;
+
+        // Все включённые сайты; текущий открытый сайт — первым
+        const siteIds = AgSites.list
+            .filter(s => AgSites.isEnabled(settings, s.id))
+            .sort((a, b) => Number(!!currentSite && b.id === currentSite.id) - Number(!!currentSite && a.id === currentSite.id))
+            .map(s => s.id);
+
+        chrome.runtime.sendMessage({
+            action: 'resolve_all_sites',
+            siteIds,
+            titles: [item.name, item.russian].filter(Boolean),
+            shikimoriId: item.animeId
+        }, (res) => {
+            watchBtn.innerHTML = AgUI.icon('play', iconSize);
+            watchBtn.disabled = false;
+            const found = ((res && res.results) || []).filter(r => r.url);
+
+            if (found.length === 0) {
+                // Ничего не нашли — поиск на первом включённом сайте (DLE-сайты сами перейдут на тайтл по ag_from)
+                const fallback = AgSites.byId(siteIds[0]) || AgSites.byId('jutsu');
+                const searchPath = fallback.dle ? fallback.dle.searchPath : null;
+                window.open(searchPath
+                    ? fallback.home + searchPath + encodeURIComponent(item.russian) + '&ag_from=animeplus'
+                    : `https://shikimori.io/animes/${item.animeId}`, '_blank');
+                return;
+            }
+            if (found.length === 1) {
+                window.open(found[0].url, '_blank');
+                return;
+            }
+
+            // Несколько сайтов — выбор кнопками в цвете сайта
+            const choiceBar = document.createElement('div');
+            choiceBar.className = 'shiki-portal-choice';
+            found.forEach(r => {
+                const site = AgSites.byId(r.siteId);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn-choice-site';
+                btn.style.background = site.color;
+                btn.style.color = AgUI.onAccent(site.color);
+                btn.textContent = site.short;
+                btn.title = `Смотреть на ${site.name}`;
+                btn.onclick = (ev) => { ev.stopPropagation(); window.open(r.url, '_blank'); };
+                choiceBar.appendChild(btn);
+            });
+            watchBtn.replaceWith(choiceBar);
+        });
     }
 
     function renderShikiItems(items, status) {
@@ -516,96 +587,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         items.forEach(item => {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'anime-row';
-            itemDiv.setAttribute('data-type', (item.kind || 'TV').toUpperCase());
+            const card = document.createElement('div');
+            card.className = 'poster-card';
+            card.setAttribute('data-type', (item.kind || 'TV').toUpperCase());
 
-            const epText = status === 'rewatching' 
-                ? `Перепросмотр: ${item.episodesWatched}${item.episodesTotal ? ' / ' + item.episodesTotal : ''} эп.` 
-                : `${item.episodesWatched}${item.episodesTotal ? ' / ' + item.episodesTotal : ''} эп.`;
-
-            let kindTagHtml = '';
-            if (item.kind) {
-                const k = item.kind.toUpperCase();
-                const kindName = k === 'TV' ? 'TV' : (k === 'MOVIE' ? 'Фильм' : (k === 'SPECIAL' ? 'Спешл' : k));
-                kindTagHtml = `<span class="anime-kind">${escapeHtml(kindName)}</span>`;
-            }
-
+            const eps = `${item.episodesWatched}${item.episodesTotal ? '/' + item.episodesTotal : ''}`;
+            const percent = item.episodesTotal ? Math.min(100, Math.round(item.episodesWatched / item.episodesTotal * 100)) : 0;
             const safeTitle = escapeHtml(item.russian || item.name || '');
-            const posterRaw = item.poster || '../icons/icon128.png';
+            const hint = status === 'rewatching' ? `${safeTitle}. Перепросмотр: ${eps}` : `${safeTitle}. Просмотрено: ${eps}`;
+            const posterRaw = item.poster || POPUP_PLACEHOLDER_POSTER;
             const posterSrc = (window.agNormalizePosterUrl && typeof window.agNormalizePosterUrl === 'function')
                 ? (window.agNormalizePosterUrl(posterRaw) || posterRaw)
                 : posterRaw;
 
-            itemDiv.innerHTML = `
-                <img class="anime-thumb" src="${escapeHtml(posterSrc)}" alt="poster">
-                <div class="anime-row-body">
-                    <div class="anime-title" title="${safeTitle}">${safeTitle}${kindTagHtml}</div>
-                    <div class="anime-progress">${escapeHtml(epText)}</div>
+            card.innerHTML = `
+                <div class="poster-cover">
+                    <img class="poster-img" src="${escapeHtml(posterSrc)}" alt="">
+                    <span class="poster-eps">${escapeHtml(eps)}</span>
+                    <div class="progress"><i style="width:${percent}%"></i></div>
+                    <button class="poster-play" title="${hint}" aria-label="Смотреть: ${hint}">${AgUI.icon('play', 18)}</button>
                 </div>
-                <button class="play-btn" data-title="${safeTitle}" aria-label="Смотреть">${AgUI.icon('play', 14)}</button>
+                <div class="poster-title" title="${safeTitle}">${safeTitle}</div>
             `;
 
-            bindPopupPoster(itemDiv.querySelector('img.anime-thumb'), item.animeId || item.id);
-            const watchBtn = itemDiv.querySelector('.play-btn');
-            watchBtn.onclick = (e) => {
-                e.stopPropagation();
-                if (itemDiv.querySelector('.shiki-portal-choice')) return;
-
-                showToast(playToast, `Ищу «${item.russian}» на сайтах…`);
-                watchBtn.textContent = '…';
-                watchBtn.disabled = true;
-
-                // Все включённые сайты; текущий открытый сайт — первым
-                const siteIds = AgSites.list
-                    .filter(s => AgSites.isEnabled(settings, s.id))
-                    .sort((a, b) => Number(!!currentSite && b.id === currentSite.id) - Number(!!currentSite && a.id === currentSite.id))
-                    .map(s => s.id);
-
-                chrome.runtime.sendMessage({
-                    action: 'resolve_all_sites',
-                    siteIds,
-                    titles: [item.name, item.russian].filter(Boolean),
-                    shikimoriId: item.animeId
-                }, (res) => {
-                    watchBtn.innerHTML = AgUI.icon('play', 14);
-                    watchBtn.disabled = false;
-                    const found = ((res && res.results) || []).filter(r => r.url);
-
-                    if (found.length === 0) {
-                        // Ничего не нашли — поиск на первом включённом сайте (DLE-сайты сами перейдут на тайтл по ag_from)
-                        const fallback = AgSites.byId(siteIds[0]) || AgSites.byId('jutsu');
-                        const searchPath = fallback.dle ? fallback.dle.searchPath : null;
-                        window.open(searchPath
-                            ? fallback.home + searchPath + encodeURIComponent(item.russian) + '&ag_from=animeplus'
-                            : `https://shikimori.io/animes/${item.animeId}`, '_blank');
-                        return;
-                    }
-                    if (found.length === 1) {
-                        window.open(found[0].url, '_blank');
-                        return;
-                    }
-
-                    // Несколько сайтов — выбор кнопками в цвете сайта
-                    const choiceBar = document.createElement('div');
-                    choiceBar.className = 'shiki-portal-choice';
-                    found.forEach(r => {
-                        const site = AgSites.byId(r.siteId);
-                        const btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'btn-choice-site';
-                        btn.style.background = site.color;
-                        btn.style.color = AgUI.onAccent(site.color);
-                        btn.textContent = site.short;
-                        btn.title = `Смотреть на ${site.name}`;
-                        btn.onclick = (ev) => { ev.stopPropagation(); window.open(r.url, '_blank'); };
-                        choiceBar.appendChild(btn);
-                    });
-                    watchBtn.replaceWith(choiceBar);
-                });
-            };
-
-            watchingContainer.appendChild(itemDiv);
+            bindPopupPoster(card.querySelector('.poster-img'), item.animeId || item.id);
+            const watchBtn = card.querySelector('.poster-play');
+            watchBtn.onclick = () => watchItem(item, watchBtn, 18);
+            watchingContainer.appendChild(card);
         });
     }
 
@@ -637,7 +645,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadShikiList(status) {
         if (!watchingContainer) return;
-        watchingContainer.style.display = 'block';
+        watchingContainer.style.display = 'grid';
         if (searchWrapper) searchWrapper.style.display = 'block';
         if (listSearchInput) listSearchInput.value = '';
 
@@ -647,19 +655,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (cacheRes && Array.isArray(cacheRes[cacheKey]) && cacheRes[cacheKey].length > 0) {
                 currentLoadedItems = cacheRes[cacheKey];
                 currentLoadedStatus = status;
+                if (status === 'watching') {
+                    watchingItems = cacheRes[cacheKey];
+                    loadWatchHistory();
+                }
                 applyShikiFilters();
-            } else if (!currentLoadedItems || currentLoadedItems.length === 0) {
-                showSkeletonLoader(watchingContainer, 3);
+            } else if (!currentLoadedItems || currentLoadedItems.length === 0 || currentLoadedStatus !== status) {
+                showSkeletonLoader(watchingContainer);
             }
         } catch (e) {
             if (!currentLoadedItems || currentLoadedItems.length === 0) {
-                showSkeletonLoader(watchingContainer, 3);
+                showSkeletonLoader(watchingContainer);
             }
         }
 
         chrome.runtime.sendMessage({ action: "get_shiki_watching_list", status: status }, (res) => {
+            if (activeTabStatus !== status) return;
             if (!res || !res.success || !Array.isArray(res.items) || res.items.length === 0) {
-                if (!currentLoadedItems || currentLoadedItems.length === 0) {
+                // Сбой сети не стирает уже показанный список этой вкладки, но чужой список на ней не остаётся
+                if (!currentLoadedItems || currentLoadedItems.length === 0 || currentLoadedStatus !== status) {
                     currentLoadedItems = [];
                     currentLoadedStatus = status;
                     const labelText = status === 'rewatching' ? '«Пересматриваю»' : '«Смотрю»';
@@ -671,6 +685,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             currentLoadedItems = res.items;
             currentLoadedStatus = status;
+            if (status === 'watching') {
+                watchingItems = res.items;
+                loadWatchHistory();
+            }
             applyShikiFilters();
         });
     }
@@ -690,31 +708,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     if (btnTabWatching && btnTabRewatching) {
-        btnTabWatching.onclick = () => {
-            if (activeTabStatus === 'watching' && watchingContainer.style.display !== 'none') {
-                watchingContainer.style.display = 'none';
-                if (searchWrapper) searchWrapper.style.display = 'none';
-                btnTabWatching.classList.remove('active');
-                activeTabStatus = null;
-            } else {
-                btnTabWatching.classList.add('active');
-                btnTabRewatching.classList.remove('active');
-                activeTabStatus = 'watching';
-                loadShikiList('watching');
-            }
+        const openStatusTab = (status) => {
+            btnTabWatching.classList.toggle('active', status === 'watching');
+            btnTabRewatching.classList.toggle('active', status === 'rewatching');
+            if (activeTabStatus === status) return;
+            activeTabStatus = status;
+            loadShikiList(status);
         };
+        btnTabWatching.onclick = () => openStatusTab('watching');
+        btnTabRewatching.onclick = () => openStatusTab('rewatching');
+    }
 
-        btnTabRewatching.onclick = () => {
-            if (activeTabStatus === 'rewatching' && watchingContainer.style.display !== 'none') {
-                watchingContainer.style.display = 'none';
-                if (searchWrapper) searchWrapper.style.display = 'none';
-                btnTabRewatching.classList.remove('active');
-                activeTabStatus = null;
-            } else {
-                btnTabRewatching.classList.add('active');
-                btnTabWatching.classList.remove('active');
-                activeTabStatus = 'rewatching';
-                loadShikiList('rewatching');
+    const btnListSearch = document.getElementById('btn-list-search');
+    const listSearchBox = document.getElementById('listSearchBox');
+    if (btnListSearch && listSearchBox) {
+        btnListSearch.onclick = () => {
+            const open = listSearchBox.hidden;
+            listSearchBox.hidden = !open;
+            btnListSearch.classList.toggle('active', open);
+            btnListSearch.setAttribute('aria-expanded', String(open));
+            if (open) {
+                listSearchInput.focus();
+            } else if (listSearchInput.value) {
+                listSearchInput.value = '';
+                applyShikiFilters();
             }
         };
     }
