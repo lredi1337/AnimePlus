@@ -983,6 +983,7 @@
             clearInterval(syncTimer);
             document.removeEventListener('mousemove', wake);
             document.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('keyup', onKeyUp, true);
             document.body.classList.remove('ag-shell-on', 'ag-shell-panel');
             if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
             host.remove();
@@ -1000,6 +1001,8 @@
             }
         };
 
+        let spaceHandled = false;
+
         const onKey = (e) => {
             if (mode === 'ad') return;
             if (e.key === 'Escape' && openPanel) {
@@ -1010,13 +1013,23 @@
             if (e.code === 'Space' && mode === 'play' && !e.composedPath().some(n => n.tagName === 'INPUT')) {
                 e.preventDefault();
                 e.stopPropagation();
-                toggle();
+                spaceHandled = true;
+                if (!e.repeat) toggle();
             }
             wake();
         };
 
+        // Kodik переключает паузу при отпускании пробела: без перехвата видео сразу запускается снова
+        const onKeyUp = (e) => {
+            if (e.code !== 'Space' || !spaceHandled) return;
+            spaceHandled = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        };
+
         document.addEventListener('mousemove', wake);
         document.addEventListener('keydown', onKey, true);
+        window.addEventListener('keyup', onKeyUp, true);
         const safeSync = guarded(sync);
         const syncTimer = setInterval(safeSync, SYNC_MS);
         renderHead();

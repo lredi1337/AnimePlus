@@ -200,6 +200,36 @@ test('ручной пропуск: перемотка на 89 секунд', () 
     stale.shell.destroy();
 });
 
+test('пробел: одно нажатие — одна пауза, Kodik не запускает видео при отпускании', () => {
+    const { w, shell } = mount();
+    const v = w.document.querySelector('video.fp-engine');
+    let paused = false;
+    let pauses = 0;
+    let plays = 0;
+    Object.defineProperty(v, 'paused', { get: () => paused, configurable: true });
+    v.pause = () => { paused = true; pauses++; };
+    v.play = () => { paused = false; plays++; return Promise.resolve(); };
+    // Так устроен родной плеер: переключает паузу при отпускании клавиши
+    let nativeToggles = 0;
+    w.document.addEventListener('keyup', (e) => { if (e.code === 'Space') nativeToggles++; });
+
+    const key = (type, repeat = false) => w.document.body.dispatchEvent(new w.KeyboardEvent(type, { code: 'Space', key: ' ', bubbles: true, cancelable: true, repeat }));
+    key('keydown');
+    key('keydown', true);
+    key('keydown', true);
+    key('keyup');
+    assert.deepEqual({ pauses, plays, nativeToggles }, { pauses: 1, plays: 0, nativeToggles: 0 });
+
+    key('keydown');
+    key('keyup');
+    assert.deepEqual({ pauses, plays, nativeToggles }, { pauses: 1, plays: 1, nativeToggles: 0 });
+
+    // Пробел мимо оболочки (например, в поле ввода) отпускается как обычно
+    key('keyup');
+    assert.equal(nativeToggles, 1);
+    shell.destroy();
+});
+
 test('снятие оболочки возвращает родной интерфейс', () => {
     const { w, shell } = mount();
     shell.destroy();

@@ -84,6 +84,81 @@ test('повторный просмотр одного куска не счит�
     assert.equal(env.syncs().length, 0);
 });
 
+const playOurs = (env, from, to, duration = 1400) => {
+    for (let t = from; t <= to; t += 2) env.post({ type: 'AG_VIDEO_PROGRESS', episode: '3', currentTime: t, duration, isEnded: false });
+};
+
+const askResume = (env) => {
+    const replies = [];
+    env.post({ type: 'AG_GET_RESUME', episode: '3' }, { source: { postMessage: (m) => replies.push(m) } });
+    return replies;
+};
+
+test('после перезагрузки плеер получает место остановки', () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage });
+    assert.deepEqual(askResume(env), [], 'новая серия идёт сначала');
+    playOurs(env, 2, 33);
+    env.leavePage();
+
+    env = makeEnv({ localStorage });
+    assert.deepEqual(askResume(env).map(m => ({ type: m.type, time: m.time })), [{ type: 'AG_RESUME', time: 32 }]);
+});
+
+test('смена озвучки без перезагрузки продолжает с того же места', () => {
+    const env = makeEnv();
+    playOurs(env, 100, 200);
+    assert.equal(askResume(env)[0].time, 200);
+});
+
+test('перемотка меняет место остановки, короткая реклама — нет', () => {
+    const env = makeEnv();
+    playOurs(env, 100, 110);
+    env.post({ type: 'AG_VIDEO_PROGRESS', episode: '3', currentTime: 700, duration: 1400, isEnded: false });
+    env.post({ type: 'AG_VIDEO_PROGRESS', episode: '3', currentTime: 5, duration: 30, isEnded: false });
+    assert.equal(askResume(env)[0].time, 700);
+});
+
+test('первые секунды и досмотренная серия не продолжаются', async () => {
+    let env = makeEnv();
+    playOurs(env, 2, 8);
+    assert.deepEqual(askResume(env), []);
+
+    env = makeEnv();
+    playOurs(env, 2, 1300);
+    await flush();
+    assert.equal(env.syncs().length, 1);
+    assert.deepEqual(askResume(env), []);
+});
+
+test('место остановки переживает отметку серии', async () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage });
+    playOurs(env, 2, 1150);
+    await flush();
+    assert.equal(env.syncs().length, 1);
+    env.leavePage();
+
+    env = makeEnv({ localStorage });
+    assert.equal(askResume(env)[0].time, 1150);
+});
+
+test('серии хранят своё место отдельно', () => {
+    let ep = '3';
+    const env = makeEnv({ getEpisode: () => ep });
+    playOurs(env, 100, 200);
+    ep = '4';
+    assert.deepEqual(askResume(env), []);
+});
+
+test('поддельный origin не получает место остановки', () => {
+    const env = makeEnv();
+    playOurs(env, 100, 200);
+    const replies = [];
+    env.post({ type: 'AG_GET_RESUME', episode: '3' }, { origin: 'https://evil.example', source: { postMessage: (m) => replies.push(m) } });
+    assert.deepEqual(replies, []);
+});
+
 test('отмеченная серия забывает участки, пересмотр считается заново', async () => {
     const localStorage = makeStorage();
     let env = makeEnv({ localStorage });

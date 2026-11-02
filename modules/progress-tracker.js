@@ -7,7 +7,8 @@
 //   - AniBoom:                 { source: 'aniboom-player', type: 'player.timeupdate' | 'player.ended', payload };
 //   - CDNVideoHub (CVH):       { source: 'cdnvideohub-player', eventType: 'timeupdate' | 'ended', data }.
 // Серия засчитывается один раз: при 80% длительности (и реально просмотренной половине) либо по событию ended.
-// Просмотренные участки хранятся в localStorage сайта, поэтому серию можно досмотреть после перезагрузки или смены озвучки.
+// Просмотренные участки и место остановки хранятся в localStorage сайта, поэтому серию можно досмотреть
+// после перезагрузки или смены озвучки: плеер спрашивает место сообщением AG_GET_RESUME и получает AG_RESUME.
 
 (function () {
     'use strict';
@@ -20,6 +21,8 @@
     const SAVE_INTERVAL_MS = 15000;
     const MAX_SAVED_EPISODES = 200;
     const SAVED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    const MIN_RESUME_SEC = 10; // первые секунды продолжать незачем
+    const FINISHED_RATIO = 0.9; // досмотренная серия при новом запуске идёт сначала
 
     // Участки [начало, конец] без пересечений: один и тот же кусок серии дважды не считается
     function addRange(ranges, from, to) {
@@ -138,7 +141,7 @@
             let watched = watchedEpisodes.get(key);
             if (!watched) {
                 const saved = readSaved()[key];
-                watched = { ranges: Array.isArray(saved?.ranges) ? saved.ranges : [], dirty: false, done: false };
+                watched = { ranges: Array.isArray(saved?.ranges) ? saved.ranges : [], position: Number(saved?.position) || 0, dirty: false, done: false };
                 watchedEpisodes.set(key, watched);
             }
             return watched;
@@ -149,7 +152,9 @@
             for (const [key, watched] of watchedEpisodes) {
                 if (!watched.dirty) continue;
                 watched.dirty = false;
-                changes[key] = watched.done ? null : { ranges: watched.ranges, ts: Date.now() };
+                changes[key] = watched.ranges.length > 0 || watched.position > 0
+                    ? { ranges: watched.ranges, position: watched.position, ts: Date.now() }
+                    : null;
             }
             if (Object.keys(changes).length > 0) writeSaved(changes);
         };
@@ -198,8 +203,9 @@
             });
 
             if (res && res.success) {
-                // Серия отмечена: при пересмотре участки считаются заново
+                // Серия отмечена: при пересмотре участки считаются заново, место остановки остаётся
                 watched.done = true;
+                watched.ranges = [];
                 watched.dirty = true;
                 saveWatched();
                 if (settings.shiki_show_toasts !== false && window.showAgToast && !res.noop) {
@@ -213,6 +219,13 @@
 
         const onMessage = (e) => {
             if (e.origin !== location.origin && !(window.isValidOrigin && window.isValidOrigin(e.origin))) return;
+            if (e.data?.type === 'AG_GET_RESUME') {
+                if (!e.source) return;
+                const episode = adapter.getEpisode(e.data.episode != null ? String(e.data.episode) : null) || '1';
+                const { position } = getWatched(`${location.pathname}#${episode}`);
+                if (position >= MIN_RESUME_SEC) e.source.postMessage({ type: 'AG_RESUME', time: position }, '*');
+                return;
+            }
             const ev = parsePlayerMessage(e.data);
             if (!ev) return;
 
@@ -240,6 +253,15 @@
                     }
                 }
                 st.lastTime = ev.currentTime;
+                // Перемотать может только наш скрипт в плеере, поэтому место берём из его сообщений
+                if (ev.stream === 'ag' && longEnough) {
+                    watched.position = ev.currentTime / st.duration < FINISHED_RATIO ? ev.currentTime : 0;
+                    watched.dirty = true;
+                }
+            }
+            if (ev.ended && ev.stream === 'ag' && longEnough) {
+                watched.position = 0;
+                watched.dirty = true;
             }
 
             if (Date.now() - lastSaveTime >= SAVE_INTERVAL_MS) {

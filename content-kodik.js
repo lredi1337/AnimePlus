@@ -1147,6 +1147,19 @@
     // поэтому следим за DOM постоянно, а не 15 секунд после загрузки.
     const trackedVideos = new WeakSet();
     const PROGRESS_THROTTLE_MS = 2000;
+    const MIN_EPISODE_SEC = 60; // реклама короче и места остановки не запрашивает
+    const RESUME_MAX_START_SEC = 5; // зритель уже сам ушёл дальше — не перематываем
+
+    // Место остановки хранит страница сайта (modules/progress-tracker.js): серию и тайтл знает только она
+    let resumeVideo = null;
+    window.addEventListener('message', (e) => {
+        if (e.data?.type !== 'AG_RESUME' || !isParentSiteOrigin(e.origin)) return;
+        const v = resumeVideo;
+        resumeVideo = null;
+        if (!v || v.currentTime > RESUME_MAX_START_SEC) return;
+        const time = Number(e.data.time);
+        if (time > 0 && time < v.duration) v.currentTime = time;
+    });
 
     const attachProgressReporter = (v) => {
         if (trackedVideos.has(v)) return;
@@ -1163,7 +1176,17 @@
             }
             return episodeCache;
         };
-        v.addEventListener('loadstart', () => { episodeCache = null; });
+        let resumeAsked = false;
+        const askResume = () => {
+            if (resumeAsked || !(v.duration >= MIN_EPISODE_SEC)) return;
+            resumeAsked = true;
+            resumeVideo = v;
+            window.top.postMessage({ type: 'AG_GET_RESUME', episode: getEpisodeCached().current }, '*');
+        };
+        v.addEventListener('loadstart', () => { episodeCache = null; resumeAsked = false; });
+        v.addEventListener('loadedmetadata', askResume);
+        v.addEventListener('durationchange', askResume);
+        askResume();
 
         const report = (isEnded) => {
             const data = getEpisodeCached();
