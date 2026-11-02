@@ -1041,19 +1041,11 @@
                 lastSwitchTime = now;
 
                 if (settings.autoNext) {
-                    const goNext = () => {
-                        if (shouldUseLocalNav()) {
-                            switchKodikEpisode('next', true);
-                            updateLocalEpisodeNumbers();
-                        } else {
-                            window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
-                        }
-                    };
-                    const nextNumber = shouldUseLocalNav() ? getLocalEpisodeData().next : '';
-                    // Последняя серия: в оболочке предлагать нечего, а без неё всё работает как раньше
-                    const noNext = shouldUseLocalNav() && hasLocalEpisodeControls() && !nextNumber;
-                    if (!(playerShell && !noNext && playerShell.askNext(nextNumber ? `Серия ${nextNumber}` : 'Следующая серия', goNext))) {
-                        if (!noNext || !playerShell) goNext();
+                    if (shouldUseLocalNav()) {
+                        switchKodikEpisode('next', true);
+                        updateLocalEpisodeNumbers();
+                    } else {
+                        window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
                     }
                 }
 

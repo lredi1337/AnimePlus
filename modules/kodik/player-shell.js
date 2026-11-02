@@ -8,7 +8,6 @@
 
     const EPISODE_GROUP = 100;
     const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
-    const NEXT_SECONDS = 8;
     const SEEN_KEY = 'ag_seen_eps';
     const SEEN_MAX_TITLES = 300;
     const SEEN_AT = 0.8;
@@ -198,13 +197,6 @@
         button.row[role="switch"]:hover { background: rgba(255,255,255,.09); }
         .on > .sw { background: #fff; }
         .on > .sw::after { left: 16px; background: #111; }
-        .next { position: absolute; right: 24px; bottom: 72px; width: 280px; padding: 14px; border-radius: 10px; background: #101319; display: none; pointer-events: auto; }
-        .next.on { display: block; }
-        .next .in { color: rgba(255,255,255,.75); margin-bottom: 3px; }
-        .next .ttl { font-size: 15px; font-weight: 600; margin-bottom: 11px; }
-        .next .acts { display: flex; gap: 8px; }
-        .next .go { flex: 1; height: 34px; border-radius: 7px; background: #fff; color: #111; font-weight: 600; }
-        .next .no { height: 34px; padding: 0 12px; border-radius: 7px; background: rgba(255,255,255,.12); }
         .note { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); padding: 8px 16px; border-radius: 8px; background: rgba(16,19,25,.9); font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .15s; pointer-events: none; }
         .note.on { opacity: 1; }
         .start .chrome .center button:not(.big), .start .bottom .track, .start .vol, .start .clock, .start .pip, .start [data-act="settings"], .start [data-act="full"] { display: none; }
@@ -246,7 +238,6 @@
                 </div>
             </div>
             <div class="note"></div>
-            <div class="next"><div class="in"></div><div class="ttl"></div><div class="acts"><button class="go">Смотреть</button><button class="no">Отмена</button></div></div>
             <div class="panel" role="dialog"></div>
         </div>`;
 
@@ -268,7 +259,7 @@
 
     /**
      * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), onVoicePicked(text) }
-     * Возвращает { destroy, askNext(label, onGo) } или null, если подключиться нельзя.
+     * Возвращает { destroy } или null, если подключиться нельзя.
      */
     function create(options) {
         if (!document.body || q('#ag-shell')) return null;
@@ -293,8 +284,6 @@
         let clickTimer = null;
         let dragging = false;
         let noteTimer = null;
-        let nextTimer = null;
-        let nextRun = null;
         let rewindSum = 0;
         let rewindTimer = null;
         let destroyed = false;
@@ -332,7 +321,7 @@
         const wake = () => {
             rootEl.classList.remove('idle');
             clearTimeout(idleTimer);
-            if (mode === 'start' || openPanel || dragging || nextRun || (video && video.paused)) return;
+            if (mode === 'start' || openPanel || dragging || (video && video.paused)) return;
             idleTimer = setTimeout(() => rootEl.classList.add('idle'), settings().hideTime || 2500);
         };
 
@@ -920,35 +909,7 @@
         renderHead();
         safeSync();
 
-        return {
-            destroy,
-            /** Карточка следующей серии. Возвращает false, если оболочка сейчас скрыта и решать надо как обычно */
-            askNext(label, onGo) {
-                if (mode !== 'play') return false;
-                const card = $('.next');
-                let left = NEXT_SECONDS;
-                const finish = (run) => {
-                    clearInterval(nextTimer);
-                    nextRun = null;
-                    card.classList.remove('on');
-                    if (run) onGo();
-                };
-                const paint = () => { card.querySelector('.in').textContent = `Следующая серия через ${left} с`; };
-                card.querySelector('.ttl').textContent = label;
-                card.querySelector('.go').onclick = () => finish(true);
-                card.querySelector('.no').onclick = () => finish(false);
-                paint();
-                card.classList.add('on');
-                nextRun = finish;
-                clearInterval(nextTimer);
-                nextTimer = setInterval(() => {
-                    left -= 1;
-                    if (left <= 0) finish(true); else paint();
-                }, 1000);
-                wake();
-                return true;
-            }
-        };
+        return { destroy };
     }
 
     const api = { create, formatTime, episodeGroups, sortVoices, playerMode };

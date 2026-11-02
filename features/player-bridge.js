@@ -4,7 +4,7 @@
 //   AG_EPISODE_CHANGED            → обновить номер серии и таймкоды
 //   AG_PSEUDO_FS {action}         → псевдо-фуллскрин контейнера плеера
 //   AG_NAV {dir}                  → provider.navigate()
-//   AG_START_MARATHON             → автопсевдо-фуллскрин (настройка autoFS)
+//   AG_START_MARATHON             → режим марафона для тайтла и автопсевдо-фуллскрин (настройка autoFS)
 // Таймкоды: сначала с самого сайта (provider.getSkipData), иначе AniSkip по ID Shikimori.
 
 (function () {
@@ -96,6 +96,7 @@
         }
     }
 
+    const MARATHON_KEY = 'ag_active_marathon_id';
     const NO_MARKS = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
 
     window.AgFeatures = window.AgFeatures || {};
@@ -213,6 +214,10 @@
                         currentTitle: `${episode} серия - ${info ? info.title : document.title}`
                     });
                     post(e.source, { type: 'AG_FS_STATE', active: !!fsContainer });
+                    // Марафон: зритель уже запускал этот тайтл, следующая серия стартует сама
+                    if (info && sessionStorage.getItem(MARATHON_KEY) === String(info.pageKey)) {
+                        post(e.source, { type: 'AG_MARATHON_CONFIRM' });
+                    }
                     sendSkipData(e.source);
                     break;
                 }
@@ -230,9 +235,12 @@
                     }
                     break;
                 }
-                case 'AG_START_MARATHON':
+                case 'AG_START_MARATHON': {
+                    const started = await provider.getTitleInfo();
+                    if (started) sessionStorage.setItem(MARATHON_KEY, String(started.pageKey));
                     if (settings.autoFS) scope.timeout(() => setPseudoFs('enable', e.source), 300);
                     break;
+                }
             }
         });
 
