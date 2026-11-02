@@ -108,6 +108,10 @@ test('во время рекламы оболочка уходит с экран
     ad.getBoundingClientRect = () => ({ width: 800, height: 450 });
     w.document.body.appendChild(ad);
     return new Promise((resolve) => setTimeout(resolve, 500)).then(() => {
+        // Короткая вспышка пустого блока это ещё не реклама: оболочка не должна мигать
+        assert.equal(w.document.getElementById('ag-shell').style.display, '');
+        return new Promise((resolve) => setTimeout(resolve, 1300));
+    }).then(() => {
         assert.equal(w.document.getElementById('ag-shell').style.display, 'none');
         assert.ok(w.document.body.classList.contains('ag-shell-on'));
         ad.remove();

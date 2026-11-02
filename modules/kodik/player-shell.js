@@ -15,6 +15,8 @@
     const DOUBLE_CLICK_MS = 250;
     // Столько ждём автозапуск следующей серии, потом показываем кнопку
     const AUTOSTART_WAIT_MS = 6000;
+    // Kodik на мгновение показывает пустой рекламный блок и без рекламы: это ещё не реклама, иначе оболочка мигает и теряет нажатия
+    const AD_CONFIRM_MS = 1200;
 
     // ---------- Чистые функции ----------
 
@@ -84,14 +86,26 @@
         sel.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    // Рекламный блок может быть и без видео (баннер), поэтому важно, виден ли он сам
-    function adIsPlaying() {
+    // Блок рекламы лежит в кадре и без рекламы, иногда под самим видео, поэтому смотрим, что на самом деле сверху.
+    // Оболочка при этой проверке не считается
+    function adIsOnTop(box) {
+        if (!document.elementsFromPoint) return true;
+        const r = box.getBoundingClientRect();
+        const stack = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).filter(e => e.id !== 'ag-shell');
+        return !!stack[0] && box.contains(stack[0]);
+    }
+
+    /** Состояние рекламы: играет, блок сверху без видео (баннер) или её нет */
+    function adState(main) {
         const box = q('.creative-player');
-        if (!box || box.getBoundingClientRect().width === 0) return false;
+        if (!box || box.getBoundingClientRect().width === 0) return 'none';
         const style = getComputedStyle(box);
-        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return 'none';
+        const onTop = adIsOnTop(box);
         const ad = box.querySelector('video');
-        return !ad || (!ad.ended && (!!ad.currentSrc || !ad.paused));
+        const adRuns = !!ad && !ad.paused && !ad.ended && !!ad.currentSrc;
+        if (adRuns && (onTop || !main || main.paused)) return 'playing';
+        return onTop ? 'visible' : 'none';
     }
 
     // ---------- Вёрстка ----------
@@ -292,6 +306,7 @@
         const panel = $('.panel');
         let video = null;
         let mode = null;
+        let adSeenSince = 0;
         const bornAt = Date.now();
         let openPanel = null;
         let idleTimer = null;
@@ -869,8 +884,12 @@
             const b = document.body.classList;
             const v = q('video.fp-engine');
             if (v) bindVideo(v);
+            const ad = adState(v);
+            if (ad === 'none') adSeenSince = 0;
+            else if (!adSeenSince) adSeenSince = Date.now();
+            const adPlaying = ad === 'playing' || (ad === 'visible' && Date.now() - adSeenSince >= AD_CONFIRM_MS);
             const autoStarting = !!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS;
-            setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying: adIsPlaying(), hasVideo: !!v, autoStarting }));
+            setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying, hasVideo: !!v, autoStarting }));
             if (mode !== 'ad') {
                 renderZones();
                 const full = document.body.dataset.agFsState === 'true';

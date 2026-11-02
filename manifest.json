@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "9.4.0",
+  "version": "9.5.0",
   "description": "Улучшает просмотр аниме на AnimeGO, Jut-Su, YummyAnime и других сайтах: выбор озвучки, учёт серий в Shikimori, пропуск опенингов 🚀",
   "homepage_url": "https://lredi1337.github.io/AnimeGoPlus/",
   "permissions": [
