@@ -104,6 +104,7 @@
         mic: '<path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/>',
         gear: '<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/>',
         full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+        unfull: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
         pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="7" height="5" fill="currentColor" stroke="none"/>',
         close: '<path d="M6 6l12 12M18 6L6 18"/>',
         search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
@@ -300,6 +301,7 @@
         let seen = new Set();
         let seenMarked = false;
         let episodeGroup = null;
+        let fullShown = false;
         const titleKey = () => (document.title || '').trim().toLowerCase();
 
         const settings = () => options.getSettings() || {};
@@ -862,7 +864,16 @@
             const v = q('video.fp-engine');
             if (v) bindVideo(v);
             setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying: adIsPlaying(), hasVideo: !!v }));
-            if (mode !== 'native') renderZones();
+            if (mode !== 'native') {
+                renderZones();
+                const full = document.body.dataset.agFsState === 'true';
+                if (full !== fullShown) {
+                    fullShown = full;
+                    const b = $('[data-act="full"]');
+                    b.innerHTML = icon(full ? 'unfull' : 'full');
+                    b.setAttribute('aria-label', full ? 'Свернуть' : 'На весь экран');
+                }
+            }
         }
 
         function destroy() {

@@ -9,6 +9,7 @@ const FILES = [
     'config.js',
     'modules/shared/sites.js',
     'modules/shared/title-match.js',
+    'modules/shared/native-fs.js',
     'modules/ui-utils.js',
     'modules/site-selectors.js',
     'modules/progress-tracker.js',

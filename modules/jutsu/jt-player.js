@@ -65,8 +65,15 @@
         };
 
         let _savedScrollY = 0;
+        let nativeFs = false;
+        let lastFsSource = null;
 
-        const setPseudoFS = (enable, sourceWindow = null) => {
+        // Выход средствами браузера: Esc, F11
+        window.AgNativeFs.onExit(() => {
+            if (nativeFs) setPseudoFS('disable');
+        });
+
+        const setPseudoFS = async (enable, sourceWindow = null) => {
             const container = document.querySelector('.jutsu-page__player-video') ||
                               document.querySelector('#my-player') ||
                               document.querySelector('.tabs-block__content') ||
@@ -77,11 +84,22 @@
 
             const isActive = container.classList.contains('ag-pseudo-fs-active');
             const shouldDisable = (enable === 'disable') || (enable === 'toggle' && isActive);
+            // Выход по Esc приходит без окна-источника, а кадр Kodik может быть вложен в обёртку: помним, кто просил
+            if (sourceWindow) lastFsSource = sourceWindow;
+            else sourceWindow = lastFsSource;
+            // Нечего менять: иначе Esc вне полного экрана разворачивал окно браузера
+            if (shouldDisable ? !isActive : isActive) return;
+
+            // Настоящий полный экран запрашивается первым: разрешение браузера действует недолго
+            if (!shouldDisable) nativeFs = await window.AgNativeFs.request(container);
 
             document.body.classList.add('ag-fs-transitioning');
 
             if (shouldDisable) {
-                chrome.runtime.sendMessage({ action: "fullscreen_off" });
+                const wasNative = nativeFs;
+                nativeFs = false;
+                if (wasNative) window.AgNativeFs.exit();
+                else chrome.runtime.sendMessage({ action: "fullscreen_off" });
                 if (sourceWindow) sourceWindow.postMessage({ type: 'AG_FS_STATE', active: false }, '*');
                 const directIframe = container.querySelector('iframe');
                 if (directIframe && directIframe.contentWindow !== sourceWindow) {
@@ -126,8 +144,12 @@
                     setTimeout(restoreScroll, 150);
                 };
 
-                window.addEventListener('resize', onResize);
-                fallbackTimer = setTimeout(finishExit, 600);
+                if (wasNative) {
+                    finishExit();
+                } else {
+                    window.addEventListener('resize', onResize);
+                    fallbackTimer = setTimeout(finishExit, 600);
+                }
             } else {
                 // Запоминаем текущую позицию скролла перед входом в фуллскрин
                 const curY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
@@ -143,7 +165,7 @@
                 container.classList.add('ag-pseudo-fs-active');
                 document.body.classList.add('ag-pseudo-fs-active');
                 document.body.classList.add('ag-no-scroll');
-                chrome.runtime.sendMessage({ action: "fullscreen_on" });
+                if (!nativeFs) chrome.runtime.sendMessage({ action: "fullscreen_on" });
 
                 if (sourceWindow) sourceWindow.postMessage({ type: 'AG_FS_STATE', active: true }, '*');
                 const directIframe2 = container.querySelector('iframe');

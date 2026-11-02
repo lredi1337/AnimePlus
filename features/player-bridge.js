@@ -104,6 +104,7 @@
         injectStyle();
         let fsContainer = null;
         let savedScrollY = 0;
+        let nativeFs = false;
         let skipCache = { key: null, data: null };
 
         const post = (win, msg) => { try { win && win.postMessage(msg, '*'); } catch (e) {} };
@@ -125,29 +126,50 @@
             document.querySelectorAll('.ag-pfs-ancestor').forEach(el => el.classList.remove('ag-pfs-ancestor'));
         };
 
-        const setPseudoFs = (action, source) => {
+        const applyFs = (container) => {
+            fsContainer = container;
+            applyAncestors(container);
+            container.classList.add('ag-pfs-active');
+            document.body.classList.add('ag-no-scroll');
+            document.documentElement.classList.add('ag-pfs-root');
+        };
+
+        const setPseudoFs = async (action, source) => {
             const container = provider.getPlayerContainer();
             const isActive = !!fsContainer;
             const enable = action === 'enable' || (action === 'toggle' && !isActive);
             if (enable && !isActive && container) {
                 savedScrollY = window.scrollY;
-                fsContainer = container;
-                applyAncestors(container);
-                container.classList.add('ag-pfs-active');
-                document.body.classList.add('ag-no-scroll');
-                document.documentElement.classList.add('ag-pfs-root');
-                window.agSendMessage({ action: 'fullscreen_on' });
+                nativeFs = await window.AgNativeFs.request(container);
+                applyFs(container);
+                // Браузер не разрешил настоящий полный экран (автозапуск без нажатия): разворачиваем окно
+                if (!nativeFs) window.agSendMessage({ action: 'fullscreen_on' });
             } else if (!enable && isActive) {
+                const wasNative = nativeFs;
+                nativeFs = false;
                 fsContainer.classList.remove('ag-pfs-active');
                 clearAncestors();
                 fsContainer = null;
                 document.body.classList.remove('ag-no-scroll');
                 document.documentElement.classList.remove('ag-pfs-root');
-                window.agSendMessage({ action: 'fullscreen_off' });
+                if (wasNative) window.AgNativeFs.exit();
+                else window.agSendMessage({ action: 'fullscreen_off' });
                 requestAnimationFrame(() => window.scrollTo(0, savedScrollY));
             }
             broadcast({ type: 'AG_FS_STATE', active: !!fsContainer }, source);
         };
+
+        // Выход средствами браузера: Esc, F11. Если сайт сам заменил блок плеера, полный экран снимается не по воле зрителя
+        window.AgNativeFs.onExit(() => {
+            if (!nativeFs || !fsContainer) return;
+            if (!fsContainer.isConnected && provider.getPlayerContainer()) {
+                nativeFs = false;
+                applyFs(provider.getPlayerContainer());
+                window.agSendMessage({ action: 'fullscreen_on' });
+                return;
+            }
+            setPseudoFs('disable');
+        });
 
         const sendSkipData = async (target) => {
             const episode = provider.getEpisode();
@@ -222,7 +244,7 @@
         scope.observe(() => {
             if (!fsContainer) return;
             const current = provider.getPlayerContainer();
-            if (current && current !== fsContainer) {
+            if (current && current !== fsContainer && !nativeFs) {
                 fsContainer.classList.remove('ag-pfs-active');
                 clearAncestors();
                 current.classList.add('ag-pfs-active');

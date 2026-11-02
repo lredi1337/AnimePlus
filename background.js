@@ -871,10 +871,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "fullscreen_on" || message.action === "fullscreen_off") {
         // Окно вкладки-отправителя. windows.getCurrent в service worker возвращает
         // последнее сфокусированное окно, и фуллскрин мог включиться не там
-        const state = message.action === "fullscreen_on" ? "fullscreen" : "maximized";
-        const applyState = (windowId) => chrome.windows.update(windowId, { state })
-            .then(() => sendResponse({ success: true }))
-            .catch((e) => sendResponse({ success: false, error: e.message }));
+        const turningOn = message.action === "fullscreen_on";
+        const applyState = async (windowId) => {
+            try {
+                const key = `ag_window_state_${windowId}`;
+                let state = 'fullscreen';
+                if (turningOn) {
+                    const current = await chrome.windows.get(windowId);
+                    if (current.state !== 'fullscreen') await chrome.storage.local.set({ [key]: current.state });
+                } else {
+                    const saved = await chrome.storage.local.get(key);
+                    state = saved[key] || 'normal';
+                    await chrome.storage.local.remove(key);
+                }
+                await chrome.windows.update(windowId, { state });
+                sendResponse({ success: true });
+            } catch (e) {
+                sendResponse({ success: false, error: e.message });
+            }
+        };
         if (sender.tab && sender.tab.windowId !== undefined) {
             applyState(sender.tab.windowId);
         } else {
