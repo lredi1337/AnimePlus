@@ -651,7 +651,8 @@
             lastTimeUpdate = now;
 
             // Элемент кнопки Kodik есть всегда, а настоящая метка только у активной: её обрабатывает блок авто-скипа ниже
-            if (document.querySelector('.fp-skip-button.active')) {
+            // В новом плеере родная кнопка скрыта: там всегда показываем свою
+            if (!playerShell && document.querySelector('.fp-skip-button.active')) {
                 btn.style.display = "none";
                 currentSkipTarget = null;
                 const container = document.getElementById('ag-timeline-zones');
@@ -667,7 +668,7 @@
             let skipTarget = null;
             let nativeSkip = null;
 
-            if (isOpTarget || isEdTarget) {
+            if (!playerShell && (isOpTarget || isEdTarget)) {
                 nativeSkip = Array.from(document.querySelectorAll('[class*="skip"]'))
                     .find(el => {
                         if (el.offsetParent === null) return false;
