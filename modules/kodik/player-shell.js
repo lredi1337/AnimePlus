@@ -288,6 +288,7 @@
             font-size: 14px !important; font-weight: 600 !important; transition: none !important;
         }
         body.ag-shell-on #ag-smart-skip { background: #fff !important; color: #111 !important; }
+        body.ag-shell-panel #ag-smart-skip, body.ag-shell-panel #ag-skip-undo { right: calc(clamp(280px, 40%, 420px) + 24px) !important; }
         body.ag-shell-on #ag-skip-undo { background: #101319 !important; color: #fff !important; }
     `;
 
@@ -681,6 +682,7 @@
             episodeGroup = null;
             panel.classList.add('on');
             rootEl.classList.add('with-panel');
+            document.body.classList.add('ag-shell-panel');
             PANELS[name]();
             wake();
         }
@@ -689,6 +691,7 @@
             openPanel = null;
             panel.classList.remove('on');
             rootEl.classList.remove('with-panel');
+            document.body.classList.remove('ag-shell-panel');
             panel.replaceChildren();
             wake();
         }
@@ -945,7 +948,7 @@
             clearInterval(syncTimer);
             document.removeEventListener('mousemove', wake);
             document.removeEventListener('keydown', onKey, true);
-            document.body.classList.remove('ag-shell-on');
+            document.body.classList.remove('ag-shell-on', 'ag-shell-panel');
             if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
             host.remove();
             nativeStyle.remove();

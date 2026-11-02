@@ -13,11 +13,39 @@
         const style = document.createElement('style');
         style.id = STYLE_ID;
         style.textContent = `
+            html:has(:fullscreen) { overflow: hidden !important; scrollbar-gutter: auto !important; }
             :fullscreen { background: #000 !important; padding: 0 !important; margin: 0 !important; border: 0 !important; }
-            :fullscreen .player-video, :fullscreen .player-video__online, :fullscreen .player-video__container { flex: 1 1 100% !important; width: 100% !important; height: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+            .ag-fs-hidden { display: none !important; }
+            .ag-fs-fill { position: static !important; display: block !important; width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important; transform: none !important; }
             :fullscreen iframe { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; border: 0 !important; }
         `;
         (document.head || document.documentElement).appendChild(style);
+    }
+
+    let tidyObserver = null;
+
+    function clearTidy() {
+        if (tidyObserver) tidyObserver.disconnect();
+        tidyObserver = null;
+        document.querySelectorAll('.ag-fs-hidden').forEach(e => e.classList.remove('ag-fs-hidden'));
+        document.querySelectorAll('.ag-fs-fill').forEach(e => e.classList.remove('ag-fs-fill'));
+    }
+
+    // В блоке плеера бывает и другое содержимое сайта: подписи, кнопки. На весь экран остаётся только сам плеер
+    function tidy(element) {
+        const frames = [...element.querySelectorAll('iframe')];
+        const frame = frames.find(f => f.getBoundingClientRect().width > 0) || frames[0];
+        if (!frame) return;
+        for (let node = frame; node && node !== element; node = node.parentElement) {
+            for (const sibling of node.parentElement.children) {
+                if (sibling === node) continue;
+                sibling.classList.add('ag-fs-hidden');
+            }
+            if (node !== frame) {
+                node.classList.remove('ag-fs-hidden');
+                node.classList.add('ag-fs-fill');
+            }
+        }
     }
 
     /** true, если браузер перешёл в полный экран. Вызывать сразу, без задержек: разрешение действует недолго */
@@ -26,7 +54,15 @@
         injectStyle();
         try {
             await element.requestFullscreen({ navigationUI: 'hide' });
-            return document.fullscreenElement === element;
+            if (document.fullscreenElement !== element) return false;
+            tidy(element);
+            // Сайт может заменить кадр плеера при смене серии или озвучки
+            tidyObserver = new MutationObserver(() => {
+                clearTimeout(tidyObserver.timer);
+                tidyObserver.timer = setTimeout(() => { if (document.fullscreenElement === element) tidy(element); }, 100);
+            });
+            tidyObserver.observe(element, { childList: true, subtree: true });
+            return true;
         } catch (e) {
             return false;
         }
@@ -35,6 +71,12 @@
     async function exit() {
         if (!document.fullscreenElement) return;
         try { await document.exitFullscreen(); } catch (e) {}
+    }
+
+    if (typeof document !== 'undefined') {
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) clearTidy();
+        });
     }
 
     root.AgNativeFs = {
