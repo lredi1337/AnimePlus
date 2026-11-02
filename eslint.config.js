@@ -20,7 +20,7 @@ const backgroundShared = Object.fromEntries([
 
 module.exports = [
     {
-        ignores: ['node_modules/**', 'assets/**', 'icons/**', 'review-tool/**']
+        ignores: ['node_modules/**', 'assets/**', 'icons/**']
     },
     {
         files: ['**/*.js'],

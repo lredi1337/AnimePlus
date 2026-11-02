@@ -100,17 +100,3 @@ test('yani: getNavAnchor находит div меню на ru.yummyani.me и li �
     assert.equal(anchorOld.tagName, 'LI');
 });
 
-test('yani: getSettingsAnchor находит a в .db на ru.yummyani.me и li в ul.menu на old.yummyani.me', () => {
-    const htmlSpa = '<div class="db"><a href="#settings">Настройки</a></div>';
-    const { provider: pSpa } = makeYani(htmlSpa, 'https://ru.yummyani.me/catalog');
-    const sSpa = pSpa.getSettingsAnchor();
-    assert.ok(sSpa);
-    assert.equal(sSpa.getAttribute('href'), '#settings');
-
-    const htmlOld = '<ul class="menu"><li><a href="/">Главная</a></li><li class="sub-menu-link"><a href="#">Сообщество</a></li></ul>';
-    const { provider: pOld } = makeYani(htmlOld, 'https://old.yummyani.me/catalog');
-    const sOld = pOld.getSettingsAnchor();
-    assert.ok(sOld);
-    assert.equal(sOld.tagName, 'LI');
-    assert.match(sOld.textContent, /Сообщество/);
-});

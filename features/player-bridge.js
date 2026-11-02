@@ -4,7 +4,7 @@
 //   AG_EPISODE_CHANGED            → обновить номер серии и таймкоды
 //   AG_PSEUDO_FS {action}         → псевдо-фуллскрин контейнера плеера
 //   AG_NAV {dir}                  → provider.navigate()
-//   AG_START_MARATHON             → режим марафона для тайтла и автопсевдо-фуллскрин (настройка autoFS)
+//   AG_START_MARATHON             → режим марафона для тайтла
 // Таймкоды: сначала с самого сайта (provider.getSkipData), иначе AniSkip по ID Shikimori.
 
 (function () {
@@ -253,7 +253,6 @@
                 case 'AG_START_MARATHON': {
                     const started = await provider.getTitleInfo();
                     if (started) sessionStorage.setItem(MARATHON_KEY, String(started.pageKey));
-                    if (settings.autoFS) scope.timeout(() => setPseudoFs('enable', e.source), 300);
                     break;
                 }
             }

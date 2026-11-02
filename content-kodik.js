@@ -474,18 +474,11 @@
             updateLocalEpisodeNumbers();
         }
 
-        if (e.data?.type === 'AG_SETTINGS_UPDATE') {
-            settings = e.data.settings;
-            applyVisualSettings();
-            if (settings.kodikShell) {
-                startPlayerShell().then(askSiteLists);
-            } else if (playerShell) {
-                playerShell.destroy();
-                playerShell = null;
-            }
-            const ui = document.getElementById('ag-ui');
-            if (ui) { ui.style.opacity = '1'; clearTimeout(hideTimeout); hideTimeout = setTimeout(() => ui.style.opacity = '0', settings.hideTime); }
-        }
+    });
+
+    window.agOnSettingsChange((fresh) => {
+        settings = fresh;
+        applyVisualSettings();
     });
 
     const syncFsState = () => {
@@ -620,6 +613,8 @@
         if (skipData.ed.end > 0) createZone(skipData.ed.start, skipData.ed.end, "Эндинг");
     }
 
+    const VOLUME_STEP = 0.01;
+
     // Метка Kodik без известных таймингов: примерная длина песни для запоминания возврата к ней
     const NATIVE_SKIP_RANGE_SEC = 120;
 
@@ -669,8 +664,9 @@
 
             const cur = v.currentTime;
 
-            const isOpTarget = skipData.op.end > 0 && cur >= skipData.op.start && cur <= skipData.op.end;
-            const isEdTarget = skipData.ed.end > 0 && cur >= skipData.ed.start && cur <= skipData.ed.end;
+            // Пропуск ставит плеер ровно на конец песни: эта точка уже не песня, иначе перемотка повторялась бы и мешала возврату
+            const isOpTarget = skipData.op.end > 0 && cur >= skipData.op.start && cur < skipData.op.end - 1;
+            const isEdTarget = skipData.ed.end > 0 && cur >= skipData.ed.start && cur < skipData.ed.end - 1;
 
             const part = isOpTarget ? 'op' : (isEdTarget ? 'ed' : null);
             // Зритель вернулся к песне сам: значит, хочет её посмотреть, и пропустить её можно только кнопкой
@@ -955,7 +951,7 @@
             const volBar = e.target.closest('.fp-volume');
             if (volBar) {
                 e.preventDefault();
-                const step = settings.volStep || 0.05;
+                const step = VOLUME_STEP;
                 const delta = e.deltaY < 0 ? step : -step;
                 let newVol = v.volume + delta;
                 newVol = Math.max(0, Math.min(1, newVol));
@@ -1027,10 +1023,6 @@
         if (v && !v.dataset.agInit) {
             v.dataset.agInit = '1';
             drawUI(v);
-
-            v.addEventListener('play', () => {
-                if (settings.autoFS) sendFs('enable');
-            }, { once: true });
 
             let isHandlingEnded = false;
             const handleEndedEvent = (e) => {
@@ -1184,10 +1176,6 @@
             }, '*');
         };
 
-        v.addEventListener('play', () => {
-            const data = getLocalEpisodeData();
-            window.top.postMessage({ type: 'AG_VIDEO_PLAY', episode: data.current }, '*');
-        });
         v.addEventListener('timeupdate', () => {
             const now = Date.now();
             if (now - lastSent < PROGRESS_THROTTLE_MS) return;
@@ -1359,11 +1347,11 @@
         }, 1000);
         window.top.postMessage({ type: 'AG_SHELL_GET' }, '*');
     };
-    // Новая оболочка плеера: настройка «Новый плеер», выключается и удалённо, если обновление Kodik её сломает
+    // Новая оболочка плеера. Откатывается на обычный Kodik при сбое и удалённо, если обновление Kodik её сломает
     const startPlayerShell = async () => {
         const releaseBoot = () => { if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release(); };
         if (playerShell) return;
-        if (!settings.kodikShell || !globalThis.AgKodikShell) return releaseBoot();
+        if (!globalThis.AgKodikShell) return releaseBoot();
         const config = await chrome.runtime.sendMessage({ action: 'get_remote_config' }).catch(() => null);
         if (config && config.kodikShell === false) return releaseBoot();
         playerShell = globalThis.AgKodikShell.create({
@@ -1375,6 +1363,7 @@
             },
             getTimings: () => skipData,
             toggleFs: () => sendFs('toggle'),
+            openSettings: () => chrome.runtime.sendMessage({ action: 'open_settings' }).catch(() => {}),
             onVoicePicked: (voice) => rememberChoice(voice),
             sitePick: (kind, index) => window.top.postMessage({ type: 'AG_SHELL_PICK', kind, index }, '*'),
             nav: (dir) => {

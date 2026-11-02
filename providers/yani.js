@@ -287,31 +287,10 @@
             return top ? (top.closest('li, [data-variant], nav > div, .fM') || top) : null;
         }
 
-        getSettingsAnchor() {
-            // ru.yummyani.me (React SPA): ссылка «Настройки» в выпадающем меню профиля .db
-            const ru = document.querySelector('.db a[href="#settings"], a[data-hotkey-id="settings"], a[href="#settings"]');
-            if (ru) return ru;
-
-            // old.yummyani.me: навигационное меню <ul class="menu">
-            const menu = document.querySelector('ul.menu');
-            if (menu) {
-                return menu.querySelector('li.sub-menu-link:last-of-type')
-                    || Array.from(menu.querySelectorAll('li:not(.ag-settings-menu-wrapper)')).pop()
-                    || null;
-            }
-
-            return null;
-        }
-
         // ru.yummyani.me: пункты шапки сжимаются (flex-shrink:1, min-width:0), а подписи не переносятся —
         // лишний пункт наезжает на соседние. Поэтому «Топ Shikimori» живёт в выпадающем меню «АНИМЕ»
         getTopMenuSample() {
             return document.querySelector('header .db a[href="/catalog/schedule"]');
-        }
-
-        getProfileNavItem() {
-            const link = document.querySelector('header nav [data-variant="top"] a[data-hotkey-id="profile"]');
-            return link ? link.closest('[data-variant]') : null;
         }
 
         requiredSelectors() {
@@ -320,7 +299,6 @@
 
         mount(scope) {
             this.msgEpisode = null;
-            if (this.settings.kodikShell === false) return;
             // ru.yummyani.me кладёт поверх Kodik свою кнопку полного экрана, и она дублирует кнопку новой оболочки.
             // Классы меняются при каждой сборке сайта, поэтому узнаём её по значку
             const style = document.createElement('style');

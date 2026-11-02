@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "10.0.0",
+  "version": "10.1.0",
   "description": "Улучшает просмотр аниме на AnimeGO, Jut-Su, YummyAnime и других сайтах: выбор озвучки, учёт серий в Shikimori, пропуск опенингов 🚀",
   "homepage_url": "https://lredi1337.github.io/AnimeGoPlus/",
   "permissions": [
@@ -27,6 +27,10 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
   },
   "host_permissions": [
     "https://animego.me/*",
@@ -63,7 +67,6 @@
     "https://shikimori.io/*",
     "https://shikimori.org/*",
     "https://shikimori.me/*",
-    "https://myanimelist.net/*",
     "https://api.animethemes.moe/*",
     "https://kitsu.io/*",
     "https://jut-su.net/*",
@@ -96,7 +99,6 @@
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
-        "modules/animego/ag-settings.js",
         "modules/animego/ag-random.js",
         "modules/animego/ag-schedule.js",
         "modules/animego/ag-player.js",
@@ -131,14 +133,11 @@
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
-        "modules/animego/ag-settings.js",
-        "modules/jutsu/jt-settings.js",
         "modules/jutsu/jt-search.js",
         "modules/jutsu/jt-random.js",
         "modules/jutsu/jt-player.js",
         "modules/jutsu/jt-shiki-widget.js",
         "modules/jutsu/jt-voice.js",
-        "modules/jutsu/jt-covers.js",
         "providers/base.js",
         "features/top-overlay.js",
         "features/legacy-top.js",
@@ -168,7 +167,6 @@
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
-        "modules/animego/ag-settings.js",
         "providers/base.js",
         "providers/dle.js",
         "providers/yani.js",
@@ -176,7 +174,6 @@
         "features/title-widgets.js",
         "features/top-overlay.js",
         "features/search-redirect.js",
-        "features/settings-entry.js",
         "features/random-anime.js",
         "providers/runtime.js",
         "content-sites.js"

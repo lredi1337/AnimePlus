@@ -85,9 +85,6 @@
         if (e.data.type === 'AG_START_MARATHON') {
             const currentId = getAnimeId();
             if (currentId) sessionStorage.setItem('ag_active_marathon_id', currentId);
-            if (settings.autoFS) {
-                setTimeout(() => { setPseudoFS('enable', e.source); }, 300);
-            }
         }
         if (e.data.type === 'AG_PSEUDO_FS') setPseudoFS(e.data.action, e.source);
 
@@ -103,16 +100,11 @@
         }
     });
 
-    const openSettingsModal = async () => {
-        settings = await getSettings();
-        if (window.agOpenAnimeGoSettingsModal) {
-            window.agOpenAnimeGoSettingsModal(settings, async (newS) => { settings = newS; });
-        }
-    };
-
     // ==========================================
     // --- ИНИЦИАЛИЗАЦИЯ ВСЕХ МОДУЛЕЙ AnimeGO ---
     // ==========================================
+
+    window.agOnSettingsChange((fresh) => Object.assign(settings, fresh));
 
     const safeRun = (fn, name) => {
         try { if (fn) fn(); }
@@ -120,7 +112,6 @@
     };
 
     safeRun(() => window.agMountLegacyTop('animego', settings), 'TopOverlay');
-    safeRun(() => window.agInjectHeaderGearButton && window.agInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
     safeRun(() => window.agInitRandomAnimeButton && window.agInitRandomAnimeButton(), 'RandomAnimeButton');
     safeRun(() => window.agInitVoiceAutoSelect && window.agInitVoiceAutoSelect(settings), 'VoiceAutoSelect');
     safeRun(() => window.renderSyntheticAnimePage && window.renderSyntheticAnimePage(), 'SyntheticAnimePage');
@@ -142,7 +133,6 @@
     // Один наблюдатель с объединением мутаций (раньше все модули вызывались на каждую мутацию DOM)
     const runDomTasks = () => {
         safeRun(ensureAgLogoPlus, 'LogoPlus');
-        safeRun(() => window.agInjectHeaderGearButton && window.agInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
         safeRun(() => window.checkNoVideoAndInjectJutsuButton && window.checkNoVideoAndInjectJutsuButton(), 'NoVideoJutsuButton');
         safeRun(() => window.agInitVoiceAutoSelect && window.agInitVoiceAutoSelect(settings), 'VoiceAutoSelect');
         safeRun(() => window.agInitScheduleEnhancer && window.agInitScheduleEnhancer(), 'ScheduleEnhancer');
@@ -174,9 +164,6 @@
             } else {
                 sendResponse({ title: null, origTitle: null, episode: "1" });
             }
-        }
-        if (request.type === 'AG_OPEN_SETTINGS') {
-            openSettingsModal();
         }
     });
 })();

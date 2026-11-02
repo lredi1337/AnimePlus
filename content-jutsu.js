@@ -19,13 +19,7 @@
     // 1. Инициализация управления плеером (псевдо-фуллскрин, хоткеи)
     window.jtInitPlayerControls ? window.jtInitPlayerControls(settings, getAnimeId) : null;
 
-    // 2. Инициализация окна настроек
-    const openSettingsModal = async () => {
-        settings = await getSettings();
-        if (window.jtOpenJutsuSettingsModal) {
-            window.jtOpenJutsuSettingsModal(settings, async (newS) => { settings = newS; });
-        }
-    };
+    window.agOnSettingsChange((fresh) => Object.assign(settings, fresh));
 
     // 3. Авто-выбор плеера Kodik
     // Точная логика из оригинала: только .tabs-block__select, target.click()
@@ -56,26 +50,6 @@
                 kodikDone = true;
             }
         }, 500);
-    };
-
-    // 4. Кнопка настроек у плеера
-    const injectGearButton = () => {
-        const selectContainer = document.querySelector('.tabs-block__select');
-        if (selectContainer && !document.getElementById('ag-settings-gear')) {
-            const gear = document.createElement('button');
-            gear.id = 'ag-settings-gear';
-            gear.type = 'button';
-            gear.className = 'icon icon-cog flex-grow-0';
-            gear.style.cssText = `max-width: 45px; margin-left: 10px; padding: 0 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(30,30,30,0.5); color: #fff; cursor: pointer;`;
-            gear.title = 'Настройки Anime+';
-            gear.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                openSettingsModal();
-            };
-            selectContainer.appendChild(gear);
-        }
     };
 
     // 5. Логотип .net+
@@ -113,7 +87,6 @@
                 sendResponse({ title: null, origTitle: null, episode: "1" });
             }
         }
-        if (request.type === 'AG_OPEN_SETTINGS') openSettingsModal();
         return true;
     });
 
@@ -124,26 +97,20 @@
 
     // 7. Наблюдатель DOM с объединением мутаций (раньше все задачи выполнялись на каждую мутацию)
     window.agObserveDom(() => {
-        safeRun(injectGearButton, 'GearButton');
-        safeRun(() => window.jtInjectHeaderGearButton && window.jtInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
         safeRun(customizeLogo, 'Logo');
         safeRun(autoSelectKodik, 'AutoSelectKodik');
         safeRun(() => window.agBindPostersIn && window.agBindPostersIn(document), 'Posters');
-        safeRun(() => window.replaceCoversWithStandard && window.replaceCoversWithStandard(settings), 'ReplaceCovers');
     }, { root: document.body, wait: 200 });
 
     // 8. Первичная инициализация
-    safeRun(() => window.jtInjectHeaderGearButton && window.jtInjectHeaderGearButton(openSettingsModal), 'HeaderGearButton');
     safeRun(() => window.jtInitRandomAnimeButton && window.jtInitRandomAnimeButton(), 'RandomAnimeButton');
     safeRun(() => window.jtInitVoiceAutoSelect && window.jtInitVoiceAutoSelect(settings), 'VoiceAutoSelect');
     safeRun(() => window.scrapeCurrentPageCover && window.scrapeCurrentPageCover(), 'ScrapeCover');
-    safeRun(() => window.replaceCoversWithStandard && window.replaceCoversWithStandard(settings), 'ReplaceCovers');
     safeRun(() => window.initJutsuShikimoriAutoSync && window.initJutsuShikimoriAutoSync(), 'ShikimoriAutoSync');
     safeRun(() => window.handleRankIndexFallback && window.handleRankIndexFallback(), 'RankIndexFallback');
     safeRun(() => window.handleJutsuSearch && window.handleJutsuSearch(), 'JutsuSearch');
     safeRun(() => window.agMountLegacyTop('jutsu', settings), 'TopOverlay');
     safeRun(customizeLogo, 'Logo');
-    safeRun(injectGearButton, 'GearButton');
 
     // Отложенные попытки авто-выбора Kodik (плеер загружается асинхронно)
     autoSelectKodik();

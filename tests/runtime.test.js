@@ -13,7 +13,6 @@ const FILES = [
     'modules/ui-utils.js',
     'modules/site-selectors.js',
     'modules/progress-tracker.js',
-    'modules/animego/ag-settings.js',
     'providers/base.js',
     'providers/dle.js',
     'providers/yani.js',
@@ -21,7 +20,6 @@ const FILES = [
     'features/title-widgets.js',
     'features/top-overlay.js',
     'features/search-redirect.js',
-    'features/settings-entry.js',
     'features/random-anime.js',
     'providers/runtime.js'
 ];
@@ -120,12 +118,7 @@ test('runtime на yammyanime.club: Kodik, виджеты, Топ, мост пл
     doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     assert.equal(doc.querySelector('.ag-top-ov'), null, 'Esc закрывает оверлей');
 
-    // 3.1. Пункт настроек в меню yammyanime.club: иконка шестерёнки без текста «Настройки» и стили одной строки
-    const settingsItem = doc.querySelector('.header__menu .ag-settings-menu-wrapper a.ag-settings-icon-only');
-    assert.ok(settingsItem, 'шестерёнка настроек добавлена в меню .header__menu');
-    assert.ok(settingsItem.querySelector('svg'), 'внутри ссылки находится svg-иконка шестерёнки');
-    assert.equal(settingsItem.querySelector('span'), null, 'текстовая надпись «Настройки» отсутствует');
-    assert.equal(settingsItem.getAttribute('title'), 'Настройки Anime+');
+    // 3.1. Оформление меню сайта
     const injectedStyles = Array.from(doc.querySelectorAll('style')).map(s => s.textContent);
     assert.ok(injectedStyles.some(s => s.includes('.header__menu { flex-wrap: nowrap !important; }')), 'navCss с flex-wrap: nowrap применён');
 
@@ -265,128 +258,6 @@ test('runtime: Топ Shikimori на ru.yummyani.me вставляется от�
     link.click();
     await tick();
     assert.ok(doc.querySelector('.ag-top-ov'), 'оверлей открыт по клику');
-    w.close();
-});
-
-
-
-test('runtime: Настройки Anime+ в выпадающем меню ru.yummyani.me открывают окно настроек', async () => {
-    const html = `
-        <header>
-            <div style="display: block;">
-                <div class="db">
-                    <a href="#login" itemprop="url" class="hO dm"><span itemprop="name">Войти</span></a>
-                    <hr>
-                    <a href="#settings" itemprop="url" data-hotkey-id="settings" data-hotkey="s" class="hO dm">
-                        <svg width="16" height="16" fill="var(--main-permanent)" viewBox="0 0 20 20"><path d="M0 0h20v20H0z"></path></svg>
-                        <span itemprop="name">Настройки</span>
-                        <span class="hP"></span>
-                    </a>
-                </div>
-            </div>
-        </header>`;
-    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html });
-    const doc = w.document;
-    await tick(300);
-
-    const siteSettingsLink = doc.querySelector('a[href="#settings"]');
-    assert.ok(siteSettingsLink, 'нативная ссылка настроек найдена');
-
-    const agSettingsLink = doc.querySelector('.ag-settings-menu-item');
-    assert.ok(agSettingsLink, 'пункт Настройки Anime+ добавлен');
-    assert.equal(agSettingsLink.getAttribute('href'), '#ag-settings');
-    assert.equal(siteSettingsLink.nextElementSibling, agSettingsLink, 'вставлен сразу после нативных настроек');
-
-    const span = agSettingsLink.querySelector('span[itemprop="name"]');
-    assert.ok(span);
-    assert.equal(span.textContent, 'Настройки Anime+');
-
-    const svg = agSettingsLink.querySelector('svg');
-    assert.ok(svg, 'иконка шестерёнки добавлена');
-    assert.equal(svg.getAttribute('width'), '16');
-
-    // Клик по пункту открывает полнофункциональное окно настроек расширения
-    agSettingsLink.click();
-    await tick();
-
-    const modal = doc.getElementById('ag-settings-modal');
-    assert.ok(modal, 'модальное окно создано');
-    assert.equal(modal.style.display, 'block', 'модальное окно открыто');
-
-    const overlay = doc.getElementById('ag-modal-overlay');
-    assert.ok(overlay);
-    assert.equal(overlay.style.display, 'block', 'оверлей открыт');
-
-    assert.match(modal.textContent, /Настройки Anime\+[\s\S]*YummyAnime/);
-    assert.ok(modal.querySelector('.ag-tabs-nav'), 'вкладки настроек присутствуют');
-    assert.ok(modal.querySelector('[data-tab="playback"]'), 'вкладка Плеер');
-    assert.ok(modal.querySelector('[data-tab="voice"]'), 'вкладка Озвучка');
-    assert.ok(modal.querySelector('[data-tab="interface"]'), 'вкладка Интерфейс');
-    assert.ok(modal.querySelector('[data-tab="options"]'), 'вкладка Опции');
-    assert.ok(modal.querySelector('[data-tab="hotkeys"]'), 'вкладка Клавиши');
-
-    // Сохранение закрывает окно
-    modal.querySelector('#ag-save').click();
-    assert.equal(modal.style.display, 'none');
-
-    w.close();
-});
-
-
-
-test('runtime: Настройки Anime+ в меню навигации old.yummyani.me открывают окно настроек', async () => {
-    const html = `
-        <header class="header">
-            <div class="container clearfix">
-                <ul class="menu clearfix" itemscope itemtype="http://www.schema.org/SiteNavigationElement">
-                    <li itemprop="name" data-balloon="Главная" data-balloon-pos="down" class="materiable">
-                        <a href="/" itemprop="url"><i class="fa fa-home" aria-hidden="true"></i> <span class="menu-text">Главная</span></a>
-                    </li>
-                    <li itemprop="name" data-balloon="ТОП 100 аниме" data-balloon-pos="down" class="materiable">
-                        <a href="/catalog/top" itemprop="url"><span class="menu-text">ТОП-100</span></a>
-                    </li>
-                    <li itemprop="name" data-balloon="Случайное аниме" data-balloon-pos="down" class="materiable">
-                        <a href="/catalog/random"><i class="fa fa-random" aria-hidden="true"></i> <span class="menu-text">Случайное</span></a>
-                    </li>
-                    <li class="sub-menu-link">
-                        <a href="#"><i class="fa fa-users" aria-hidden="true"></i> <span class="menu-text">Сообщество</span></a>
-                    </li>
-                </ul>
-            </div>
-        </header>`;
-    const { w } = await startRuntime({ url: 'https://old.yummyani.me/catalog', html });
-    const doc = w.document;
-    await tick(300);
-
-    const agWrapper = doc.querySelector('.ag-settings-menu-wrapper');
-    assert.ok(agWrapper, 'обёртка li для настроек добавлена в ul.menu');
-    assert.equal(agWrapper.tagName, 'LI');
-    assert.equal(agWrapper.getAttribute('data-balloon'), 'Настройки Anime+');
-    assert.equal(agWrapper.getAttribute('data-balloon-pos'), 'down');
-
-    const agLink = agWrapper.querySelector('.ag-settings-menu-item');
-    assert.ok(agLink, 'ссылка настроек добавлена');
-    assert.equal(agLink.getAttribute('href'), '#ag-settings');
-
-    const icon = agLink.querySelector('.fa-cog');
-    assert.ok(icon, 'иконка fa-cog создана');
-
-    const span = agLink.querySelector('.menu-text');
-    assert.ok(span, 'span menu-text создан');
-    assert.equal(span.textContent, 'Настройки');
-
-    // Клик по элементу открывает окно настроек
-    agLink.click();
-    await tick();
-
-    const modal = doc.getElementById('ag-settings-modal');
-    assert.ok(modal, 'модальное окно настроек создано');
-    assert.equal(modal.style.display, 'block', 'модальное окно открыто');
-    assert.match(modal.textContent, /Настройки Anime\+[\s\S]*YummyAnime/);
-
-    modal.querySelector('#ag-save').click();
-    assert.equal(modal.style.display, 'none');
-
     w.close();
 });
 
@@ -589,95 +460,6 @@ test('runtime: Топ Shikimori на yummyanime.tv изолирован от г�
 
 
 
-test('runtime: Настройки Anime+ на yummyanime.tv встраиваются только кнопкой-шестерёнкой в шапку (без дублирования надписью)', async () => {
-    const html = `
-        <div class="header__inner d-flex ai-center wrapper-container">
-            <a href="/" class="header__logo logo">YummyAnime<span>.TV</span></a>
-            <ul class="header__menu d-flex jc-flex-start js-this-in-mobile-menu">
-                <li><a href="/catalog/" title="Все вышедшие аниме">Каталог</a></li>
-                <li><a href="/top-100/" title="Топ 100 лучших аниме">Топ 100</a></li>
-                <li><a href="/random" title="Случайное аниме">Рандом</a></li>
-            </ul>
-            <div class="header__search stretch-free-width clone__header">
-                <input class="header__search-input" id="story2" name="story" type="text">
-            </div>
-            <div class="change-color" onclick="changeTheme();" title="Светлое оформление"><span class="fas fa-moon"></span></div>
-            <div class="header__right d-flex ai-center">
-                <a href="/random" class="header__rand" title="Случайное аниме"><span class="fas fa-dice"></span></a>
-                <a href="/login" class="header__sign-in btn">Войти</a>
-                <div class="header__btn-mobile-menu hidden js-show-mobile-menu"><span class="far fa-bars"></span></div>
-            </div>
-        </div>
-        <main>
-            <h1>Аниме</h1>
-            <div data-player-anime-id="1">
-                <div class="tabs-block__select"><button class="is-active">Kodik</button></div>
-                <div data-player-slot data-player-title="Kodik"></div>
-            </div>
-        </main>`;
-
-    const { w } = await startRuntime({
-        url: 'https://yummyanime.tv/1-naruto.html',
-        html
-    });
-    const doc = w.document;
-    await tick(300);
-
-    // 1. Кнопка-шестерёнка в шапке (рядом с кнопкой Войти в .header__right)
-    const gearBtn = doc.querySelector('.ag-header-gear-btn');
-    assert.ok(gearBtn, 'кнопка-шестерёнка встроена в шапку');
-    assert.equal(gearBtn.parentElement.className, 'header__right d-flex ai-center', 'шестерёнка находится в .header__right');
-    assert.equal(gearBtn.nextElementSibling.className, 'header__sign-in btn', 'шестерёнка расположена перед кнопкой Войти');
-    assert.equal(gearBtn.getAttribute('title'), 'Настройки Anime+');
-    assert.ok(gearBtn.querySelector('svg'), 'внутри кнопки SVG шестерёнки');
-
-    // 2. В навигационном меню .header__menu надпись НЕ дублируется
-    const menuWrapper = doc.querySelector('.header__menu .ag-settings-menu-wrapper');
-    assert.equal(menuWrapper, null, 'пункт надписи настроек не дублируется в меню навигации');
-    const menuLink = doc.querySelector('.header__menu .ag-settings-menu-item');
-    assert.equal(menuLink, null, 'ссылка настроек отсутствует в навигационном меню');
-
-    // 3. Клик по кнопке-шестерёнке открывает модальное окно настроек
-    gearBtn.click();
-    await tick(50);
-    const modal = doc.getElementById('ag-settings-modal');
-    assert.ok(modal, 'модальное окно настроек открыто');
-    assert.equal(modal.style.display, 'block', 'модальное окно отображается');
-    assert.match(modal.textContent, /YummyAnime\.TV/, 'в заголовке указан бренд сайта');
-
-    // 4. Проверяем изоляцию элементов и наличие кнопки закрытия крестиком
-    const closeBtn = modal.querySelector('#ag-settings-close');
-    assert.ok(closeBtn, 'кнопка закрытия крестиком присутствует');
-    assert.equal(closeBtn.getAttribute('type'), 'button', 'кнопка закрытия имеет type="button"');
-
-    const tabs = Array.from(modal.querySelectorAll('.ag-tab-btn'));
-    assert.equal(tabs.length, 5, 'все 5 вкладок настроек присутствуют');
-    tabs.forEach(t => assert.equal(t.getAttribute('type'), 'button', 'вкладки имеют type="button"'));
-
-    const saveBtn = modal.querySelector('#ag-save');
-    assert.ok(saveBtn);
-    assert.equal(saveBtn.getAttribute('type'), 'button');
-
-    const resetBtn = modal.querySelector('#ag-reset');
-    assert.ok(resetBtn);
-    assert.equal(resetBtn.getAttribute('type'), 'button');
-
-    // 5. Закрытие через крестик
-    closeBtn.click();
-    assert.equal(modal.style.display, 'none', 'модальное окно закрыто через крестик');
-
-    // 6. Повторное открытие через шестерёнку и сохранение
-    gearBtn.click();
-    await tick(50);
-    assert.equal(modal.style.display, 'block', 'модальное окно снова открыто');
-    saveBtn.click();
-    assert.equal(modal.style.display, 'none', 'модальное окно закрыто после сохранения');
-
-    w.close();
-});
-
-
-
 test('runtime: псевдофулскрин на yummyanime.tv находит активный слот с Kodik и разворачивает его на весь экран', async () => {
     const { w, sent } = await startRuntime({
         url: 'https://yummyanime.tv/8522-monolog-farmacevta-3-sezon-r1.html',
@@ -810,33 +592,11 @@ test('ru.yummyani.me: «Топ Shikimori» в меню «АНИМЕ», шапк�
     assert.equal(link.hasAttribute('data-hotkey'), false, 'горячая клавиша сайта не скопирована');
     assert.equal(doc.querySelectorAll('.ag-top-nav-link').length, 1);
     assert.equal(doc.querySelector('.ag-top-nav-wrapper'), null);
-    assert.equal(doc.getElementById('top-item').nextElementSibling, doc.getElementById('profile').previousElementSibling, 'рядом с «ТОП 100» только шестерёнка');
+    assert.equal(doc.getElementById('top-item').nextElementSibling, doc.getElementById('profile'), 'в шапке рядом с «ТОП 100» ничего не добавлено');
 
     link.click();
     await tick();
     assert.ok(doc.querySelector('.ag-top-ov'), 'открывается Топ');
-    w.close();
-});
-
-test('ru.yummyani.me: видимая шестерёнка перед профилем открывает настройки', async () => {
-    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: RU_HEADER });
-    const doc = w.document;
-    await tick(300);
-
-    const gear = doc.getElementById('profile').previousElementSibling;
-    assert.ok(gear.classList.contains('ag-native-gear'), 'шестерёнка стоит прямо перед профилем');
-    assert.equal(gear.getAttribute('data-variant'), 'top');
-    assert.equal(gear.id, '', 'id профиля не скопирован');
-    assert.ok(gear.querySelector('a.fO svg'), 'ссылка в классе пунктов шапки, с иконкой');
-    assert.equal(gear.querySelector('a').hasAttribute('data-hotkey'), false);
-    assert.ok(doc.querySelector('#profile-menu .ag-settings-menu-item'), 'пункт в меню профиля остаётся');
-
-    await tick(500);
-    assert.equal(doc.querySelectorAll('.ag-native-gear').length, 1, 'не дублируется наблюдателем');
-
-    gear.querySelector('a').click();
-    await tick();
-    assert.ok(doc.getElementById('ag-settings-modal'), 'окно настроек открыто');
     w.close();
 });
 

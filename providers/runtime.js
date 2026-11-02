@@ -5,7 +5,7 @@
 (function () {
     'use strict';
 
-    const FEATURES = ['playerBridge', 'titleWidgets', 'topOverlay', 'searchRedirect', 'settingsEntry', 'randomAnime'];
+    const FEATURES = ['playerBridge', 'titleWidgets', 'topOverlay', 'searchRedirect', 'randomAnime'];
 
     window.AgProviders.start = async function () {
         const site = window.AgSites.byHost(location.hostname);
@@ -88,7 +88,7 @@
         chrome.storage.onChanged.addListener(async (changes, area) => {
             if (area !== 'local' || !changes.ag_settings || !window.agIsContextValid()) return;
             const wasEnabled = window.AgSites.isEnabled(settings, site.id);
-            settings = await window.getSettings();
+            Object.assign(settings, await window.getSettings());
             const isEnabled = window.AgSites.isEnabled(settings, site.id);
             if (wasEnabled !== isEnabled) {
                 if (isEnabled) mount(); else unmount();
@@ -98,15 +98,6 @@
         // Сведения для popup (поиск музыки, заголовок)
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (!request) return false;
-            if (request.type === 'AG_OPEN_SETTINGS') {
-                if (typeof window.agOpenAnimeGoSettingsModal === 'function') {
-                    window.agOpenAnimeGoSettingsModal(settings, async (newS) => { settings = newS; }, {
-                        brand: site.name || 'YummyAnime',
-                        getPlayerWindows: () => (provider.getPlayerWindows ? provider.getPlayerWindows() : [])
-                    });
-                }
-                return false;
-            }
             if (request.type !== 'AG_GET_PAGE_INFO') return false;
             provider.getTitleInfo()
                 .then(info => sendResponse(info

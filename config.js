@@ -8,9 +8,9 @@
         global_enabled: true,
         // Включение по сайтам: { [siteId]: false } выключает расширение на сайте (см. modules/shared/sites.js)
         sites_enabled: {},
-        autoNext: true, autoFS: true, autoSkip: true, autoPlay: true, audioSkip: true, kodikShell: true,
+        autoNext: true, autoSkip: true, autoPlay: true, audioSkip: true,
         showNav: true, showSkipBtn: true, showPiP: true, showCenterBtn: true, showDBL: true,
-        hideTime: 2000, extId: chrome.runtime.id, use_standard_covers: false,
+        hideTime: 2000,
         ongoing_enabled: true,
         ongoing_hide_chinese: true,
         ongoing_hide_long_running: false,
@@ -21,8 +21,6 @@
         shiki_enabled: true,
         shiki_client_id: "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
         shiki_worker_url: "",
-        shiki_auto_mark_watching: true,
-        shiki_auto_mark_completed: true,
         shiki_sync_episodes: true,
         shiki_show_toasts: true,
         notif_enabled: true,
@@ -46,11 +44,20 @@
         }
     };
 
+    // Настройки меняются из плеера и со страницы настроек: открытые вкладки подхватывают их без перезагрузки
+    window.agOnSettingsChange = function (handler) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local' && changes.ag_settings) window.getSettings().then(handler);
+        });
+    };
+
     window.getSettings = async function () {
         const res = await chrome.storage.local.get(['ag_settings']);
         if (!res.ag_settings) return window.DEFAULT_SETTINGS;
         const merged = { ...window.DEFAULT_SETTINGS, ...res.ag_settings };
         merged.keys = { ...window.DEFAULT_SETTINGS.keys, ...(res.ag_settings.keys || {}) };
+        // Плеер сравнивает клавиши в нижнем регистре, а старое окно настроек сохраняло их заглавными
+        for (const action of Object.keys(merged.keys)) merged.keys[action] = String(merged.keys[action]).toLowerCase();
         merged.sites_enabled = { ...(res.ag_settings.sites_enabled || {}) };
         return merged;
     };
@@ -84,23 +91,6 @@
     window.AG_CONSTANTS = {
         CACHE_TTL_MS: 7 * 24 * 60 * 60 * 1000,
         DEFAULT_SHIKI_CLIENT_ID: "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
-        EPISODE_SWITCH_DEBOUNCE_MS: 800,
-        AUTOPLAY_TIMEOUT_MS: 15000
-    };
-
-    window.AnimePlus = window.AnimePlus || {
-        Config: {},
-        UI: {},
-        Utils: {},
-        Modules: {}
-    };
-
-    window.AnimePlus.Config = {
-        RED_COLOR: window.AG_RED,
-        FONT_FAMILY: window.AG_FONT,
-        DEFAULT_SETTINGS: window.DEFAULT_SETTINGS,
-        CONSTANTS: window.AG_CONSTANTS,
-        isValidOrigin: window.isValidOrigin,
-        getSettings: window.getSettings
+        EPISODE_SWITCH_DEBOUNCE_MS: 800
     };
 })();

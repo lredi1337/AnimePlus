@@ -1,0 +1,294 @@
+/* Страница настроек. Цвета, шрифт и радиусы — из modules/shared/tokens.css */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    background: var(--ap-bg);
+    color: var(--ap-text);
+    font-family: var(--ap-font);
+    font-size: var(--ap-fs-lg);
+    line-height: 1.4;
+    color-scheme: dark;
+}
+
+.page {
+    width: min(680px, 100%);
+    margin: 0 auto;
+    padding: 32px 16px 64px;
+}
+
+.head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.head h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.head h1 span { color: var(--ap-accent); }
+
+.head p {
+    margin: 4px 0 0;
+    color: var(--ap-text-2);
+    font-size: var(--ap-fs-md);
+}
+
+.card {
+    margin-bottom: 16px;
+    padding: 18px 20px;
+    background: var(--ap-surface);
+    border: 1px solid var(--ap-line);
+    border-radius: var(--ap-radius-lg);
+}
+
+.card h2 {
+    margin: 0 0 12px;
+    font-size: var(--ap-fs-xl);
+    font-weight: 700;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 0;
+    cursor: pointer;
+}
+
+.row b, .list-head b { font-weight: 600; }
+
+.row small, .list-head small, .hint {
+    display: block;
+    color: var(--ap-text-2);
+    font-size: var(--ap-fs-sm);
+    font-weight: 400;
+}
+
+.hint { margin: 0 0 8px; }
+
+.switch {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 20px;
+}
+
+.switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.switch i {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--ap-raised);
+    pointer-events: none;
+    transition: background var(--ap-ease);
+}
+
+.switch i::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--ap-text-3);
+    transition: transform var(--ap-ease), background var(--ap-ease);
+}
+
+.switch input:checked + i { background: var(--ap-accent); }
+.switch input:checked + i::after { transform: translateX(16px); background: #fff; }
+.switch input:focus-visible + i { outline: 2px solid var(--ap-accent); outline-offset: 2px; }
+
+.list-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 10px 0 6px;
+}
+
+.voices {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0 0 8px;
+    padding: 0;
+    list-style: none;
+}
+
+.voice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 6px 5px 10px;
+    background: var(--ap-raised);
+    border-radius: var(--ap-radius-sm);
+}
+
+.voice .rank {
+    min-width: 18px;
+    color: var(--ap-accent);
+    font-size: var(--ap-fs-sm);
+    font-weight: 700;
+}
+
+.voice .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.icon-btn {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    color: var(--ap-text-2);
+    background: none;
+    border: none;
+    border-radius: var(--ap-radius-sm);
+    cursor: pointer;
+}
+
+.icon-btn:hover:not(:disabled) { color: var(--ap-text); background: var(--ap-hover); }
+.icon-btn:disabled { opacity: .3; cursor: default; }
+
+.add { display: flex; gap: 8px; }
+
+input[type="text"], select {
+    height: 34px;
+    padding: 0 10px;
+    color: var(--ap-text);
+    font: inherit;
+    font-size: var(--ap-fs-md);
+    background: var(--ap-bg);
+    border: 1px solid var(--ap-line);
+    border-radius: var(--ap-radius-sm);
+    outline: none;
+}
+
+input[type="text"] { flex: 1; min-width: 0; }
+input[type="text"]:focus, select:focus { border-color: var(--ap-accent); }
+select { flex: none; width: 170px; }
+
+.btn {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    color: var(--ap-on-accent);
+    font: inherit;
+    font-size: var(--ap-fs-md);
+    font-weight: 600;
+    background: var(--ap-accent);
+    border: 1px solid transparent;
+    border-radius: var(--ap-radius-sm);
+    cursor: pointer;
+}
+
+.btn:hover { background: color-mix(in srgb, var(--ap-accent) 86%, white); }
+
+.btn.ghost {
+    color: var(--ap-text);
+    background: var(--ap-raised);
+    border-color: var(--ap-line);
+}
+
+.btn.ghost:hover { background: var(--ap-hover); border-color: var(--ap-line-strong); }
+.btn.danger { margin-left: auto; color: var(--ap-danger); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    font-size: var(--ap-fs-md);
+    background: var(--ap-raised);
+    border-radius: var(--ap-radius-sm);
+    cursor: pointer;
+}
+
+.chip input { margin: 0; accent-color: var(--ap-accent); cursor: pointer; }
+
+.key-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 0;
+}
+
+.key-btn {
+    flex: none;
+    min-width: 96px;
+    height: 32px;
+    padding: 0 12px;
+    color: var(--ap-text);
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: var(--ap-fs-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    background: var(--ap-raised);
+    border: 1px solid var(--ap-line);
+    border-radius: var(--ap-radius-sm);
+    cursor: pointer;
+}
+
+.key-btn:hover { border-color: var(--ap-line-strong); }
+.key-btn.listening { color: var(--ap-on-accent); background: var(--ap-accent); border-color: transparent; }
+
+button:focus-visible, select:focus-visible {
+    outline: 2px solid var(--ap-accent);
+    outline-offset: 1px;
+}
+
+.status {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    margin: 0;
+    padding: 8px 14px;
+    color: var(--ap-text);
+    font-size: var(--ap-fs-md);
+    background: var(--ap-raised);
+    border: 1px solid var(--ap-line-strong);
+    border-radius: var(--ap-radius);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%);
+    transition: opacity var(--ap-ease);
+}
+
+.status.on { opacity: 1; }
+
+@media (max-width: 520px) {
+    .row { flex-wrap: wrap; }
+    select { width: 100%; }
+    .btn.danger { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+}

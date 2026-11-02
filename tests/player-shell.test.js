@@ -107,20 +107,59 @@ test('во время рекламы оболочка уходит с экран
     ad.className = 'creative-player';
     ad.getBoundingClientRect = () => ({ width: 800, height: 450 });
     w.document.body.appendChild(ad);
-    return new Promise((resolve) => setTimeout(resolve, 500)).then(() => {
-        // Короткая вспышка пустого блока это ещё не реклама: оболочка не должна мигать
-        assert.equal(w.document.getElementById('ag-shell').style.display, '');
-        return new Promise((resolve) => setTimeout(resolve, 1300));
-    }).then(() => {
-        assert.equal(w.document.getElementById('ag-shell').style.display, 'none');
+    const display = () => w.document.getElementById('ag-shell').style.display;
+    // Таймеры настоящие: на занятой машине ждём нужное состояние, а не фиксированное время
+    const until = async (want) => {
+        for (let i = 0; i < 80 && display() !== want; i++) await new Promise(r => setTimeout(r, 50));
+        assert.equal(display(), want);
+    };
+    return new Promise((resolve) => setTimeout(resolve, 500)).then(async () => {
+        // Короткая вспышка пустого блока это ещё не реклама: оболочка остаётся
+        assert.equal(display(), '');
+        await until('none');
         assert.ok(w.document.body.classList.contains('ag-shell-on'));
         ad.remove();
-        return new Promise((resolve) => setTimeout(resolve, 500));
-    }).then(() => {
-        assert.equal(w.document.getElementById('ag-shell').style.display, '');
+        await until('');
         assert.ok(sh.querySelector('.title'));
         shell.destroy();
     });
+});
+
+test('окно «Вам есть 18 лет?»: оболочка уходит и возвращается после ответа зрителя', async () => {
+    const { w, shell } = mount();
+    const display = () => w.document.getElementById('ag-shell').style.display;
+    const gate = w.document.createElement('div');
+    gate.className = 'preview-confirmation';
+    gate.innerHTML = '<div class="pc-confirm">Да</div>';
+    gate.firstChild.getBoundingClientRect = () => ({ width: 80, height: 40 });
+    w.document.body.appendChild(gate);
+    const until = async (want) => {
+        for (let i = 0; i < 80 && display() !== want; i++) await new Promise(r => setTimeout(r, 25));
+        assert.equal(display(), want);
+    };
+    await until('none');
+    let clicks = 0;
+    gate.firstChild.addEventListener('click', () => { clicks++; });
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(clicks, 0, 'за зрителя расширение не отвечает');
+    gate.remove();
+    await until('');
+    shell.destroy();
+});
+
+test('окно 18+ на следующей серии: уже данный в этой вкладке ответ закрывает его само', async () => {
+    const { w, shell } = mount();
+    w.sessionStorage.setItem('minAgeConfirmed', 'true');
+    const gate = w.document.createElement('div');
+    gate.className = 'preview-confirmation';
+    gate.innerHTML = '<div class="pc-confirm">Да</div>';
+    gate.firstChild.getBoundingClientRect = () => ({ width: 80, height: 40 });
+    gate.firstChild.addEventListener('click', () => gate.remove());
+    w.document.body.appendChild(gate);
+    for (let i = 0; i < 80 && gate.isConnected; i++) await new Promise(r => setTimeout(r, 25));
+    assert.equal(gate.isConnected, false);
+    assert.equal(w.document.getElementById('ag-shell').style.display, '');
+    shell.destroy();
 });
 
 test('плеер на одну серию: панели берут списки со страницы сайта и нажимают его кнопки', () => {
@@ -142,7 +181,7 @@ test('плеер на одну серию: панели берут списки 
     void picked;
 });
 
-test('ручной пропуск: перемотка на 89 секунд и кнопка отключается настройкой', () => {
+test('ручной пропуск: перемотка на 89 секунд', () => {
     const { w, sh, shell } = mount();
     const v = w.document.querySelector('video.fp-engine');
     let t = 100;
@@ -154,9 +193,11 @@ test('ручной пропуск: перемотка на 89 секунд и к
     sh.querySelector('[data-act="skip"]').click();
     assert.equal(t, 1400);
     shell.destroy();
-    const off = mount({ showSkipBtn: false });
-    assert.equal(off.sh.querySelector('.jump').style.display, 'none');
-    off.shell.destroy();
+    // Старая настройка скрытия кнопки больше не действует: кнопка есть всегда
+    const stale = mount({ showSkipBtn: false, showPiP: false });
+    assert.notEqual(stale.sh.querySelector('.jump').style.display, 'none');
+    assert.notEqual(stale.sh.querySelector('.pip').style.display, 'none');
+    stale.shell.destroy();
 });
 
 test('снятие оболочки возвращает родной интерфейс', () => {

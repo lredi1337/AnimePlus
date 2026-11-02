@@ -30,6 +30,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Принимаем сообщения только от собственных контекстов расширения
     if (!sender || sender.id !== chrome.runtime.id || !message || typeof message.action !== 'string') return false;
 
+    if (message.action === "open_settings") {
+        chrome.runtime.openOptionsPage();
+        return false;
+    }
+
     if (message.action === "force_check_episodes") {
         (async () => {
             try {
@@ -41,14 +46,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ success: false, error: e.toString() });
             }
         })();
-        return true;
-    }
-
-    if (message.action === "search_anime") {
-        fetch(`https://animego.org/search/anime?q=${encodeURIComponent(message.query)}`)
-            .then(res => res.text())
-            .then(text => sendResponse({ html: text }))
-            .catch(err => sendResponse({ error: err.toString() }));
         return true;
     }
 
@@ -181,93 +178,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .catch(() => sendResponse({ success: false }));
         return true;
     }
-
-    if (message.action === "search_fallback_anime") {
-        (async () => {
-            try {
-                const query = message.query;
-                if (!query || !query.trim()) {
-                    sendResponse({ results: [] });
-                    return;
-                }
-
-                const shikiResp = await fetch(`https://shikimori.io/api/animes?search=${encodeURIComponent(query.trim())}&limit=12`, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
-                });
-                if (!shikiResp.ok) {
-                    sendResponse({ results: [] });
-                    return;
-                }
-                const shikiList = await shikiResp.json();
-                if (!Array.isArray(shikiList) || shikiList.length === 0) {
-                    sendResponse({ results: [] });
-                    return;
-                }
-
-                const menuWords = ['все аниме', 'популярные франшизы', 'подборки', 'с субтитрами', 'топ аниме', 'расписание', 'онгоинги', 'фильмы', 'ова', 'новости', 'поиск', 'главная', 'карта сайта', 'контакты', 'правообладателям', 'добавить'];
-
-                const results = [];
-                const addedIds = new Set();
-
-                for (const item of shikiList) {
-                    if (!item || !item.id || addedIds.has(item.id)) continue;
-
-                    const russian = item.russian || item.name;
-                    const origTitle = item.name || '';
-                    const rLower = russian.toLowerCase().trim();
-
-                    if (menuWords.includes(rLower)) continue;
-                    if (query.trim().toLowerCase() === 'царство' && rLower.includes('женьшеня')) continue;
-
-                    addedIds.add(item.id);
-
-                    const year = item.aired_on ? parseInt(item.aired_on.split('-')[0]) : null;
-                    let poster = item.image ? (item.image.original || item.image.preview || '') : '';
-                    if (poster && !poster.startsWith('http')) {
-                        poster = 'https://shikimori.one' + poster;
-                    }
-
-                    const targetSearchQuery = russian || origTitle;
-                    const fallbackJutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(targetSearchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(origTitle)}&ag_year=${encodeURIComponent(year || '')}&ag_kind=${encodeURIComponent(item.kind || '')}`;
-
-                    const cacheKey = getCacheKey(russian, origTitle, year);
-                    const cachedDirect = await getDirectUrlFromCache(cacheKey);
-
-                    results.push({
-                        id: item.id,
-                        russian: russian,
-                        name: origTitle,
-                        poster: poster,
-                        score: item.score || null,
-                        kind: item.kind ? item.kind.toUpperCase() : '',
-                        year: year,
-                        jutsuUrl: cachedDirect || fallbackJutsuUrl
-                    });
-                }
-
-                const topItems = results.slice(0, 3);
-                const preResolveTask = Promise.all(topItems.map(async (resItem) => {
-                    try {
-                        const direct = await findJutsuDirectUrl(resItem.russian, resItem.name, resItem.year, resItem.kind);
-                        if (direct) {
-                            resItem.jutsuUrl = direct;
-                        }
-                    } catch (e) {}
-                }));
-
-                const timeoutTask = new Promise(resolve => setTimeout(resolve, 200));
-                await Promise.race([preResolveTask, timeoutTask]);
-
-                await fillShikiPosters(results);
-                sendResponse({ results });
-            } catch (err) {
-                console.error("Error in search_fallback_anime:", err);
-                sendResponse({ results: [] });
-            }
-        })();
-        return true;
-    }
-
 
     if (message.action === "resolve_jutsu_cover") {
         (async () => {
@@ -563,7 +473,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const kindsArr = Array.isArray(settings.random_kinds) && settings.random_kinds.length > 0
                     ? settings.random_kinds.map(k => String(k).toLowerCase())
                     : ['tv', 'movie', 'ona', 'ova', 'special'];
-                const kindParam = kindsArr.join(',');
 
                 const filterItem = (item) => {
                     if (!item || !item.score) return false;
@@ -782,88 +691,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
             } catch (e) {}
             sendResponse({ related: [] });
-        })();
-        return true;
-    }
-
-    if (message.action === "get_shikimori_anime_details") {
-        (async () => {
-            try {
-                const id = message.id;
-                const data = await fetchShikimoriApi(`/api/animes/${id}`);
-                if (!data) return sendResponse({ data: null });
-
-                let poster = data.image ? (data.image.original || data.image.preview || '') : '';
-                if (poster && !poster.startsWith('http')) {
-                    poster = 'https://shikimori.one' + poster;
-                }
-                poster = poster.replace(/\/preview\//g, '/original/').replace(/\/x\d+\//g, '/original/');
-                if (isMissingShikiPoster(poster)) poster = (await getShikiPosters([data.id]))[data.id] || '';
-
-                let screenshots = [];
-                const scrData = await fetchShikimoriApi(`/api/animes/${id}/screenshots`);
-                if (Array.isArray(scrData) && scrData.length > 0) {
-                    screenshots = scrData.slice(0, 30).map(s => {
-                        let url = s.original || s.preview || '';
-                        if (url && !url.startsWith('http')) {
-                            url = 'https://shikimori.one' + url;
-                        }
-                        return url;
-                    }).filter(Boolean);
-                }
-
-                if (screenshots.length === 0 && data.screenshots) {
-                    screenshots = data.screenshots.map(s => {
-                        let url = s.original || s.preview || '';
-                        if (url && !url.startsWith('http')) {
-                            url = 'https://shikimori.one' + url;
-                        }
-                        return url;
-                    }).filter(Boolean);
-                }
-
-                let airedOnYear = '';
-                if (data.aired_on && typeof data.aired_on === 'string') {
-                    airedOnYear = data.aired_on.split('-')[0];
-                }
-
-                let japaneseName = '';
-                if (data.japanese) {
-                    if (Array.isArray(data.japanese) && data.japanese.length > 0) {
-                        japaneseName = data.japanese[0];
-                    } else if (typeof data.japanese === 'string') {
-                        japaneseName = data.japanese;
-                    }
-                }
-
-                const query = (data.name && data.name.length > 2) ? data.name : (data.russian || '');
-                const jutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(query)}&ag_from=animeplus`;
-
-                sendResponse({
-                    data: {
-                        id: data.id,
-                        name: data.name || '',
-                        russian: data.russian || data.name || '',
-                        japanese: japaneseName,
-                        poster: poster,
-                        kind: data.kind ? String(data.kind).toUpperCase() : 'TV',
-                        score: data.score || '—',
-                        status: data.status || '',
-                        episodes: data.episodes || 0,
-                        episodesAired: data.episodes_aired || 0,
-                        airedOn: airedOnYear,
-                        description: data.description_html || data.description || '',
-                        genres: Array.isArray(data.genres) ? data.genres.map(g => g.russian || g.name) : [],
-                        studios: Array.isArray(data.studios) ? data.studios.map(s => s.name) : [],
-                        videos: Array.isArray(data.videos) ? data.videos : [],
-                        screenshots: screenshots,
-                        jutsuUrl: jutsuUrl
-                    }
-                });
-            } catch (err) {
-                console.error("Error fetching shikimori details:", err);
-                sendResponse({ data: null });
-            }
         })();
         return true;
     }

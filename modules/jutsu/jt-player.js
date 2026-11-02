@@ -213,11 +213,6 @@
             if (e.data?.type === 'AG_START_MARATHON') {
                 const currentId = getAnimeId ? getAnimeId() : null;
                 if (currentId) sessionStorage.setItem('ag_active_marathon_id', currentId);
-                if (settings.autoFS) {
-                    setTimeout(() => {
-                        setPseudoFS('enable', e.source);
-                    }, 300);
-                }
             }
 
             if (e.data?.type === 'AG_PSEUDO_FS') {
@@ -247,7 +242,7 @@
             if (!video) return;
 
             e.preventDefault();
-            const step = settings.volStep || 0.05;
+            const step = 0.01;
             if (e.deltaY < 0) {
                 video.volume = Math.min(1, video.volume + step);
             } else {

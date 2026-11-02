@@ -27,7 +27,6 @@
             navArrows: ['.player-video-bar__arrow', '.m-ep-arrow'],
             // Каркас сайта
             headerNav: ['header nav.header-navbar-nav', 'header .navbar-nav.header-navbar-nav', 'header .navbar-nav', 'header nav'],
-            mobileMenu: ['#mmenu .nav.flex-column'],
             // На главной нет <main>: содержимое лежит прямо в .wrapper[data-dynamic-content]
             main: ['main.content', 'main', '.wrapper[data-dynamic-content]']
         },
@@ -37,11 +36,8 @@
             info: ['.jutsu-page__info'],
             player: ['#jutsu-page__player', '.jutsu-page__player-video'],
             playerTabs: ['.tabs-block__select'],
-            ratings: ['.jutsu-page__ratings'],
             content: ['.jutsu-content', '.jutsu-wrapper__main'],
-            navTop100: ['a[href*="/top100/"]'],
-            searchCards: ['.jutsu-item'],
-            searchCardTitle: ['a.jutsu-item__title', '.jutsu-item__title a']
+            navTop100: ['a[href*="/top100/"]']
         }
     };
 
@@ -115,6 +111,4 @@
         return window.agReportSelectorHealth(site, missing).then(() => missing);
     };
 
-    window.AnimePlus = window.AnimePlus || { Config: {}, UI: {}, Utils: {}, Modules: {} };
-    window.AnimePlus.Utils.selectors = SELECTORS;
 })();

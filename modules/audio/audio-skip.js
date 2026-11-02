@@ -293,8 +293,6 @@
                 const a = Math.abs(data[i]);
                 if (a > peak) peak = a;
             }
-            // Только для проверки защиты: имитация сломанного звука
-            if (options.getSettings().audioDebugBreak === 'silence') peak = 0;
             if (peak === 0 && !v.muted && v.volume > 0) {
                 silentSec += chunkSec;
                 if (silentSec >= SILENCE_LIMIT_SEC && !blocked) rescueSound(v);
@@ -357,7 +355,6 @@
             if (l) {
                 listeners.set(video, l);
                 lastChunkAt = Date.now();
-                if (options.getSettings().audioDebugBreak === 'nofeed') l.stopFeed();
             } else {
                 listeners.delete(video);
             }

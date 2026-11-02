@@ -186,29 +186,6 @@
                 .filter(li => li && li !== main);
         }
 
-        getSettingsAnchor() {
-            // На DLE-сайтах настройки встраиваются отдельной кнопкой-шестерёнкой в шапку (getHeaderGearAnchor),
-            // текстовая надпись в меню навигации не нужна, чтобы не дублировать кнопки.
-            if (this.getHeaderGearAnchor && this.getHeaderGearAnchor()) return null;
-            const menu = document.querySelector('.header__menu, [class*="header__menu"], ul.menu, header ul');
-            if (menu) {
-                return Array.from(menu.querySelectorAll('li:not(.ag-settings-menu-wrapper)')).pop() || null;
-            }
-            return null;
-        }
-
-        getHeaderGearAnchor() {
-            const right = document.querySelector('.header__right, [class*="header__right"]');
-            if (right) {
-                return right.querySelector('[class*="sign-in"], a[href*="login"], .btn') || right.firstElementChild || right;
-            }
-            return document.querySelector('.change-color, [class*="change-color"]') || null;
-        }
-
-        isSettingsIconOnly() {
-            return !!this.site.dle?.settingsIconOnly;
-        }
-
         isSearchPage() {
             return new URLSearchParams(location.search).has('story');
         }

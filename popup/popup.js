@@ -90,7 +90,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnPlayer = document.getElementById('btnPlayer');
     const panelMusic = document.getElementById('panelMusic');
     const panelPlayer = document.getElementById('panelPlayer');
-    const activationSection = document.getElementById('activation-section');
     const activateBtn = document.getElementById('btn-activate-player');
 
     const btnShiki = document.getElementById('btn-shiki');
@@ -146,7 +145,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (statusDot) statusDot.className = 'dot';
             if (statusText) statusText.textContent = 'активно';
 
-            if (activationSection) activationSection.style.display = 'block';
 
             // Ask for page info
             chrome.tabs.sendMessage(activeTab.id, { type: 'AG_GET_PAGE_INFO' }, (response) => {
@@ -196,7 +194,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Цвет окна один на все сайты: красный цвет бренда из tokens.css, цветом сайта отмечен только его значок в списке
     function applySiteTheme(site) {
-        AgUI.resetAccent();
         const name = document.getElementById('siteCurrentName');
         if (name) name.textContent = site ? site.name : 'Сайт не открыт';
     }
@@ -310,6 +307,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     });
+
+    document.getElementById('btnSettings').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
     // --- Footer Links ---
     if (btnShiki) {
@@ -1026,49 +1025,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             container.appendChild(div);
         });
-    }
-
-    // --- Config Export & Import Handlers ---
-    const btnExportSettings = document.getElementById('btn-export-settings');
-    const btnImportSettings = document.getElementById('btn-import-settings');
-    const inputImportSettings = document.getElementById('input-import-settings');
-
-    if (btnExportSettings) {
-        btnExportSettings.onclick = async () => {
-            const currentSettings = await window.getSettings();
-            const blob = new Blob([JSON.stringify(currentSettings, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `animeplus_settings_${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast(siteToast, "Настройки экспортированы в JSON");
-        };
-    }
-
-    if (btnImportSettings && inputImportSettings) {
-        btnImportSettings.onclick = () => inputImportSettings.click();
-        inputImportSettings.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (evt) => {
-                try {
-                    const imported = JSON.parse(evt.target.result);
-                    if (typeof imported === 'object' && imported !== null) {
-                        await chrome.storage.local.set({ ag_settings: imported });
-                        showToast(siteToast, "Настройки импортированы");
-                        setTimeout(() => window.location.reload(), 1000);
-                    } else {
-                        showToast(siteToast, "Неверный формат файла");
-                    }
-                } catch (err) {
-                    showToast(siteToast, "Не удалось прочитать файл JSON");
-                }
-            };
-            reader.readAsText(file);
-        };
     }
 
     // --- Notification Settings & 24h History Render ---

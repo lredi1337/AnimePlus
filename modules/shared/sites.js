@@ -60,7 +60,6 @@
             dle: {
                 titlePath: /^\/catalog\/item\/[^/?#]+$/,
                 searchPath: '/index.php?do=search&subaction=search&story=',
-                settingsIconOnly: true,
                 navCss: '.header__menu { flex-wrap: nowrap !important; } .header__menu > li > a { padding: 0 clamp(7px, 0.75vw, 12px) !important; font-size: 15px !important; white-space: nowrap !important; } .header__menu > li.has-child > a { padding-right: clamp(18px, 1.2vw, 24px) !important; } .header__menu > li.ag-settings-menu-wrapper > a { padding: 0 clamp(8px, 0.7vw, 12px) !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; } .header__menu > li.ag-settings-menu-wrapper > a svg { width: 18px !important; height: 18px !important; display: block !important; fill: currentColor !important; transition: transform 0.3s ease, color 0.25s ease !important; } .header__menu > li.ag-settings-menu-wrapper > a:hover svg { transform: rotate(45deg); }'
             }
         }

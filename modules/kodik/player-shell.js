@@ -17,6 +17,8 @@
     const AUTOSTART_WAIT_MS = 6000;
     // Kodik на мгновение показывает пустой рекламный блок и без рекламы: это ещё не реклама, иначе оболочка мигает и теряет нажатия
     const AD_CONFIRM_MS = 1200;
+    const HIDE_CONTROLS_MS = 2000;
+    const VOLUME_STEP = 0.01;
     // Ручной пропуск: обычная длина опенинга или эндинга
     const MANUAL_SKIP_SEC = 89;
 
@@ -108,6 +110,19 @@
         const adRuns = !!ad && !ad.paused && !ad.ended && !!ad.currentSrc;
         if (adRuns && (onTop || !main || main.paused)) return 'playing';
         return onTop ? 'visible' : 'none';
+    }
+
+    /** Кнопка «Да» в окне Kodik «Вам есть 18 лет?», если окно сейчас на экране */
+    function ageGateButton() {
+        const button = q('.preview-confirmation .pc-confirm');
+        if (!button || button.getBoundingClientRect().width === 0) return null;
+        const style = getComputedStyle(button);
+        return style.display !== 'none' && style.visibility !== 'hidden' ? button : null;
+    }
+
+    /** Ответ зрителя: Kodik сохраняет его в этой вкладке, но всё равно показывает окно на каждой серии */
+    function ageConfirmed() {
+        try { return sessionStorage.getItem('minAgeConfirmed') === 'true'; } catch (e) { return false; }
     }
 
     // ---------- Вёрстка ----------
@@ -293,7 +308,7 @@
     `;
 
     /**
-     * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), onVoicePicked(text), expectsAutoStart(), sitePick(kind, index) }
+     * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), openSettings(), onVoicePicked(text), expectsAutoStart(), sitePick(kind, index) }
      * Возвращает { destroy } или null, если подключиться нельзя.
      */
     function create(options) {
@@ -328,6 +343,7 @@
         let seenMarked = false;
         let episodeGroup = null;
         let fullShown = false;
+        let resumeAfterGate = false;
         let siteData = null;
         const titleKey = () => (document.title || '').trim().toLowerCase();
 
@@ -360,7 +376,7 @@
             rootEl.classList.remove('idle');
             clearTimeout(idleTimer);
             if (mode === 'start' || mode === 'loading' || openPanel || dragging || (video && video.paused)) return;
-            idleTimer = setTimeout(() => rootEl.classList.add('idle'), settings().hideTime || 2500);
+            idleTimer = setTimeout(() => rootEl.classList.add('idle'), HIDE_CONTROLS_MS);
         };
 
         const note = (text) => {
@@ -405,8 +421,6 @@
             // На сайтах с одной серией в плеере список серий находится на самой странице
             $('[data-act="episodes"]').style.display = list.length > 1 || readOptions(SELECTS.seasons).length > 1 ? '' : 'none';
             $('[data-act="voices"]').style.display = listOf('voices').length > 1 ? '' : 'none';
-            $('.jump').style.display = settings().showSkipBtn === false ? 'none' : '';
-            $('.pip').style.display = settings().showPiP === false ? 'none' : '';
         }
 
         function renderState() {
@@ -671,6 +685,14 @@
             scroll.appendChild(toggleRow('Автопропуск опенинга', skip('autoSkipOp'), v => set({ autoSkip: true, autoSkipOp: v, autoSkipEd: skip('autoSkipEd') })));
             scroll.appendChild(toggleRow('Автопропуск эндинга', skip('autoSkipEd'), v => set({ autoSkip: true, autoSkipOp: skip('autoSkipOp'), autoSkipEd: v })));
             scroll.appendChild(toggleRow('Автопереход на следующую серию', s.autoNext !== false, v => set({ autoNext: v })));
+            scroll.appendChild(toggleRow('Автозапуск серии', s.autoPlay !== false, v => set({ autoPlay: v })));
+            scroll.appendChild(toggleRow('Пропуск по звуку', s.audioSkip !== false, v => set({ audioSkip: v })));
+            scroll.appendChild(toggleRow('Двойной клик: перемотка и весь экран', s.showDBL !== false, v => set({ showDBL: v })));
+            const more = document.createElement('button');
+            more.className = 'row';
+            more.innerHTML = '<span class="name">Озвучка, клавиши и другие настройки</span>';
+            more.addEventListener('click', () => options.openSettings());
+            scroll.appendChild(more);
             panel.appendChild(scroll);
         }
 
@@ -869,7 +891,7 @@
         $('.vol').addEventListener('wheel', (e) => {
             if (!video) return;
             e.preventDefault();
-            const step = settings().volStep || 0.05;
+            const step = VOLUME_STEP;
             video.muted = false;
             video.volume = Math.max(0, Math.min(1, video.volume + (e.deltaY < 0 ? step : -step)));
             note(`Громкость ${Math.round(video.volume * 100)}%`);
@@ -927,7 +949,20 @@
             const ad = adState(v);
             if (ad === 'none') adSeenSince = 0;
             else if (!adSeenSince) adSeenSince = Date.now();
-            const adPlaying = ad === 'playing' || (ad === 'visible' && Date.now() - adSeenSince >= AD_CONFIRM_MS);
+            // Ответить может только сам зритель: оболочка уходит с окна, а звук за окном не играет
+            let gate = ageGateButton();
+            if (gate && ageConfirmed()) {
+                gate.click();
+                gate = null;
+            }
+            if (gate && v && !v.paused) {
+                v.pause();
+                resumeAfterGate = true;
+            } else if (!gate && resumeAfterGate) {
+                resumeAfterGate = false;
+                if (v) v.play().catch(() => {});
+            }
+            const adPlaying = !!gate || ad === 'playing' || (ad === 'visible' && Date.now() - adSeenSince >= AD_CONFIRM_MS);
             const autoStarting = !!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS;
             setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying, hasVideo: !!v, autoStarting }));
             if (mode !== 'ad') {

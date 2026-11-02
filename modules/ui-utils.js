@@ -256,11 +256,6 @@
     };
 
     // Совместимость со старыми вызовами
-    window.agHandlePosterError = function (img, altTitle = '', shikiId = null, ruTitle = '', enTitle = '') {
-        const advance = window.agBindPoster(img, { id: shikiId, ru: ruTitle || altTitle, en: enTitle });
-        if (advance) advance();
-    };
-
     window.showAgEpisodeNotification = function (data) {
         if (!data || !data.title) return;
         let notifContainer = document.getElementById('ag-ep-notif-container');
@@ -484,18 +479,6 @@
         });
     };
 
-    window.AnimePlus = window.AnimePlus || { Config: {}, UI: {}, Utils: {}, Modules: {} };
 
-    window.AnimePlus.Utils.queryFirst = window.agQueryFirst;
-    window.AnimePlus.Utils.waitForElement = window.agWaitForElement;
-    window.AnimePlus.Utils.observeDom = window.agObserveDom;
-    window.AnimePlus.Utils.onUrlChange = window.agOnUrlChange;
-    window.AnimePlus.Utils.sendMessage = window.agSendMessage;
-    window.AnimePlus.Utils.escapeHtml = window.agEscapeHtml;
-    window.AnimePlus.Utils.normalizePosterUrl = window.agNormalizePosterUrl;
-    window.AnimePlus.UI.ensureAgLogoPlus = window.ensureAgLogoPlus;
-    window.AnimePlus.UI.showAgToast = window.showAgToast;
-    window.AnimePlus.UI.showAgEpisodeNotification = window.showAgEpisodeNotification;
-    window.AnimePlus.UI.handlePosterError = window.agHandlePosterError;
 })();
 

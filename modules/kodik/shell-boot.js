@@ -28,7 +28,7 @@
 
     chrome.storage.local.get('ag_settings').then((saved) => {
         const s = (saved && saved.ag_settings) || {};
-        if (s.kodikShell === false || s.global_enabled === false) release();
+        if (s.global_enabled === false) release();
     }).catch(release);
 
     setTimeout(() => {

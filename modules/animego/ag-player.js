@@ -151,15 +151,6 @@
                 const activateMarathon = () => {
                     const currentId = getAnimeId ? getAnimeId() : null;
                     if (currentId) sessionStorage.setItem('ag_active_marathon_id', currentId);
-                    if (settings.autoFS) {
-                        setTimeout(() => {
-                            setPseudoFS('enable');
-                            const container = document.querySelector('.player__video') || document.querySelector('#video-player');
-                            if (container) {
-                                container.querySelector('iframe')?.contentWindow.postMessage({ type: 'AG_FS_STATE', active: true }, '*');
-                            }
-                        }, 300);
-                    }
                 };
 
                 btn.addEventListener('mousedown', activateMarathon);

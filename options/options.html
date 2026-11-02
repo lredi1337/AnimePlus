@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none';">
+    <title>Настройки Anime+</title>
+    <link rel="icon" href="../icons/icon32.png">
+    <link rel="stylesheet" href="../modules/shared/tokens.css">
+    <link rel="stylesheet" href="options.css">
+    <script src="../config.js"></script>
+    <script src="../modules/shared/ui-kit.js"></script>
+</head>
+
+<body>
+    <main class="page">
+        <header class="head">
+            <img src="../icons/icon128.png" alt="" width="48" height="48">
+            <div>
+                <h1>Настройки Anime<span>+</span></h1>
+                <p>Автопропуск, автопереход и остальное для просмотра находятся прямо в плеере: значок шестерёнки на панели управления.</p>
+            </div>
+        </header>
+
+        <section class="card" aria-labelledby="voice-title">
+            <h2 id="voice-title">Озвучка</h2>
+            <label class="row">
+                <span><b>Автовыбор озвучки</b><small>Плеер сам включает первую доступную озвучку из списка. Озвучка, которую вы выбрали вручную, запоминается для тайтла и важнее списка.</small></span>
+                <span class="switch"><input type="checkbox" id="autoVoice"><i></i></span>
+            </label>
+            <div class="list-head"><b>Приоритет</b><small>выше — важнее</small></div>
+            <ul class="voices" id="voiceList"></ul>
+            <form class="add" id="voiceForm">
+                <input type="text" id="voiceInput" placeholder="Добавить озвучку, например HDRezka" aria-label="Название озвучки" autocomplete="off">
+                <button type="submit" class="btn">Добавить</button>
+            </form>
+        </section>
+
+        <section class="card" aria-labelledby="random-title">
+            <h2 id="random-title">Случайное аниме</h2>
+            <label class="row">
+                <span><b>Минимальная оценка</b><small>Кнопка «Случайное» предлагает тайтлы не ниже этой оценки на Shikimori.</small></span>
+                <select id="randomScore">
+                    <option value="any">Без ограничений</option>
+                    <option value="5">От 5.0</option>
+                    <option value="5.5">От 5.5</option>
+                    <option value="6">От 6.0</option>
+                    <option value="6.5">От 6.5</option>
+                    <option value="7">От 7.0</option>
+                    <option value="7.5">От 7.5</option>
+                    <option value="8">От 8.0</option>
+                    <option value="8.5">От 8.5</option>
+                    <option value="9">От 9.0</option>
+                </select>
+            </label>
+            <div class="list-head"><b>Типы</b></div>
+            <div class="chips" id="randomKinds"></div>
+        </section>
+
+        <section class="card" aria-labelledby="keys-title">
+            <h2 id="keys-title">Горячие клавиши</h2>
+            <p class="hint">Нажмите на кнопку, затем на нужную клавишу. Esc отменяет назначение.</p>
+            <div id="keyList"></div>
+        </section>
+
+        <section class="card" aria-labelledby="data-title">
+            <h2 id="data-title">Настройки целиком</h2>
+            <div class="actions">
+                <button type="button" class="btn ghost" id="exportBtn">Экспорт</button>
+                <button type="button" class="btn ghost" id="importBtn">Импорт</button>
+                <input type="file" id="importFile" accept=".json" hidden>
+                <button type="button" class="btn ghost danger" id="resetBtn">Сбросить всё</button>
+            </div>
+        </section>
+
+        <p class="status" id="status" role="status"></p>
+    </main>
+    <script src="options.js"></script>
+</body>
+
+</html>

@@ -193,6 +193,4 @@
         return api;
     };
 
-    window.AnimePlus = window.AnimePlus || { Config: {}, UI: {}, Utils: {}, Modules: {} };
-    window.AnimePlus.Modules.ProgressTracker = { init: window.agInitProgressTracker, parsePlayerMessage };
 })();

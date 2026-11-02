@@ -186,6 +186,20 @@ a { color: var(--ap-accent); }
 
 .logo span { color: var(--ap-accent); }
 
+.icon-btn {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    color: var(--ap-text-2);
+    background: var(--ap-raised);
+    border-color: transparent;
+}
+
+.icon-btn:hover { color: var(--ap-text); background: var(--ap-raised); }
+
 /* Переключатели: общий вид у расширения и у сайтов */
 .toggle {
     position: relative;
@@ -878,13 +892,6 @@ a { color: var(--ap-accent); }
     color: var(--ap-text-2);
 }
 
-.anime-kind {
-    margin-left: 5px;
-    font-size: var(--ap-fs-xs);
-    font-weight: 400;
-    color: var(--ap-text-3);
-}
-
 .anime-progress {
     margin-top: 1px;
     font-size: var(--ap-fs-sm);
@@ -1125,17 +1132,6 @@ a { color: var(--ap-accent); }
     background: var(--ap-accent);
     border-color: transparent;
 }
-
-/* Плеер и настройки */
-.config-tools {
-    display: flex;
-    gap: 8px;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--ap-line);
-}
-
-.config-tools .btn-secondary { flex: 1; }
 
 /* ===== Подвал ===== */
 .footer {
