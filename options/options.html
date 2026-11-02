@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="options.css">
     <script src="../config.js"></script>
     <script src="../modules/shared/ui-kit.js"></script>
+    <script src="../modules/shared/guide.js"></script>
+    <script src="../modules/shared/guide-fox.js"></script>
 </head>
 
 <body>
@@ -22,6 +24,12 @@
                 <p>Автопропуск, автопереход и остальное для просмотра находятся прямо в плеере: значок шестерёнки на панели управления.</p>
             </div>
         </header>
+
+        <a class="help-banner" id="helpBanner" href="#support">
+            <span class="help-fox" id="helpFox"></span>
+            <span class="help-text"><b>Что-то не работает или есть идея?</b><small>Напишите нам, мы разберёмся</small></span>
+            <span class="btn">Написать</span>
+        </a>
 
         <section class="card" aria-labelledby="voice-title">
             <h2 id="voice-title">Озвучка</h2>
@@ -74,14 +82,33 @@
             </div>
         </section>
 
+        <section class="card" id="guide" aria-labelledby="guide-title">
+            <h2 id="guide-title">Экскурсия с лисой</h2>
+            <p class="hint">Лиса снова покажет окно расширения и подскажет, что есть в плеере, а задания начнутся заново.</p>
+            <div class="actions">
+                <button type="button" class="btn ghost" id="guideRestart">Пройти заново</button>
+            </div>
+        </section>
+
         <section class="card" id="support" aria-labelledby="support-title">
             <h2 id="support-title">Поддержка</h2>
-            <p class="hint">Нашли ошибку или есть идея? Напишите нам. Если что-то сломалось, укажите сайт, тайтл и номер серии: так разберёмся быстрее.</p>
-            <div class="actions">
-                <a class="btn" id="mailLink" href="mailto:animeplussupport@gmail.com">Написать письмо</a>
-                <button type="button" class="btn ghost" id="copyMail">Скопировать адрес</button>
-                <span class="mail" id="mailAddress">animeplussupport@gmail.com</span>
-            </div>
+            <p class="hint">Нашли ошибку или есть идея? Напишите прямо здесь. Если что-то сломалось, укажите сайт, тайтл и номер серии: так разберёмся быстрее.</p>
+            <form class="feedback" id="feedbackForm">
+                <select id="feedbackKind" aria-label="Тип сообщения">
+                    <option value="bug">Ошибка</option>
+                    <option value="idea">Идея</option>
+                </select>
+                <textarea id="feedbackMessage" rows="5" minlength="10" maxlength="2000" required placeholder="Что случилось или что хотелось бы добавить" aria-label="Сообщение"></textarea>
+                <input type="text" id="feedbackContact" maxlength="120" placeholder="Почта или Telegram, если нужен ответ (необязательно)" aria-label="Контакт для ответа">
+                <div class="feedback-trap" aria-hidden="true">
+                    <input type="text" id="feedbackWebsite" tabindex="-1" autocomplete="off">
+                </div>
+                <small class="hint">Разработчик получит текст, контакт и версию расширения. Больше ничего не отправляется.</small>
+                <div class="actions">
+                    <button type="submit" class="btn" id="feedbackSend">Отправить</button>
+                    <p class="feedback-result" id="feedbackResult" role="status"></p>
+                </div>
+            </form>
         </section>
 
         <p class="status" id="status" role="status"></p>

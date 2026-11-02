@@ -39,6 +39,27 @@ html, body {
     font-size: var(--ap-fs-md);
 }
 
+.help-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 8px 16px 8px 10px;
+    color: var(--ap-text);
+    text-decoration: none;
+    background: var(--ap-accent-soft);
+    border: 1px solid var(--ap-accent-line);
+    border-radius: var(--ap-radius-lg);
+}
+
+.help-banner:hover { background: color-mix(in srgb, var(--ap-accent) 24%, transparent); }
+.help-fox { flex: none; width: 54px; height: 60px; }
+.help-fox svg { display: block; width: 100%; height: 100%; }
+.help-text { flex: 1; min-width: 0; }
+.help-text b { display: block; font-weight: 600; }
+.help-text small { display: block; color: var(--ap-text-2); font-size: var(--ap-fs-sm); }
+.help-banner .btn { display: inline-flex; align-items: center; }
+
 .card {
     margin-bottom: 16px;
     padding: 18px 20px;
@@ -209,12 +230,52 @@ a.btn {
     text-decoration: none;
 }
 
-.mail {
+.feedback {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.feedback select { align-self: flex-start; }
+.feedback input[type="text"] { flex: none; width: 100%; }
+
+.feedback textarea {
+    width: 100%;
+    min-height: 96px;
+    padding: 8px 10px;
+    color: var(--ap-text);
+    font: inherit;
+    font-size: var(--ap-fs-md);
+    background: var(--ap-bg);
+    border: 1px solid var(--ap-line);
+    border-radius: var(--ap-radius-sm);
+    outline: none;
+    resize: vertical;
+}
+
+.feedback textarea:focus { border-color: var(--ap-accent); }
+.feedback .hint { margin: 0; }
+
+/* Поле-ловушка для ботов: зритель его не видит */
+.feedback-trap {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.feedback-result {
     align-self: center;
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     color: var(--ap-text-2);
     font-size: var(--ap-fs-md);
-    user-select: all;
 }
+
+.feedback-result.error { color: var(--ap-danger); }
+.btn:disabled { opacity: .6; cursor: default; }
 
 .btn:hover { background: color-mix(in srgb, var(--ap-accent) 86%, white); }
 

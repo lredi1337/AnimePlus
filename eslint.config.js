@@ -62,7 +62,7 @@ module.exports = [
         languageOptions: { sourceType: 'module', globals: { ...globals.serviceworker } }
     },
     {
-        files: ['modules/audio/fingerprint.js', 'modules/kodik/player-shell.js'],
+        files: ['modules/audio/fingerprint.js', 'modules/kodik/player-shell.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js'],
         languageOptions: { globals: { module: 'writable' } }
     }
 ];

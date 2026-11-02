@@ -49,6 +49,7 @@
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
     const skipMemory = globalThis.AgSkipMemory.create();
     const recordSavedTime = (seconds) => {
+        if (globalThis.AgGuide) globalThis.AgGuide.mark('skip');
         chrome.storage.local.get('ag_saved_time')
             .then(data => chrome.storage.local.set({ ag_saved_time: globalThis.AgSkipMemory.addSaved(data.ag_saved_time, seconds) }))
             .catch(() => {});
@@ -1388,6 +1389,12 @@
             toggleFs: () => sendFs('toggle'),
             openSettings: () => chrome.runtime.sendMessage({ action: 'open_settings' }).catch(() => {}),
             onVoicePicked: (voice) => rememberChoice(voice),
+            guide: globalThis.AgGuide && globalThis.AgGuideFox ? {
+                mark: globalThis.AgGuide.mark,
+                fox: globalThis.AgGuideFox.svg,
+                tipsSeen: async () => (await globalThis.AgGuide.read()).tipsDone,
+                tipsDone: () => globalThis.AgGuide.patch({ tipsDone: true }).catch(() => {})
+            } : null,
             sitePick: (kind, index) => window.top.postMessage({ type: 'AG_SHELL_PICK', kind, index }, '*'),
             nav: (dir) => {
                 if (shouldUseLocalNav()) {

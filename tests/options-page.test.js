@@ -21,7 +21,7 @@ async function openPage(initial) {
             onChanged: { addListener() {} }
         }
     };
-    for (const f of ['config.js', 'modules/shared/ui-kit.js', 'options/options.js']) w.eval(read(f));
+    for (const f of ['config.js', 'modules/shared/ui-kit.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'options/options.js']) w.eval(read(f));
     await tick();
     return { w, doc: w.document, store };
 }
@@ -109,13 +109,75 @@ test('клавиши, сохранённые старым окном загла�
     w.close();
 });
 
-test('поддержка: адрес на странице и письмо с версией расширения', async () => {
+test('адрес почты поддержки на странице не показывается', async () => {
     const { w, doc } = await openPage({});
-    assert.equal(doc.getElementById('mailAddress').textContent, 'animeplussupport@gmail.com');
-    const href = doc.getElementById('mailLink').getAttribute('href');
-    assert.match(href, /^mailto:animeplussupport@gmail\.com\?subject=/);
-    assert.match(decodeURIComponent(href), /Версия Anime\+: \d+\.\d+\.\d+/);
+    assert.ok(!doc.body.innerHTML.includes('@gmail'));
+    assert.equal(doc.querySelector('a[href^="mailto:"]'), null);
     w.close();
+});
+
+test('поддержка заметна сверху, настройки отмечают задание, экскурсия начинается заново', async () => {
+    const { w, doc, store } = await openPage({});
+    const page = doc.querySelector('.page');
+    assert.equal(page.children[1].id, 'helpBanner', 'баннер сразу под заголовком');
+    assert.ok(doc.getElementById('helpFox').querySelector('svg'));
+    await tick();
+    assert.equal(store.ag_guide.tasks.settings, true);
+
+    store.ag_guide = { tourDone: true, questHidden: true, tipsDone: true, tasks: { play: true, settings: true } };
+    doc.getElementById('guideRestart').click();
+    await tick();
+    assert.equal(store.ag_guide.tourDone, false);
+    assert.equal(store.ag_guide.questHidden, false);
+    assert.equal(store.ag_guide.tipsDone, false);
+    assert.equal(store.ag_guide.tasks.play, undefined);
+    assert.equal(store.ag_guide.tasks.settings, true, 'настройки сейчас открыты');
+    w.close();
+});
+
+async function submitFeedback(respond) {
+    const { w, doc } = await openPage({});
+    const calls = [];
+    w.fetch = async (url, options) => {
+        calls.push({ url, body: JSON.parse(options.body) });
+        return respond();
+    };
+    doc.getElementById('feedbackKind').value = 'idea';
+    doc.getElementById('feedbackMessage').value = 'Хочу тёмную тему для расписания';
+    doc.getElementById('feedbackContact').value = '@viewer';
+    doc.getElementById('feedbackForm').dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
+    await tick();
+    return { w, doc, calls };
+}
+
+const reply = (status, body) => () => ({ ok: status < 400, status, json: async () => body });
+
+test('форма поддержки: отправляет сообщение, версию и очищается', async () => {
+    const { w, doc, calls } = await submitFeedback(reply(200, { ok: true }));
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, /\/v1\/feedback$/);
+    assert.deepEqual(
+        { kind: calls[0].body.kind, message: calls[0].body.message, contact: calls[0].body.contact, website: calls[0].body.website },
+        { kind: 'idea', message: 'Хочу тёмную тему для расписания', contact: '@viewer', website: '' }
+    );
+    assert.match(calls[0].body.version, /^\d+\.\d+\.\d+$/);
+    assert.equal(doc.getElementById('feedbackMessage').value, '');
+    assert.match(doc.getElementById('feedbackResult').textContent, /отправлено/);
+    assert.equal(doc.getElementById('feedbackSend').disabled, false);
+    w.close();
+});
+
+test('форма поддержки: при ошибке текст остаётся и причина понятна', async () => {
+    const limit = await submitFeedback(reply(429, { error: 'limit' }));
+    assert.equal(limit.doc.getElementById('feedbackMessage').value, 'Хочу тёмную тему для расписания');
+    assert.match(limit.doc.getElementById('feedbackResult').textContent, /через час/);
+    limit.w.close();
+
+    const offline = await submitFeedback(() => { throw new Error('offline'); });
+    assert.equal(offline.doc.getElementById('feedbackMessage').value, 'Хочу тёмную тему для расписания');
+    assert.match(offline.doc.getElementById('feedbackResult').textContent, /ещё раз чуть позже/);
+    assert.ok(offline.doc.getElementById('feedbackResult').classList.contains('error'));
+    offline.w.close();
 });
 
 test('страница подключена в манифесте, старое меню из сборки убрано', () => {

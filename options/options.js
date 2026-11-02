@@ -15,6 +15,8 @@
         ['rewind', 'Назад на 5 секунд']
     ];
 
+    const FEEDBACK_URL = 'https://animeplus-timings.ruscadred.workers.dev/v1/feedback';
+
     let settings = await window.getSettings();
     let statusTimer = null;
 
@@ -151,20 +153,68 @@
     renderKeys();
 
     // ---------- Поддержка ----------
-    // Версия помогает разобраться в ошибке, а письмо зритель видит и отправляет сам
-    const mail = $('mailAddress').textContent;
     const version = chrome.runtime.getManifest().version;
-    $('mailLink').href = `mailto:${mail}?subject=${encodeURIComponent(`Anime+ ${version}: ошибка или пожелание`)}&body=${encodeURIComponent(`Версия Anime+: ${version}\nСайт, тайтл и серия:\n\nЧто случилось или что хотелось бы добавить:\n`)}`;
-    $('copyMail').addEventListener('click', async () => {
+    const FEEDBACK_ERRORS = {
+        limit: 'Слишком много сообщений. Попробуйте через час.',
+        busy: 'Сегодня пришло слишком много сообщений. Попробуйте завтра.',
+        'bad message': 'Сообщение слишком короткое или слишком длинное.'
+    };
+
+    $('feedbackForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const result = $('feedbackResult');
+        result.classList.remove('error');
+        result.textContent = 'Отправляем...';
+        $('feedbackSend').disabled = true;
+        let error = 'Не удалось отправить. Попробуйте ещё раз чуть позже.';
+        let sent = false;
         try {
-            await navigator.clipboard.writeText(mail);
-            showStatus('Адрес скопирован');
-        } catch (err) {
-            showStatus(mail);
+            const response = await fetch(FEEDBACK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kind: $('feedbackKind').value,
+                    message: $('feedbackMessage').value,
+                    contact: $('feedbackContact').value,
+                    website: $('feedbackWebsite').value,
+                    version
+                }),
+                signal: AbortSignal.timeout(15000)
+            });
+            const data = await response.json().catch(() => ({}));
+            sent = response.ok && data.ok === true;
+            error = FEEDBACK_ERRORS[data.error] || error;
+        } catch (err) {}
+        $('feedbackSend').disabled = false;
+        // При ошибке текст остаётся в форме, чтобы не писать его заново
+        if (sent) {
+            $('feedbackMessage').value = '';
+            $('feedbackContact').value = '';
+            result.textContent = 'Спасибо, сообщение отправлено.';
+        } else {
+            result.classList.add('error');
+            result.textContent = error;
         }
     });
 
-    if (location.hash === '#support') $('support').scrollIntoView();
+    const openSupport = () => {
+        $('support').scrollIntoView({ block: 'center' });
+        $('feedbackMessage').focus({ preventScroll: true });
+    };
+    $('helpBanner').addEventListener('click', (e) => {
+        e.preventDefault();
+        openSupport();
+    });
+    if (location.hash === '#support') openSupport();
+
+    // ---------- Экскурсия ----------
+    $('helpFox').innerHTML = window.AgGuideFox.svg('wink');
+    window.AgGuide.mark('settings');
+    $('guideRestart').addEventListener('click', async () => {
+        await window.AgGuide.reset();
+        await window.AgGuide.mark('settings');
+        showStatus('Откройте окно расширения, лиса уже ждёт');
+    });
 
     // ---------- Настройки целиком ----------
     $('exportBtn').addEventListener('click', async () => {

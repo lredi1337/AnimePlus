@@ -1,0 +1,108 @@
+// Экскурсия с лисой: состояние заданий, позы кота и подсказки в плеере
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { JSDOM } = require('jsdom');
+const { read, loadInContext, flush } = require('./helpers');
+
+function loadGuide(initial) {
+    const store = { ag_guide: initial };
+    let writes = 0;
+    const chrome = {
+        storage: { local: {
+            get: async (keys) => Object.fromEntries(keys.map(k => [k, store[k]])),
+            set: async (obj) => { writes++; Object.assign(store, obj); }
+        } }
+    };
+    const ctx = loadInContext(['modules/shared/guide.js'], { chrome });
+    return { AgGuide: ctx.AgGuide, store, writes: () => writes };
+}
+
+test('задание отмечается один раз и не сбрасывает остальные', async () => {
+    const { AgGuide, store, writes } = loadGuide({ tourDone: true, tasks: { play: true } });
+    await AgGuide.mark('skip');
+    await AgGuide.mark('skip');
+    await AgGuide.mark('неизвестное');
+    assert.equal(writes(), 1);
+    assert.deepEqual({ ...store.ag_guide.tasks }, { play: true, skip: true });
+    assert.equal(store.ag_guide.tourDone, true);
+});
+
+test('два действия подряд не теряют задание', async () => {
+    const { AgGuide, store } = loadGuide({ tasks: {} });
+    await Promise.all([AgGuide.mark('skip'), AgGuide.mark('panel'), AgGuide.patch({ tipsDone: true })]);
+    assert.deepEqual({ ...store.ag_guide.tasks }, { skip: true, panel: true });
+    assert.equal(store.ag_guide.tipsDone, true);
+});
+
+test('прогресс и испорченные данные', async () => {
+    const { AgGuide } = loadGuide('мусор');
+    const state = await AgGuide.read();
+    assert.equal(state.tourDone, false);
+    assert.equal(AgGuide.progress(state).done, 0);
+    const all = Object.fromEntries(AgGuide.TASKS.map(t => [t.id, true]));
+    assert.equal(AgGuide.progress(AgGuide.normalize({ tasks: all })).finished, true);
+});
+
+test('у лисы разные позы, а неизвестная не ломает рисунок', () => {
+    const fox = require('../modules/shared/guide-fox.js');
+    const drawings = fox.POSES.map(p => fox.svg(p));
+    assert.ok(fox.POSES.length >= 8);
+    assert.equal(new Set(drawings).size, drawings.length);
+    for (const svg of drawings) assert.match(svg, /^<svg[\s\S]*<\/svg>$/);
+    assert.equal(fox.svg('нет такой'), fox.svg('hello'));
+    assert.match(fox.svg(), /prefers-reduced-motion/);
+});
+
+const PLAYER = `<!doctype html><html><head><title>Тайтл</title></head><body class="serial active-player player-is-ready"><div class="serial-series-box"><select><option value="1" selected>1 серия</option><option value="2">2 серия</option></select></div><div class="serial-translations-box"><select><option value="1" selected>A</option><option value="2">B</option></select></div><div class="fp-player"><video class="fp-engine"></video></div></body></html>`;
+
+async function mountShell(seen = false) {
+    const dom = new JSDOM(PLAYER, { url: 'https://kodikplayer.com/serial/1/a/720p', runScripts: 'outside-only', pretendToBeVisual: true });
+    const w = dom.window;
+    w.chrome = { storage: { local: { get: async () => ({}), set: async () => {} } } };
+    w.eval(read('modules/kodik/player-shell.js'));
+    const marks = [];
+    let done = 0;
+    const shell = w.AgKodikShell.create({
+        getSettings: () => ({ voice_priority_list: [] }),
+        patchSettings: async () => {},
+        getTimings: () => ({ op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } }),
+        nav() {}, toggleFs() {}, onVoicePicked() {},
+        guide: {
+            mark: (id) => marks.push(id),
+            fox: (pose) => `<svg data-pose="${pose}"></svg>`,
+            tipsSeen: async () => seen,
+            tipsDone: () => { done++; }
+        }
+    });
+    await flush();
+    const sh = w.document.getElementById('ag-shell').shadowRoot;
+    return { sh, shell, marks, done: () => done };
+}
+
+test('подсказки в плеере: по шагам, с подсветкой, запоминаются', async () => {
+    const { sh, shell, marks, done } = await mountShell();
+    const box = sh.querySelector('.guide');
+    assert.equal(box.hidden, false);
+    assert.ok(marks.includes('play'));
+    assert.ok(sh.querySelector('.rail').classList.contains('guide-spot'));
+    assert.equal(box.querySelector('svg').dataset.pose, 'down');
+
+    box.querySelector('.go').click();
+    assert.ok(!sh.querySelector('.rail').classList.contains('guide-spot'));
+    assert.ok(sh.querySelector('.jump').classList.contains('guide-spot'));
+
+    box.querySelector('.skip').click();
+    assert.equal(box.hidden, true);
+    assert.equal(sh.querySelectorAll('.guide-spot').length, 0);
+    assert.equal(done(), 1);
+    shell.destroy();
+});
+
+test('подсказки показываются один раз, задания из плеера отмечаются', async () => {
+    const { sh, shell, marks } = await mountShell(true);
+    assert.equal(sh.querySelector('.guide').hidden, true);
+    sh.querySelector('[data-act="episodes"]').click();
+    sh.querySelector('[data-act="skip"]').click();
+    assert.ok(marks.includes('panel'));
+    shell.destroy();
+});

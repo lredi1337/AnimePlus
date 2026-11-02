@@ -11,3 +11,9 @@ CREATE TABLE IF NOT EXISTS reports (
     PRIMARY KEY (id, episode, voice, dur_key, part, reporter)
 );
 CREATE INDEX IF NOT EXISTS reports_by_reporter ON reports (reporter, day);
+CREATE TABLE IF NOT EXISTS feedback_log (
+    reporter TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS feedback_by_time ON feedback_log (ts);

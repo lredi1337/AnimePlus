@@ -149,13 +149,6 @@ a { color: var(--ap-accent); }
     text-underline-offset: 2px;
 }
 
-.support-link {
-    display: block;
-    width: 100%;
-    margin-top: 10px;
-    text-align: center;
-}
-
 .btn-text:hover {
     color: var(--ap-text);
     background: none;
@@ -1252,4 +1245,165 @@ a { color: var(--ap-accent); }
         transition: none !important;
         animation: none !important;
     }
+}
+
+/* ===== Поддержка всегда на виду ===== */
+.support-row {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 4px 14px;
+    color: var(--ap-text-2);
+    font: inherit;
+    font-size: var(--ap-fs-md);
+    background: var(--ap-accent-soft);
+    border: none;
+    border-top: 1px solid var(--ap-accent-line);
+    border-radius: 0;
+    cursor: pointer;
+    transition: background var(--ap-ease), color var(--ap-ease);
+}
+
+.support-row b { color: var(--ap-text); font-weight: 600; }
+.support-row:hover { color: var(--ap-text); background: color-mix(in srgb, var(--ap-accent) 26%, transparent); }
+.support-fox { flex: none; width: 26px; height: 30px; }
+.support-fox svg, .quest-fox svg, .tour-fox svg { display: block; width: 100%; height: 100%; }
+
+/* ===== Задания лисы ===== */
+.quest {
+    flex: none;
+    margin: 8px 14px 0;
+    background: var(--ap-surface);
+    border: 1px solid var(--ap-line);
+    border-radius: var(--ap-radius);
+}
+
+.quest[hidden] { display: none; }
+.quest.finished { border-color: var(--ap-accent-line); }
+
+.quest-head { display: flex; align-items: center; padding-right: 4px; }
+
+.quest-toggle {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 6px 4px 8px;
+    color: var(--ap-text);
+    font: inherit;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.quest-fox { flex: none; width: 34px; height: 38px; }
+.quest-info { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; flex: 1; min-width: 0; align-items: baseline; }
+.quest-info b { font-size: var(--ap-fs-md); font-weight: 600; }
+.quest-info small { color: var(--ap-text-2); font-size: var(--ap-fs-sm); }
+.quest-progress { grid-column: 1 / -1; height: 3px; margin-top: 4px; overflow: hidden; background: var(--ap-raised); border-radius: 2px; }
+.quest-progress i { display: block; height: 100%; background: var(--ap-accent); transition: width var(--ap-ease); }
+.quest-close { flex: none; }
+
+.quest-list { display: none; margin: 0; padding: 2px 10px 8px; list-style: none; }
+.quest.open .quest-list { display: block; }
+.quest-list li { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
+.quest-list b { display: block; font-size: var(--ap-fs-md); font-weight: 500; }
+.quest-list small { display: block; color: var(--ap-text-3); font-size: var(--ap-fs-sm); }
+.quest-list .done b { color: var(--ap-text-3); text-decoration: line-through; }
+
+.quest-mark {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    color: var(--ap-on-accent);
+    border: 1px solid var(--ap-line-strong);
+    border-radius: 50%;
+}
+
+.quest-list .done .quest-mark { background: var(--ap-accent); border-color: transparent; }
+
+.quest-list[hidden], .quest-rate[hidden] { display: none; }
+.quest-rate { display: none; padding: 2px 12px 10px; text-align: center; }
+.quest.open .quest-rate:not([hidden]) { display: block; }
+.quest-stars { color: var(--ap-warning); font-size: 22px; letter-spacing: 3px; line-height: 1.2; }
+.quest-rate p { margin: 4px 0 8px; color: var(--ap-text); font-size: var(--ap-fs-md); line-height: 1.35; }
+.quest-rate-actions { display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+/* ===== Экскурсия ===== */
+html.tour-open .popup { min-height: 560px; }
+
+.tour { position: fixed; inset: 0; z-index: 100; }
+.tour[hidden] { display: none; }
+.tour:has(.tour-hole[hidden]) { background: var(--ap-scrim); }
+
+.tour-hole {
+    position: fixed;
+    border-radius: var(--ap-radius);
+    box-shadow: 0 0 0 2px var(--ap-accent), 0 0 0 9999px var(--ap-scrim);
+    pointer-events: none;
+    transition: left .2s ease, top .2s ease, width .2s ease, height .2s ease;
+}
+
+.tour-hole[hidden] { display: none; }
+
+.tour-bubble {
+    position: fixed;
+    display: flex;
+    gap: 10px;
+    width: calc(100% - 24px);
+    padding: 10px 12px 10px 8px;
+    background: var(--ap-raised);
+    border: 1px solid var(--ap-line-strong);
+    border-radius: var(--ap-radius-lg);
+    box-shadow: var(--ap-shadow);
+    transition: top .2s ease;
+}
+
+.tour-fox { flex: none; align-self: flex-end; width: 92px; height: 104px; }
+.tour-main { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; }
+.tour-text { flex: 1; margin: 0; color: var(--ap-text); font-size: var(--ap-fs-md); line-height: 1.4; }
+.tour-actions { display: flex; align-items: center; gap: 6px; }
+.tour-count { margin-right: auto; color: var(--ap-text-3); font-size: var(--ap-fs-xs); white-space: nowrap; }
+
+.tour-link {
+    padding: 4px 2px;
+    color: var(--ap-text-2);
+    font: inherit;
+    font-size: var(--ap-fs-sm);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.tour-link:hover { color: var(--ap-text); }
+.tour-link[hidden] { display: none; }
+
+.tour-next {
+    padding: 5px 10px;
+    color: var(--ap-on-accent);
+    font: inherit;
+    font-size: var(--ap-fs-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--ap-accent);
+    border: none;
+    border-radius: var(--ap-radius-sm);
+    cursor: pointer;
+}
+
+.tour-next:focus-visible, .tour-link:focus-visible, .support-row:focus-visible, .quest-toggle:focus-visible {
+    outline: 2px solid var(--ap-text);
+    outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tour-hole, .tour-bubble { transition: none; }
 }

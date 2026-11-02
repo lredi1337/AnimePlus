@@ -11,6 +11,8 @@
     <script src="../config.js"></script>
     <script src="../modules/shared/sites.js"></script>
     <script src="../modules/shared/ui-kit.js"></script>
+    <script src="../modules/shared/guide.js"></script>
+    <script src="../modules/shared/guide-fox.js"></script>
 </head>
 
 <body>
@@ -44,6 +46,30 @@
             </div>
             <div class="toast" id="siteToast"></div>
             <div class="selector-health" id="selectorHealth" hidden></div>
+
+            <!-- Задания лисы -->
+            <div class="quest" id="questCard" hidden>
+                <div class="quest-head">
+                    <button type="button" class="quest-toggle" id="questToggle" aria-expanded="false" aria-controls="questList">
+                        <span class="quest-fox" id="questFox"></span>
+                        <span class="quest-info">
+                            <b id="questTitle"></b>
+                            <small id="questCount"></small>
+                            <span class="quest-progress"><i id="questBar"></i></span>
+                        </span>
+                    </button>
+                    <button type="button" class="icon-btn quest-close" id="questClose" title="Скрыть задания" aria-label="Скрыть задания"><span class="ap-inline-icon" data-ap-icon="close" data-ap-size="13"></span></button>
+                </div>
+                <ul class="quest-list" id="questList"></ul>
+                <div class="quest-rate" id="questRate" hidden>
+                    <div class="quest-stars" aria-hidden="true">★★★★★</div>
+                    <p>Обучение пройдено! Если Anime+ вам нравится, поставьте 5 звёзд в Chrome Web Store: это очень помогает расширению.</p>
+                    <div class="quest-rate-actions">
+                        <button type="button" class="tour-next" id="questRateGo">Поставить оценку</button>
+                        <button type="button" class="tour-link" id="questRateLater">Не сейчас</button>
+                    </div>
+                </div>
+            </div>
 
             <!-- Продолжить просмотр -->
             <div class="continue" id="continueCard" hidden>
@@ -159,8 +185,9 @@
             <div class="bottom-panel" id="panelPlayer">
                 <div class="panel-hint">Нажмите, если кнопки пропуска не появились:</div>
                 <button class="btn-primary" id="btn-activate-player">Активировать вручную</button>
-                <button class="btn-text support-link" id="btn-support">Сообщить об ошибке или предложить идею</button>
             </div>
+
+            <button type="button" class="support-row" id="btn-support"><span class="support-fox" id="supportFox"></span><span>Что-то не работает? <b>Напишите нам</b></span></button>
 
             <div class="footer">
                 <span class="saved-time" id="savedTime" title="Сколько времени автопропуск сэкономил в этом месяце" hidden></span>
@@ -184,7 +211,25 @@
         </div>
     </div>
 
+    <!-- Экскурсия с лисой -->
+    <div class="tour" id="tour" hidden>
+        <div class="tour-hole" id="tourHole" hidden></div>
+        <div class="tour-bubble" id="tourBubble" role="dialog" aria-label="Экскурсия по Anime+">
+            <div class="tour-fox" id="tourFox"></div>
+            <div class="tour-main">
+                <p class="tour-text" id="tourText" aria-live="polite"></p>
+                <div class="tour-actions">
+                    <span class="tour-count" id="tourCount"></span>
+                    <button type="button" class="tour-link" id="tourSkip">Пропустить</button>
+                    <button type="button" class="tour-link" id="tourBack">Назад</button>
+                    <button type="button" class="tour-next" id="tourNext">Дальше</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="popup.js"></script>
+    <script src="guide-tour.js"></script>
 </body>
 
 </html>

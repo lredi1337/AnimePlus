@@ -2,6 +2,8 @@
 // Метка становится общей, когда её независимо подтвердили несколько человек.
 // IP не хранится: для подсчёта разных людей используется необратимый хэш с секретом, отдельный для каждого тайтла.
 
+import { handleFeedback } from './feedback.js';
+
 export const MIN_REPORTERS = 2;
 const START_TOLERANCE = 2;
 const END_TOLERANCE = 3;
@@ -104,6 +106,10 @@ export default {
             if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
             if (url.pathname === '/v1/timings' && request.method === 'GET') return await handleGet(url, env, ctx);
             if (url.pathname === '/v1/report' && request.method === 'POST') return await handlePost(request, env);
+            if (url.pathname === '/v1/feedback' && request.method === 'POST') {
+                const { status, body } = await handleFeedback(request, env);
+                return json(body, status);
+            }
             return json({ error: 'not found' }, 404);
         } catch (e) {
             return json({ error: 'server' }, 500);

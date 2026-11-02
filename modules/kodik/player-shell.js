@@ -240,6 +240,18 @@
         .on > .sw::after { left: 16px; background: #111; }
         .note { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); padding: 8px 16px; border-radius: 8px; background: rgba(16,19,25,.9); font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .15s; pointer-events: none; }
         .note.on { opacity: 1; }
+        .guide { position: absolute; left: 16px; bottom: 84px; display: flex; align-items: flex-end; gap: 8px; width: min(400px, calc(100% - 32px)); padding: 10px 12px 10px 6px; border-radius: 14px; background: #1f242e; border: 1px solid rgba(255,255,255,.22); box-shadow: 0 16px 48px rgba(0,0,0,.55); pointer-events: auto; }
+        .guide[hidden] { display: none; }
+        .guide .fox { flex: none; width: 78px; height: 88px; }
+        .guide .fox svg { display: block; width: 100%; height: 100%; }
+        .guide .body { flex: 1; min-width: 0; }
+        .guide p { margin: 0 0 8px; font-size: 14px; line-height: 1.35; }
+        .guide .row { display: flex; align-items: center; gap: 10px; }
+        .guide .row span { margin-right: auto; font-size: 12px; color: #8f96a6; }
+        .guide button { width: auto; height: auto; padding: 5px 10px; border: none; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; color: #b6bcc9; background: none; }
+        .guide button[hidden] { display: none; }
+        .guide button.go { color: #fff; font-weight: 600; background: #ef4444; }
+        .guide-spot { outline: 2px solid #ef4444 !important; outline-offset: 3px; border-radius: 6px; }
         .spinner { display: none; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; animation: ag-spin .8s linear infinite; }
         @keyframes ag-spin { to { transform: rotate(360deg); } }
         .loading { background: #000; }
@@ -286,6 +298,7 @@
             </div>
             <div class="spinner" role="status" aria-label="Загрузка"></div>
             <div class="note"></div>
+            <div class="guide" role="dialog" aria-label="Подсказки лисы" hidden></div>
             <div class="panel" role="dialog"></div>
         </div>`;
 
@@ -702,6 +715,7 @@
             if (openPanel === name) return closePanel();
             openPanel = name;
             episodeGroup = null;
+            if (name !== 'settings' && options.guide) options.guide.mark('panel');
             panel.classList.add('on');
             rootEl.classList.add('with-panel');
             document.body.classList.add('ag-shell-panel');
@@ -756,6 +770,7 @@
                 if (!video) return;
                 video.currentTime = Math.min(video.duration || Infinity, video.currentTime + MANUAL_SKIP_SEC);
                 note(`+${MANUAL_SKIP_SEC} с`);
+                if (options.guide) options.guide.mark('skip');
             },
             mute: () => { if (video) { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 0.5; } },
             pip: async () => {
@@ -932,6 +947,7 @@
             if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
             rootEl.classList.toggle('start', next === 'start');
             rootEl.classList.toggle('loading', next === 'loading');
+            if (next === 'play') startGuide();
             if (show) {
                 renderHead();
                 renderNav();
@@ -965,6 +981,7 @@
             const adPlaying = !!gate || ad === 'playing' || (ad === 'visible' && Date.now() - adSeenSince >= AD_CONFIRM_MS);
             const autoStarting = !!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS;
             setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying, hasVideo: !!v, autoStarting }));
+            if (guideOpen) wake();
             if (mode !== 'ad') {
                 renderZones();
                 const full = document.body.dataset.agFsState === 'true';
@@ -975,6 +992,52 @@
                     b.setAttribute('aria-label', full ? 'Свернуть' : 'На весь экран');
                 }
             }
+        }
+
+        // Подсказки лисы: один раз, при первом запуске серии. Видео не останавливают и нажатий не перехватывают
+        const GUIDE_TIPS = [
+            { target: '.rail', pose: 'down', text: 'Опенинг и эндинг отмечены на шкале. Если автопропуск включён, они пропускаются сами.' },
+            { target: '.jump', pose: 'down', text: 'Меток нет или песня не пропустилась? Эта кнопка перематывает на 89 секунд.' },
+            { target: '[data-act="episodes"]', pose: 'right', text: 'Серии меняются прямо здесь, даже в полном экране.' },
+            { target: '[data-act="voices"]', pose: 'right', text: 'А здесь озвучка. Ваш выбор запомнится для этого тайтла.' },
+            { target: '[data-act="settings"]', pose: 'wink', text: 'Тут настройки просмотра. На этом всё, приятного просмотра!' }
+        ];
+        let guideOpen = false;
+        let guideStarted = false;
+        let guideSpot = null;
+
+        function closeGuide() {
+            guideOpen = false;
+            if (guideSpot) guideSpot.classList.remove('guide-spot');
+            guideSpot = null;
+            $('.guide').hidden = true;
+            options.guide.tipsDone();
+        }
+
+        function showGuideTip(index, tips) {
+            const tip = tips[index];
+            const box = $('.guide');
+            if (guideSpot) guideSpot.classList.remove('guide-spot');
+            guideSpot = $(tip.target);
+            guideSpot.classList.add('guide-spot');
+            const isLast = index === tips.length - 1;
+            box.innerHTML = `<div class="fox">${options.guide.fox(tip.pose)}</div><div class="body"><p></p><div class="row"><span>${index + 1} из ${tips.length}</span><button type="button" class="skip">Хватит</button><button type="button" class="go">${isLast ? 'Понятно' : 'Дальше'}</button></div></div>`;
+            box.querySelector('p').textContent = tip.text;
+            box.querySelector('.skip').hidden = isLast;
+            box.querySelector('.skip').addEventListener('click', closeGuide);
+            box.querySelector('.go').addEventListener('click', () => (isLast ? closeGuide() : showGuideTip(index + 1, tips)));
+            box.hidden = false;
+        }
+
+        async function startGuide() {
+            if (!options.guide || guideStarted) return;
+            guideStarted = true;
+            options.guide.mark('play');
+            if (await options.guide.tipsSeen()) return;
+            const tips = GUIDE_TIPS.filter(t => $(t.target) && getComputedStyle($(t.target)).display !== 'none');
+            if (destroyed || mode !== 'play' || tips.length === 0) return;
+            guideOpen = true;
+            showGuideTip(0, tips);
         }
 
         function destroy() {
