@@ -123,6 +123,14 @@
         }, true);
     }
 
+    // Выбор в панели плеера: это тоже решение пользователя, хотя клик по кнопке сайта делает расширение
+    window.agRememberVoice = (name) => {
+        if (!voiceChoice) return;
+        chosenVoice = voiceChoice.voiceName(name);
+        if (state) state.voiceDone = true;
+        voiceChoice.set(voiceChoice.pageKey(), chosenVoice);
+    };
+
     window.agInitVoiceAutoSelect = async function (settings) {
         if (!settings || settings.global_enabled === false) return;
         if (voiceChoice && !choiceLoaded) {

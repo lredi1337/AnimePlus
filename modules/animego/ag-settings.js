@@ -591,7 +591,7 @@
             <!-- Tab 3: Interface -->
             <div class="ag-tab-content" id="tab-interface">
                 ${renderRow('showNav', 'Стрелки серий', 'Показывать кнопки < и > по бокам плеера.')}
-                ${renderRow('showSkipBtn', 'Кнопка +90с', 'Показывать кнопку быстрой перемотки опенинга.')}
+                ${renderRow('showSkipBtn', 'Кнопка +89 с', 'Показывать кнопку быстрой перемотки опенинга.')}
                 ${renderRow('showPiP', 'Кнопка PiP', 'Показывать кнопку Картинка-в-Картинке.')}
                 ${renderRow('showCenterBtn', 'Кнопки перемотки', 'Дополнительные кнопки -5с / +5с в центре плеера.')}
                 ${(options.extraInterfaceRows || []).map(r => renderRow(r.id, r.title, r.desc)).join('')}

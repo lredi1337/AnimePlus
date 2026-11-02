@@ -95,7 +95,7 @@ AnimePlus-main/
   autoSkip: true,                     // Авто-пропуск опенингов и эндингов (AniSkip)
   autoPlay: true,                     // Авто-плей видео при открытии страницы
   showNav: true,                      // Показывать боковые стрелки перехода серий в плеере
-  showSkipBtn: true,                  // Показывать кнопку "+90с" в плеере
+  showSkipBtn: true,                  // Показывать кнопку "+89 с" в плеере
   showPiP: true,                      // Показывать кнопку Picture-in-Picture
   showCenterBtn: true,                // Показывать кнопки перемотки -5с/+5с в центре
   showDBL: true,                      // Двойной клик (по краям — перемотка, по центру — FS)
@@ -142,7 +142,7 @@ AnimePlus-main/
     fs: "f",                          // Псевдо-фуллскрин
     next: "n",                        // Следующая серия
     prev: "p",                        // Предыдущая серия
-    skip: "s",                        // Скип опенинга / +85с
+    skip: "s",                        // Скип опенинга / +89 с
     rewind: "arrowleft",              // Назад на 5с
     forward: "arrowright"             // Вперед на 5с
   }

@@ -17,6 +17,8 @@
     const AUTOSTART_WAIT_MS = 6000;
     // Kodik на мгновение показывает пустой рекламный блок и без рекламы: это ещё не реклама, иначе оболочка мигает и теряет нажатия
     const AD_CONFIRM_MS = 1200;
+    // Ручной пропуск: обычная длина опенинга или эндинга
+    const MANUAL_SKIP_SEC = 89;
 
     // ---------- Чистые функции ----------
 
@@ -127,7 +129,8 @@
         pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="7" height="5" fill="currentColor" stroke="none"/>',
         close: '<path d="M6 6l12 12M18 6L6 18"/>',
         search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
-        check: '<path d="M5 12l5 5 9-10"/>'
+        check: '<path d="M5 12l5 5 9-10"/>',
+        skip: '<path d="M6 6l6 6-6 6M13 6l6 6-6 6"/>'
     };
     const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 
@@ -175,6 +178,9 @@
         .bar button { opacity: .92; }
         .bar button:hover { opacity: 1; }
         .clock { font-variant-numeric: tabular-nums; }
+        .jump { height: 28px; padding: 0 10px 0 6px; gap: 2px; border-radius: 7px; background: rgba(255,255,255,.14); font-weight: 600; font-variant-numeric: tabular-nums; }
+        .jump:hover { background: rgba(255,255,255,.24); }
+        .jump svg { width: 18px; height: 18px; }
         .gap { flex: 1; }
         .label { font-weight: 500; }
         .vol { display: flex; align-items: center; gap: 8px; }
@@ -224,7 +230,7 @@
         .loading { background: #000; }
         .loading .spinner { display: block; }
         .loading .center, .loading .bottom, .loading .pip { display: none; }
-        .start .chrome .center button:not(.big), .start .bottom .track, .start .vol, .start .clock, .start .pip, .start [data-act="settings"], .start [data-act="full"] { display: none; }
+        .start .jump, .start .chrome .center button:not(.big), .start .bottom .track, .start .vol, .start .clock, .start .pip, .start [data-act="settings"], .start [data-act="full"] { display: none; }
         @container (max-width: 620px) { .label { display: none; } .center { gap: 18px; } .head { left: 14px; top: 12px; } .bottom { left: 14px; right: 14px; } }
     `;
 
@@ -249,6 +255,7 @@
                         <div class="rail"><i class="buffer"></i><span class="zones"></span><i class="done"></i><span class="thumb"></span></div>
                     </div>
                     <div class="bar">
+                        <button class="jump" data-act="skip" title="Перемотать вперёд на ${MANUAL_SKIP_SEC} секунд" aria-label="Перемотать вперёд на ${MANUAL_SKIP_SEC} секунд">${icon('skip')}<span>+${MANUAL_SKIP_SEC}</span></button>
                         <span class="clock"></span>
                         <span class="gap"></span>
                         <div class="vol">
@@ -285,7 +292,7 @@
     `;
 
     /**
-     * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), onVoicePicked(text), expectsAutoStart() }
+     * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), onVoicePicked(text), expectsAutoStart(), sitePick(kind, index) }
      * Возвращает { destroy } или null, если подключиться нельзя.
      */
     function create(options) {
@@ -320,6 +327,7 @@
         let seenMarked = false;
         let episodeGroup = null;
         let fullShown = false;
+        let siteData = null;
         const titleKey = () => (document.title || '').trim().toLowerCase();
 
         const settings = () => options.getSettings() || {};
@@ -364,27 +372,39 @@
 
         // ---------- Данные на экране ----------
 
-        const currentEpisode = () => readOptions(SELECTS.episodes).find(o => o.selected);
+        // Родные списки Kodik, а если плеер открыт на одну серию (AnimeGO), то списки со страницы сайта
+        const listOf = (kind) => {
+            const own = readOptions(SELECTS[kind]);
+            if (own.length > 1 || !siteData || !siteData[kind] || !siteData[kind].length) return own;
+            return siteData[kind];
+        };
+        const usesSite = (kind) => readOptions(SELECTS[kind]).length <= 1 && !!(siteData && siteData[kind] && siteData[kind].length);
+        const pickItem = (kind, index) => {
+            if (usesSite(kind)) options.sitePick(kind, index);
+            else chooseOption(SELECTS[kind], index);
+        };
+        const currentEpisode = () => listOf('episodes').find(o => o.selected);
 
         function renderHead() {
-            $('.title').textContent = (document.title || '').trim();
+            $('.title').textContent = (siteData && siteData.title) || (document.title || '').trim();
             const seasons = readOptions(SELECTS.seasons);
             // Единственный первый сезон упоминать незачем
             const season = seasons.length > 1 || (seasons[0] && seasons[0].label !== '1') ? seasons.find(o => o.selected) : null;
             const ep = currentEpisode();
-            const voice = readOptions(SELECTS.voices).find(o => o.selected);
+            const voice = listOf('voices').find(o => o.selected);
             $('.sub').textContent = [season && `Сезон ${season.label}`, ep && `Серия ${ep.label}`, voice && voice.title].filter(Boolean).join(' · ');
         }
 
         function renderNav() {
-            const list = readOptions(SELECTS.episodes);
+            const list = listOf('episodes');
             const hasList = list.length > 0;
             const i = list.findIndex(o => o.selected);
             $('[data-act="prev"]').style.display = hasList && i <= 0 ? 'none' : '';
             $('[data-act="next"]').style.display = hasList && i >= list.length - 1 ? 'none' : '';
             // На сайтах с одной серией в плеере список серий находится на самой странице
             $('[data-act="episodes"]').style.display = list.length > 1 || readOptions(SELECTS.seasons).length > 1 ? '' : 'none';
-            $('[data-act="voices"]').style.display = readOptions(SELECTS.voices).length > 1 ? '' : 'none';
+            $('[data-act="voices"]').style.display = listOf('voices').length > 1 ? '' : 'none';
+            $('.jump').style.display = settings().showSkipBtn === false ? 'none' : '';
             $('.pip').style.display = settings().showPiP === false ? 'none' : '';
         }
 
@@ -468,7 +488,7 @@
             if (seasons.length > 1) {
                 panel.appendChild(chips(seasons.map(s => ({ label: `Сезон ${s.label}`, on: s.selected, index: s.index })), it => chooseOption(SELECTS.seasons, it.index)));
             }
-            const list = readOptions(SELECTS.episodes);
+            const list = listOf('episodes');
             const groups = episodeGroups(list);
             const nowIndex = list.findIndex(o => o.selected);
             if (groups.length) {
@@ -482,7 +502,7 @@
                     e.stopPropagation();
                     if (e.key !== 'Enter') return;
                     const hit = list.find(o => o.label === input.value.trim());
-                    if (hit) chooseOption(SELECTS.episodes, hit.index);
+                    if (hit) pickItem('episodes', hit.index);
                 });
                 input.addEventListener('input', () => {
                     const i = list.findIndex(o => o.label === input.value.trim());
@@ -510,10 +530,10 @@
             let current = null;
             for (const o of list.slice(range.from, range.to)) {
                 const b = document.createElement('button');
-                b.className = `ep${o.selected ? ' now' : ''}${seen.has(o.label) && !o.selected ? ' seen' : ''}`;
+                b.className = `ep${o.selected ? ' now' : ''}${(o.seen || seen.has(o.label)) && !o.selected ? ' seen' : ''}`;
                 b.textContent = o.label;
                 b.setAttribute('aria-label', `Серия ${o.label}`);
-                b.addEventListener('click', () => chooseOption(SELECTS.episodes, o.index));
+                b.addEventListener('click', () => pickItem('episodes', o.index));
                 if (o.selected) current = b;
                 grid.appendChild(b);
             }
@@ -524,7 +544,7 @@
 
         function renderVoices(filter = '', tab = null) {
             panel.replaceChildren(panelHead('Озвучка'));
-            const all = sortVoices(readOptions(SELECTS.voices), settings().auto_select_voice === false ? [] : settings().voice_priority_list);
+            const all = sortVoices(listOf('voices'), settings().auto_select_voice === false ? [] : settings().voice_priority_list);
             const field = document.createElement('label');
             field.className = 'field';
             field.innerHTML = `${icon('search')}<input placeholder="Найти озвучку" aria-label="Найти озвучку">`;
@@ -554,8 +574,8 @@
                 b.querySelector('.meta').textContent = v.count ? `${v.count} сер.` : '';
                 b.addEventListener('click', () => {
                     if (v.selected) return;
-                    if (options.onVoicePicked) options.onVoicePicked(v.title);
-                    chooseOption(SELECTS.voices, v.index);
+                    if (options.onVoicePicked && !usesSite('voices')) options.onVoicePicked(v.title);
+                    pickItem('voices', v.index);
                 });
                 if (v.selected) current = b;
                 scroll.appendChild(b);
@@ -601,6 +621,18 @@
                 c.textContent = text;
                 scroll.appendChild(c);
             };
+            const players = siteData && siteData.players ? siteData.players : [];
+            if (players.length > 1) {
+                cap('Плеер');
+                for (const p of players) {
+                    const b = document.createElement('button');
+                    b.className = `row${p.selected ? ' on' : ''}`;
+                    b.innerHTML = `<span class="mark">${p.selected ? icon('check') : ''}</span><span class="name"></span>`;
+                    b.querySelector('.name').textContent = p.title;
+                    b.addEventListener('click', () => { if (!p.selected) options.sitePick('players', p.index); });
+                    scroll.appendChild(b);
+                }
+            }
             const items = qualityItems();
             if (items.length) {
                 cap('Качество');
@@ -695,6 +727,11 @@
             voices: () => togglePanel('voices'),
             settings: () => togglePanel('settings'),
             full: () => options.toggleFs(),
+            skip: () => {
+                if (!video) return;
+                video.currentTime = Math.min(video.duration || Infinity, video.currentTime + MANUAL_SKIP_SEC);
+                note(`+${MANUAL_SKIP_SEC} с`);
+            },
             mute: () => { if (video) { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 0.5; } },
             pip: async () => {
                 try {
@@ -947,7 +984,18 @@
         renderHead();
         safeSync();
 
-        return { destroy };
+        return {
+            destroy,
+            /** Списки со страницы сайта для плееров на одну серию */
+            setSite(data) {
+                siteData = data;
+                guarded(() => {
+                    renderHead();
+                    renderNav();
+                    if (openPanel) PANELS[openPanel]();
+                })();
+            }
+        };
     }
 
     const api = { create, formatTime, episodeGroups, sortVoices, playerMode };

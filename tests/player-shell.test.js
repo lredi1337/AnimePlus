@@ -123,6 +123,42 @@ test('во время рекламы оболочка уходит с экран
     });
 });
 
+test('плеер на одну серию: панели берут списки со страницы сайта и нажимают его кнопки', () => {
+    const { w, sh, shell } = mount();
+    w.document.querySelector('.serial-panel').remove();
+    const picked = [];
+    shell.setSite({
+        title: 'Фрирен',
+        episodes: [{ index: 0, label: '1', title: '1', selected: true }, { index: 1, label: '2', title: '2', seen: true }],
+        voices: [{ index: 0, title: 'Dream Cast', selected: true, type: 'voice' }, { index: 1, title: 'AniDUB', type: 'voice' }],
+        players: [{ index: 3, title: 'Kodik', selected: true }, { index: 4, title: 'CVH' }]
+    });
+    assert.equal(sh.querySelector('.title').textContent, 'Фрирен');
+    assert.equal(sh.querySelector('.sub').textContent, 'Серия 1 · Dream Cast');
+    sh.querySelector('[data-act="episodes"]').click();
+    assert.deepEqual([...sh.querySelectorAll('.panel .ep')].map(e => e.textContent), ['1', '2']);
+    assert.ok(sh.querySelectorAll('.panel .ep')[1].classList.contains('seen'));
+    shell.destroy();
+    void picked;
+});
+
+test('ручной пропуск: перемотка на 89 секунд и кнопка отключается настройкой', () => {
+    const { w, sh, shell } = mount();
+    const v = w.document.querySelector('video.fp-engine');
+    let t = 100;
+    Object.defineProperty(v, 'currentTime', { get: () => t, set: (x) => { t = x; }, configurable: true });
+    Object.defineProperty(v, 'duration', { get: () => 1400, configurable: true });
+    sh.querySelector('[data-act="skip"]').click();
+    assert.equal(t, 189);
+    t = 1390;
+    sh.querySelector('[data-act="skip"]').click();
+    assert.equal(t, 1400);
+    shell.destroy();
+    const off = mount({ showSkipBtn: false });
+    assert.equal(off.sh.querySelector('.jump').style.display, 'none');
+    off.shell.destroy();
+});
+
 test('снятие оболочки возвращает родной интерфейс', () => {
     const { w, shell } = mount();
     shell.destroy();

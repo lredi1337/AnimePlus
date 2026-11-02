@@ -49,6 +49,7 @@
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
     let currentSkipTarget = null;
     let playerShell = null;
+    let siteListsReady = false;
 
     // Пропуск по звуку: уточняет тайминги, дальше работает обычная логика пропуска
     const audioSkip = globalThis.AgAudioSkip ? globalThis.AgAudioSkip.create({
@@ -419,8 +420,8 @@
                 v.currentTime = currentSkipTarget;
                 showFlash("Skipped!");
             } else {
-                v.currentTime += 85;
-                showFlash("Skip +85s");
+                v.currentTime += 89;
+                showFlash("Skip +89s");
             }
         }
         else if (e.key === 'Escape') {
@@ -430,6 +431,11 @@
 
     window.addEventListener('message', (e) => {
         if (!isParentSiteOrigin(e.origin)) return;
+
+        if (e.data?.type === 'AG_SHELL_SITE' && playerShell) {
+            playerShell.setSite(e.data.site);
+            if (e.data.site.episodes.length || e.data.site.voices.length) siteListsReady = true;
+        }
 
         if (e.data?.type === 'AG_MARATHON_CONFIRM') {
             canAutoPlay = true;
@@ -463,7 +469,7 @@
             settings = e.data.settings;
             applyVisualSettings();
             if (settings.kodikShell) {
-                startPlayerShell();
+                startPlayerShell().then(askSiteLists);
             } else if (playerShell) {
                 playerShell.destroy();
                 playerShell = null;
@@ -843,7 +849,7 @@
             if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
         };
-        document.getElementById('ag-skip').onclick = () => v.currentTime += 90;
+        document.getElementById('ag-skip').onclick = () => v.currentTime += 89;
         document.getElementById('ag-c1').onclick = () => doRewind(-5, v);
         document.getElementById('ag-c2').onclick = () => doRewind(5, v);
         document.getElementById('ag-pip').onclick = async () => {
@@ -1338,6 +1344,16 @@
         voiceObserver.disconnect();
     }, 4000);
 
+    // Сайт заполняет свои списки позже, чем запускается плеер, поэтому спрашиваем несколько раз, пока не ответит со списками
+    const askSiteLists = () => {
+        if (!playerShell || siteListsReady) return;
+        let tries = 0;
+        const ask = setInterval(() => {
+            if (siteListsReady || ++tries > 15) return clearInterval(ask);
+            window.top.postMessage({ type: 'AG_SHELL_GET' }, '*');
+        }, 1000);
+        window.top.postMessage({ type: 'AG_SHELL_GET' }, '*');
+    };
     // Новая оболочка плеера: настройка «Новый плеер», выключается и удалённо, если обновление Kodik её сломает
     const startPlayerShell = async () => {
         const releaseBoot = () => { if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release(); };
@@ -1355,6 +1371,7 @@
             getTimings: () => skipData,
             toggleFs: () => sendFs('toggle'),
             onVoicePicked: (voice) => rememberChoice(voice),
+            sitePick: (kind, index) => window.top.postMessage({ type: 'AG_SHELL_PICK', kind, index }, '*'),
             nav: (dir) => {
                 if (shouldUseLocalNav()) {
                     switchKodikEpisode(dir);
@@ -1365,5 +1382,5 @@
             }
         });
     };
-    startPlayerShell();
+    startPlayerShell().then(askSiteLists);
 })();
