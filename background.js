@@ -105,6 +105,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.action === "get_remote_config") {
+        getRemoteConfig().then(sendResponse).catch(() => sendResponse(null));
+        return true;
+    }
+
     if (message.action === "get_shared_timings") {
         getSharedTimings(message).then(sendResponse).catch(() => sendResponse(null));
         return true;

@@ -14,7 +14,7 @@ const backgroundShared = Object.fromEntries([
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
     'openNotificationTarget', 'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'setDirectUrlInCache',
-    'getAudioFingerprints', 'getSharedTimings', 'reportAudioTiming',
+    'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming',
     'shikiFetch', 'shikiPosterMemo', 'storageWriteQueues', 'toShikiApiUrl', 'updateShikiUserRate', 'updateStorageObject'
 ].map(name => [name, 'writable']));
 
@@ -62,7 +62,7 @@ module.exports = [
         languageOptions: { sourceType: 'module', globals: { ...globals.serviceworker } }
     },
     {
-        files: ['modules/audio/fingerprint.js'],
+        files: ['modules/audio/fingerprint.js', 'modules/kodik/player-shell.js'],
         languageOptions: { globals: { module: 'writable' } }
     }
 ];

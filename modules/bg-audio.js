@@ -42,6 +42,11 @@ async function cachedAudioFile(name, file, ttl, missTtl) {
     return res.data;
 }
 
+/** Настройки с аварийным выключателем: новая оболочка плеера и функции пропуска */
+function getRemoteConfig() {
+    return cachedAudioFile('config', 'config.json', AUDIO_CONFIG_TTL, AUDIO_CONFIG_TTL);
+}
+
 async function getAudioFingerprints(id) {
     if (!/^\d+$/.test(String(id))) return null;
     const config = await cachedAudioFile('config', 'config.json', AUDIO_CONFIG_TTL, AUDIO_CONFIG_TTL);

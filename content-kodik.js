@@ -48,6 +48,7 @@
     let canAutoPlay = false;
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
     let currentSkipTarget = null;
+    let playerShell = null;
 
     // Пропуск по звуку: уточняет тайминги, дальше работает обычная логика пропуска
     const audioSkip = globalThis.AgAudioSkip ? globalThis.AgAudioSkip.create({
@@ -461,6 +462,12 @@
         if (e.data?.type === 'AG_SETTINGS_UPDATE') {
             settings = e.data.settings;
             applyVisualSettings();
+            if (settings.kodikShell) {
+                startPlayerShell();
+            } else if (playerShell) {
+                playerShell.destroy();
+                playerShell = null;
+            }
             const ui = document.getElementById('ag-ui');
             if (ui) { ui.style.opacity = '1'; clearTimeout(hideTimeout); hideTimeout = setTimeout(() => ui.style.opacity = '0', settings.hideTime); }
         }
@@ -675,7 +682,7 @@
             if (nativeSkip) {
                 btn.style.display = "none";
                 currentSkipTarget = null;
-                if (settings.autoSkip) {
+                if (settings.autoSkip && settings[isEdTarget ? 'autoSkipEd' : 'autoSkipOp'] !== false) {
                     const timeBeforeClick = v.currentTime;
                     const skipEndTime = isEdTarget ? skipData.ed.end : skipData.op.end;
                     const opts = { bubbles: true, cancelable: true, view: window };
@@ -710,7 +717,7 @@
             currentSkipTarget = skipTarget;
 
             if (skipTarget) {
-                const manualOnly = skipData[part].manual;
+                const manualOnly = skipData[part].manual || settings[part === 'op' ? 'autoSkipOp' : 'autoSkipEd'] === false;
                 if (settings.autoSkip && !manualOnly) {
                     const startOfSong = skipData[part].start;
                     autoSkipped[part] = true;
@@ -1034,11 +1041,19 @@
                 lastSwitchTime = now;
 
                 if (settings.autoNext) {
-                    if (shouldUseLocalNav()) {
-                        switchKodikEpisode('next', true);
-                        updateLocalEpisodeNumbers();
-                    } else {
-                        window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
+                    const goNext = () => {
+                        if (shouldUseLocalNav()) {
+                            switchKodikEpisode('next', true);
+                            updateLocalEpisodeNumbers();
+                        } else {
+                            window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
+                        }
+                    };
+                    const nextNumber = shouldUseLocalNav() ? getLocalEpisodeData().next : '';
+                    // Последняя серия: в оболочке предлагать нечего, а без неё всё работает как раньше
+                    const noNext = shouldUseLocalNav() && hasLocalEpisodeControls() && !nextNumber;
+                    if (!(playerShell && !noNext && playerShell.askNext(nextNumber ? `Серия ${nextNumber}` : 'Следующая серия', goNext))) {
+                        if (!noNext || !playerShell) goNext();
                     }
                 }
 
@@ -1077,7 +1092,8 @@
                 const lastSkipTime = parseFloat(btn.dataset.agSkipTime) || -999;
 
                 // Если кнопка видима, текст подходит и с прошлого клика прошло больше 30 секунд
-                if (isVisible && (text.includes('пропустить') || text.includes('skip')) && Math.abs(curTime - lastSkipTime) > 30) {
+                const nativePart = video && video.duration && curTime >= video.duration / 2 ? 'autoSkipEd' : 'autoSkipOp';
+                if (isVisible && settings[nativePart] !== false && (text.includes('пропустить') || text.includes('skip')) && Math.abs(curTime - lastSkipTime) > 30) {
 
                     // Записываем текущее время как время последнего скипа
                     btn.dataset.agSkipTime = curTime.toString();
@@ -1206,8 +1222,9 @@
         return name ? `kodik:${name.toLowerCase()}` : '';
     };
     let chosenVoice = null;
+    let rememberChoice = () => {};
     if (voiceChoice) {
-        const rememberChoice = (voice) => {
+        rememberChoice = (voice) => {
             chosenVoice = voiceChoice.voiceName(voice);
             isKodikVoiceDone = true;
             voiceChoice.set(titleVoiceKey(), voice);
@@ -1327,4 +1344,30 @@
     kodikCheckTimer = setTimeout(() => {
         voiceObserver.disconnect();
     }, 4000);
+
+    // Новая оболочка плеера: настройка «Новый плеер», выключается и удалённо, если обновление Kodik её сломает
+    const startPlayerShell = async () => {
+        if (playerShell || !settings.kodikShell || !globalThis.AgKodikShell) return;
+        const config = await chrome.runtime.sendMessage({ action: 'get_remote_config' }).catch(() => null);
+        if (config && config.kodikShell === false) return;
+        playerShell = globalThis.AgKodikShell.create({
+            getSettings: () => settings,
+            patchSettings: async (patch) => {
+                settings = await window.agPatchSettings(patch);
+                return settings;
+            },
+            getTimings: () => skipData,
+            toggleFs: () => sendFs('toggle'),
+            onVoicePicked: (voice) => rememberChoice(voice),
+            nav: (dir) => {
+                if (shouldUseLocalNav()) {
+                    switchKodikEpisode(dir);
+                    updateLocalEpisodeNumbers();
+                } else {
+                    window.top.postMessage({ type: 'AG_NAV', dir }, '*');
+                }
+            }
+        });
+    };
+    startPlayerShell();
 })();

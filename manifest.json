@@ -218,6 +218,7 @@
         "modules/shared/ui-kit.js",
         "modules/audio/fingerprint.js",
         "modules/audio/audio-skip.js",
+        "modules/kodik/player-shell.js",
         "content-kodik.js"
       ],
       "run_at": "document_end",

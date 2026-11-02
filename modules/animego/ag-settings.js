@@ -589,6 +589,7 @@
 
             <!-- Tab 3: Interface -->
             <div class="ag-tab-content" id="tab-interface">
+                ${renderRow('kodikShell', 'Новый плеер', 'Современный вид плеера Kodik: серии, озвучка и настройки в одной панели. Изменения применятся после перезагрузки серии.')}
                 ${renderRow('showNav', 'Стрелки серий', 'Показывать кнопки < и > по бокам плеера.')}
                 ${renderRow('showSkipBtn', 'Кнопка +90с', 'Показывать кнопку быстрой перемотки опенинга.')}
                 ${renderRow('showPiP', 'Кнопка PiP', 'Показывать кнопку Картинка-в-Картинке.')}
@@ -799,7 +800,7 @@
                 voice_priority_list: currentVoiceList,
                 keys: settings.keys
             };
-            ['autoPlay', 'autoNext', 'autoFS', 'autoSkip', 'audioSkip', 'showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'showDBL', ...(options.extraInterfaceRows || []).map(r => r.id)].forEach(k => {
+            ['autoPlay', 'autoNext', 'autoFS', 'autoSkip', 'audioSkip', 'kodikShell', 'showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'showDBL', ...(options.extraInterfaceRows || []).map(r => r.id)].forEach(k => {
                 const el = document.getElementById(`s-${k}`);
                 if (el) patch[k] = el.checked;
             });

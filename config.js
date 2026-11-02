@@ -8,7 +8,7 @@
         global_enabled: true,
         // Включение по сайтам: { [siteId]: false } выключает расширение на сайте (см. modules/shared/sites.js)
         sites_enabled: {},
-        autoNext: true, autoFS: true, autoSkip: true, autoPlay: true, audioSkip: true,
+        autoNext: true, autoFS: true, autoSkip: true, autoPlay: true, audioSkip: true, kodikShell: false,
         showNav: true, showSkipBtn: true, showPiP: true, showCenterBtn: true, showDBL: true,
         hideTime: 2000, extId: chrome.runtime.id, use_standard_covers: false,
         ongoing_enabled: true,
