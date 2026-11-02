@@ -612,7 +612,7 @@
                 box.style.flexWrap = 'wrap';
                 scroll.appendChild(box);
             }
-            cap('Пропуск');
+            cap('Просмотр');
             const s = settings();
             const skip = (key) => s.autoSkip !== false && s[key] !== false;
             const set = async (patch) => {
@@ -620,9 +620,9 @@
                 renderSettings();
             };
             // Общая настройка должна остаться включённой, если нужна хотя бы одна из частей
-            scroll.appendChild(toggleRow('Пропускать опенинг сам', skip('autoSkipOp'), v => set({ autoSkip: true, autoSkipOp: v, autoSkipEd: skip('autoSkipEd') })));
-            scroll.appendChild(toggleRow('Пропускать эндинг сам', skip('autoSkipEd'), v => set({ autoSkip: true, autoSkipOp: skip('autoSkipOp'), autoSkipEd: v })));
-            scroll.appendChild(toggleRow('Следующая серия сама', s.autoNext !== false, v => set({ autoNext: v })));
+            scroll.appendChild(toggleRow('Автопропуск опенинга', skip('autoSkipOp'), v => set({ autoSkip: true, autoSkipOp: v, autoSkipEd: skip('autoSkipEd') })));
+            scroll.appendChild(toggleRow('Автопропуск эндинга', skip('autoSkipEd'), v => set({ autoSkip: true, autoSkipOp: skip('autoSkipOp'), autoSkipEd: v })));
+            scroll.appendChild(toggleRow('Автопереход на следующую серию', s.autoNext !== false, v => set({ autoNext: v })));
             panel.appendChild(scroll);
         }
 
