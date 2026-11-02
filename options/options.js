@@ -150,6 +150,22 @@
     };
     renderKeys();
 
+    // ---------- Поддержка ----------
+    // Версия помогает разобраться в ошибке, а письмо зритель видит и отправляет сам
+    const mail = $('mailAddress').textContent;
+    const version = chrome.runtime.getManifest().version;
+    $('mailLink').href = `mailto:${mail}?subject=${encodeURIComponent(`Anime+ ${version}: ошибка или пожелание`)}&body=${encodeURIComponent(`Версия Anime+: ${version}\nСайт, тайтл и серия:\n\nЧто случилось или что хотелось бы добавить:\n`)}`;
+    $('copyMail').addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(mail);
+            showStatus('Адрес скопирован');
+        } catch (err) {
+            showStatus(mail);
+        }
+    });
+
+    if (location.hash === '#support') $('support').scrollIntoView();
+
     // ---------- Настройки целиком ----------
     $('exportBtn').addEventListener('click', async () => {
         const blob = new Blob([JSON.stringify(await window.getSettings(), null, 2)], { type: 'application/json' });

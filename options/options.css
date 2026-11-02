@@ -203,6 +203,19 @@ select { flex: none; width: 170px; }
     cursor: pointer;
 }
 
+a.btn {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.mail {
+    align-self: center;
+    color: var(--ap-text-2);
+    font-size: var(--ap-fs-md);
+    user-select: all;
+}
+
 .btn:hover { background: color-mix(in srgb, var(--ap-accent) 86%, white); }
 
 .btn.ghost {
@@ -259,7 +272,7 @@ select { flex: none; width: 170px; }
 .key-btn:hover { border-color: var(--ap-line-strong); }
 .key-btn.listening { color: var(--ap-on-accent); background: var(--ap-accent); border-color: transparent; }
 
-button:focus-visible, select:focus-visible {
+button:focus-visible, select:focus-visible, a:focus-visible {
     outline: 2px solid var(--ap-accent);
     outline-offset: 1px;
 }

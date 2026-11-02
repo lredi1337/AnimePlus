@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/GitHub_Код-v10.1.0-blue?style=for-the-badge&logo=github" alt="GitHub Код" />
+  <img src="https://img.shields.io/badge/GitHub_Код-v10.1.1-blue?style=for-the-badge&logo=github" alt="GitHub Код" />
   <a href="https://chromewebstore.google.com/detail/anime+/mgcaideibpbdddnbedoefmabladoaajg?hl=ru" target="_blank">
     <img src="https://img.shields.io/chrome-web-store/v/mgcaideibpbdddnbedoefmabladoaajg?style=for-the-badge&label=Chrome_Store&color=brightgreen&logo=googlechrome" alt="Версия в Chrome Store" />
   </a>
@@ -232,6 +232,12 @@
 | <kbd>Скролл</kbd> | Регулировка **громкости** колесиком мыши над плеером. |
 
 *Все клавиши можно перенастроить в меню расширения.*
+
+---
+
+## 💬 Поддержка
+
+Нашли ошибку или есть идея? Напишите на [animeplussupport@gmail.com](mailto:animeplussupport@gmail.com). Если что-то сломалось, укажите сайт, тайтл и номер серии. Написать можно и со страницы настроек расширения, раздел «Поддержка».
 
 ---
 

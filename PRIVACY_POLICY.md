@@ -82,6 +82,7 @@
 
 ## 7. Обратная связь и контакты
 По любым вопросам, касающимся данной Политики конфиденциальности или работы расширения, вы можете обратиться:
-* **GitHub Repository:** [https://github.com/lredi1337/AnimeGoPlus](https://github.com/lredi1337/AnimeGoPlus)
+* **GitHub Repository:** [https://github.com/lredi1337/AnimePlus](https://github.com/lredi1337/AnimePlus)
+* **Почта поддержки:** [animeplussupport@gmail.com](mailto:animeplussupport@gmail.com)
 * **Разработчик:** `l_red_i`
 

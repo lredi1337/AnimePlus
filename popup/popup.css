@@ -149,6 +149,13 @@ a { color: var(--ap-accent); }
     text-underline-offset: 2px;
 }
 
+.support-link {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    text-align: center;
+}
+
 .btn-text:hover {
     color: var(--ap-text);
     background: none;

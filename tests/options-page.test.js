@@ -12,7 +12,7 @@ async function openPage(initial) {
     const w = dom.window;
     const store = { ag_settings: initial };
     w.chrome = {
-        runtime: { id: 'test', getURL: (p) => p, sendMessage() {}, onMessage: { addListener() {} } },
+        runtime: { id: 'test', getURL: (p) => p, getManifest: () => JSON.parse(read('manifest.json')), sendMessage() {}, onMessage: { addListener() {} } },
         storage: {
             local: {
                 get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(k => [k, store[k]])),
@@ -106,6 +106,15 @@ test('клавиши, сохранённые старым окном загла�
     const settings = await w.getSettings();
     assert.equal(settings.keys.skip, 'j');
     assert.equal(settings.keys.next, 'n');
+    w.close();
+});
+
+test('поддержка: адрес на странице и письмо с версией расширения', async () => {
+    const { w, doc } = await openPage({});
+    assert.equal(doc.getElementById('mailAddress').textContent, 'animeplussupport@gmail.com');
+    const href = doc.getElementById('mailLink').getAttribute('href');
+    assert.match(href, /^mailto:animeplussupport@gmail\.com\?subject=/);
+    assert.match(decodeURIComponent(href), /Версия Anime\+: \d+\.\d+\.\d+/);
     w.close();
 });
 

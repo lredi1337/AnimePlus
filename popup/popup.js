@@ -309,6 +309,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('btnSettings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+    document.getElementById('btn-support').addEventListener('click', () => {
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#support') });
+    });
 
     // --- Footer Links ---
     if (btnShiki) {
