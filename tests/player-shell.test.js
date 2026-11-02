@@ -26,12 +26,13 @@ test('сначала озвучки из приоритетов в их поря
     assert.deepEqual(sortVoices(list, []).map(v => v.title), ['AniDUB', 'JAM', 'Dream Cast', 'AniLibria.TV']);
 });
 
-test('реклама всегда показывается в родном интерфейсе', () => {
+test('режимы: реклама важнее всего, при загрузке и автозапуске индикатор вместо старого плеера', () => {
     assert.equal(playerMode({ active: false, ready: false, adPlaying: false, hasVideo: false }), 'start');
-    assert.equal(playerMode({ active: true, ready: false, adPlaying: false, hasVideo: false }), 'native');
+    assert.equal(playerMode({ active: false, ready: false, adPlaying: false, hasVideo: false, autoStarting: true }), 'loading');
+    assert.equal(playerMode({ active: true, ready: false, adPlaying: false, hasVideo: false }), 'loading');
     assert.equal(playerMode({ active: true, ready: true, adPlaying: false, hasVideo: true }), 'play');
-    assert.equal(playerMode({ active: true, ready: true, adPlaying: true, hasVideo: true }), 'native');
-    assert.equal(playerMode({ active: false, ready: false, adPlaying: true, hasVideo: false }), 'native');
+    assert.equal(playerMode({ active: true, ready: true, adPlaying: true, hasVideo: true }), 'ad');
+    assert.equal(playerMode({ active: false, ready: false, adPlaying: true, hasVideo: false }), 'ad');
 });
 
 // Разметка снята с живого kodikplayer.com
@@ -98,6 +99,24 @@ test('панель озвучки: приоритет первым, субтит
     assert.deepEqual(calls, [['voice', 'AniDUB']]);
     assert.equal(w.document.querySelector('.serial-translations-box select').value, '609');
     shell.destroy();
+});
+
+test('во время рекламы оболочка уходит с экрана, родной интерфейс остаётся скрытым', () => {
+    const { w, sh, shell } = mount();
+    const ad = w.document.createElement('div');
+    ad.className = 'creative-player';
+    ad.getBoundingClientRect = () => ({ width: 800, height: 450 });
+    w.document.body.appendChild(ad);
+    return new Promise((resolve) => setTimeout(resolve, 500)).then(() => {
+        assert.equal(w.document.getElementById('ag-shell').style.display, 'none');
+        assert.ok(w.document.body.classList.contains('ag-shell-on'));
+        ad.remove();
+        return new Promise((resolve) => setTimeout(resolve, 500));
+    }).then(() => {
+        assert.equal(w.document.getElementById('ag-shell').style.display, '');
+        assert.ok(sh.querySelector('.title'));
+        shell.destroy();
+    });
 });
 
 test('снятие оболочки возвращает родной интерфейс', () => {

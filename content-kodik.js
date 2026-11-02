@@ -1339,11 +1339,14 @@
 
     // Новая оболочка плеера: настройка «Новый плеер», выключается и удалённо, если обновление Kodik её сломает
     const startPlayerShell = async () => {
-        if (playerShell || !settings.kodikShell || !globalThis.AgKodikShell) return;
+        const releaseBoot = () => { if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release(); };
+        if (playerShell) return;
+        if (!settings.kodikShell || !globalThis.AgKodikShell) return releaseBoot();
         const config = await chrome.runtime.sendMessage({ action: 'get_remote_config' }).catch(() => null);
-        if (config && config.kodikShell === false) return;
+        if (config && config.kodikShell === false) return releaseBoot();
         playerShell = globalThis.AgKodikShell.create({
             getSettings: () => settings,
+            expectsAutoStart: () => canAutoPlay && settings.autoPlay !== false,
             patchSettings: async (patch) => {
                 settings = await window.agPatchSettings(patch);
                 return settings;

@@ -215,6 +215,42 @@
         "https://kombik.info/*"
       ],
       "js": [
+        "modules/kodik/shell-boot.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://*.kodik.info/*",
+        "https://kodik.info/*",
+        "https://*.kodikplayer.com/*",
+        "https://kodikplayer.com/*",
+        "https://*.kodikres.com/*",
+        "https://kodikres.com/*",
+        "https://*.dbcode.info/*",
+        "https://dbcode.info/*",
+        "https://*.kodik-storage.com/*",
+        "https://kodik-storage.com/*",
+        "https://*.cloud.kodik-storage.com/*",
+        "https://*.tube-storage.com/*",
+        "https://tube-storage.com/*",
+        "https://*.kodik.biz/*",
+        "https://kodik.biz/*",
+        "https://*.kodik.cc/*",
+        "https://kodik.cc/*",
+        "https://*.anivod.com/*",
+        "https://anivod.com/*",
+        "https://*.aniqizm.com/*",
+        "https://aniqizm.com/*",
+        "https://*.aniboom.one/*",
+        "https://aniboom.one/*",
+        "https://*.anifilm.top/*",
+        "https://anifilm.top/*",
+        "https://*.kombik.info/*",
+        "https://kombik.info/*"
+      ],
+      "js": [
         "config.js",
         "modules/shared/voice-choice.js",
         "modules/shared/sites.js",

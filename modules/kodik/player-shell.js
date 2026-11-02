@@ -13,6 +13,8 @@
     const SEEN_AT = 0.8;
     const SYNC_MS = 400;
     const DOUBLE_CLICK_MS = 250;
+    // Столько ждём автозапуск следующей серии, потом показываем кнопку
+    const AUTOSTART_WAIT_MS = 6000;
 
     // ---------- Чистые функции ----------
 
@@ -49,11 +51,11 @@
         return voices.map((v, i) => ({ v, i, r: rank(v) })).sort((a, b) => a.r - b.r || a.i - b.i).map(x => x.v);
     }
 
-    /** Что показывать: идёт ли реклама, загрузка или сам эпизод */
-    function playerMode({ active, ready, adPlaying, hasVideo }) {
-        if (adPlaying) return 'native';
-        if (!active) return 'start';
-        return ready && hasVideo ? 'play' : 'native';
+    /** Что показывать: реклама (оболочка уходит с экрана), экран запуска, загрузка или сам эпизод */
+    function playerMode({ active, ready, adPlaying, hasVideo, autoStarting }) {
+        if (adPlaying) return 'ad';
+        if (!active) return autoStarting ? 'loading' : 'start';
+        return ready && hasVideo ? 'play' : 'loading';
     }
 
     // ---------- Родные элементы Kodik ----------
@@ -82,10 +84,14 @@
         sel.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    // Рекламный блок может быть и без видео (баннер), поэтому важно, виден ли он сам
     function adIsPlaying() {
-        const ad = q('.creative-player video, #vpaid_video');
-        if (!ad || ad.paused || ad.ended || !ad.currentSrc) return false;
-        return ad.getBoundingClientRect().width > 0;
+        const box = q('.creative-player');
+        if (!box || box.getBoundingClientRect().width === 0) return false;
+        const style = getComputedStyle(box);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+        const ad = box.querySelector('video');
+        return !ad || (!ad.ended && (!!ad.currentSrc || !ad.paused));
     }
 
     // ---------- Вёрстка ----------
@@ -199,6 +205,11 @@
         .on > .sw::after { left: 16px; background: #111; }
         .note { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); padding: 8px 16px; border-radius: 8px; background: rgba(16,19,25,.9); font-size: 15px; font-weight: 600; opacity: 0; transition: opacity .15s; pointer-events: none; }
         .note.on { opacity: 1; }
+        .spinner { display: none; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; animation: ag-spin .8s linear infinite; }
+        @keyframes ag-spin { to { transform: rotate(360deg); } }
+        .loading { background: #000; }
+        .loading .spinner { display: block; }
+        .loading .center, .loading .bottom, .loading .pip { display: none; }
         .start .chrome .center button:not(.big), .start .bottom .track, .start .vol, .start .clock, .start .pip, .start [data-act="settings"], .start [data-act="full"] { display: none; }
         @container (max-width: 620px) { .label { display: none; } .center { gap: 18px; } .head { left: 14px; top: 12px; } .bottom { left: 14px; right: 14px; } }
     `;
@@ -237,6 +248,7 @@
                     </div>
                 </div>
             </div>
+            <div class="spinner" role="status" aria-label="Загрузка"></div>
             <div class="note"></div>
             <div class="panel" role="dialog"></div>
         </div>`;
@@ -244,6 +256,7 @@
     // Родной интерфейс скрыт, но остаётся в разметке: его логика продолжает работать
     const NATIVE_CSS = `
         body.ag-shell-on .fp-ui, body.ag-shell-on .serial-panel { opacity: 0 !important; pointer-events: none !important; }
+        body.ag-shell-on { background: #000 !important; }
         body.ag-shell-on .play_button, body.ag-shell-on .play_background { opacity: 0 !important; }
         body.ag-shell-on #ag-ui { opacity: 1 !important; }
         body.ag-shell-on #ag-ui > :not(#ag-flash) { display: none !important; }
@@ -258,7 +271,7 @@
     `;
 
     /**
-     * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), onVoicePicked(text) }
+     * options: { getSettings, patchSettings(patch), getTimings(), nav(dir), toggleFs(), onVoicePicked(text), expectsAutoStart() }
      * Возвращает { destroy } или null, если подключиться нельзя.
      */
     function create(options) {
@@ -278,7 +291,8 @@
         const rootEl = $('.root');
         const panel = $('.panel');
         let video = null;
-        let mode = 'native';
+        let mode = null;
+        const bornAt = Date.now();
         let openPanel = null;
         let idleTimer = null;
         let clickTimer = null;
@@ -321,7 +335,7 @@
         const wake = () => {
             rootEl.classList.remove('idle');
             clearTimeout(idleTimer);
-            if (mode === 'start' || openPanel || dragging || (video && video.paused)) return;
+            if (mode === 'start' || mode === 'loading' || openPanel || dragging || (video && video.paused)) return;
             idleTimer = setTimeout(() => rootEl.classList.add('idle'), settings().hideTime || 2500);
         };
 
@@ -834,10 +848,13 @@
         function setMode(next) {
             if (next === mode) return;
             mode = next;
-            const show = next !== 'native';
+            // Родной интерфейс скрыт всегда: во время рекламы оболочка уходит и остаётся только сама реклама
+            const show = next !== 'ad';
             host.style.display = show ? '' : 'none';
-            document.body.classList.toggle('ag-shell-on', show);
+            document.body.classList.add('ag-shell-on');
+            if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
             rootEl.classList.toggle('start', next === 'start');
+            rootEl.classList.toggle('loading', next === 'loading');
             if (show) {
                 renderHead();
                 renderNav();
@@ -852,8 +869,9 @@
             const b = document.body.classList;
             const v = q('video.fp-engine');
             if (v) bindVideo(v);
-            setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying: adIsPlaying(), hasVideo: !!v }));
-            if (mode !== 'native') {
+            const autoStarting = !!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS;
+            setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying: adIsPlaying(), hasVideo: !!v, autoStarting }));
+            if (mode !== 'ad') {
                 renderZones();
                 const full = document.body.dataset.agFsState === 'true';
                 if (full !== fullShown) {
@@ -872,6 +890,7 @@
             document.removeEventListener('mousemove', wake);
             document.removeEventListener('keydown', onKey, true);
             document.body.classList.remove('ag-shell-on');
+            if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
             host.remove();
             nativeStyle.remove();
         }
@@ -888,7 +907,7 @@
         };
 
         const onKey = (e) => {
-            if (mode === 'native') return;
+            if (mode === 'ad') return;
             if (e.key === 'Escape' && openPanel) {
                 e.stopPropagation();
                 closePanel();
