@@ -38,6 +38,13 @@
         return '1';
     };
 
+    // Адрес плеера CVH содержит ID тайтла (/cdn-iframe/52991/...), он совпадает с ID на Shikimori
+    const readShikimoriId = () => {
+        const source = window.agFind('animego', 'shikimoriIdSource');
+        const match = source && (source.dataset.player || source.src || '').match(/\/cdn-iframe\/(\d+)\//);
+        return match ? parseInt(match[1], 10) : null;
+    };
+
     window.agGetAnimePageInfo = function () {
         if (!/^\/anime\/[^/]+/.test(location.pathname)) return null;
 
@@ -67,7 +74,7 @@
             titles: [origTitle, title, ...synonyms].filter(Boolean),
             year,
             kind,
-            totalEpisodes: ld && ld.numberOfEpisodes ? parseInt(ld.numberOfEpisodes, 10) || 0 : 0,
+            shikimoriId: readShikimoriId(),
             episode: window.agGetCurrentEpisode()
         };
     };
@@ -121,7 +128,7 @@
         skipRequestEp = currentEp;
 
         try {
-            const anime = await window.agSendMessage({
+            const anime = info.shikimoriId ? { id: info.shikimoriId } : await window.agSendMessage({
                 action: 'resolve_shikimori_id',
                 titles: info.titles,
                 year: info.year,

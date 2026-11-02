@@ -6,21 +6,28 @@ const { loadInContext, isValidOriginSource, flush } = require('./helpers');
 const kodikFrame = { name: 'kodik-frame' };
 const cvhFrame = { name: 'cvh-frame' };
 
-function makeEnv({ getEpisode = () => '3', settings = {} } = {}) {
+function makeStorage() {
+    const items = new Map();
+    return { getItem: (k) => (items.has(k) ? items.get(k) : null), setItem: (k, v) => items.set(k, String(v)) };
+}
+
+function makeEnv({ getEpisode = () => '3', settings = {}, localStorage = makeStorage(), syncResult = { success: true } } = {}) {
     const listeners = [];
     const log = [];
+    let pagehide = () => {};
     const window = {
-        addEventListener: (t, fn) => { if (t === 'message') listeners.push(fn); },
+        localStorage,
+        addEventListener: (t, fn) => { if (t === 'message') listeners.push(fn); if (t === 'pagehide') pagehide = fn; },
         removeEventListener: (t, fn) => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); },
         getSettings: async () => ({ shiki_enabled: true, shiki_sync_episodes: true, shiki_show_toasts: false, ...settings }),
         agSendMessage: async (m) => {
             log.push(m);
-            if (m.action === 'resolve_shikimori_id') return { id: 62218, episodes: 59 };
-            if (m.action === 'shiki_sync_progress') return { success: true };
+            if (m.action === 'resolve_shikimori_id') return { id: 62218 };
+            if (m.action === 'shiki_sync_progress') return syncResult;
             return null;
         }
     };
-    loadInContext([isValidOriginSource(), 'modules/progress-tracker.js'], { window, location: { origin: 'https://animego.me' } });
+    loadInContext([isValidOriginSource(), 'modules/progress-tracker.js'], { window, location: { origin: 'https://animego.me', pathname: '/anime/strazhi-grobnits-4148' } });
     window.agInitProgressTracker({
         site: 'test',
         getEpisode,
@@ -32,7 +39,7 @@ function makeEnv({ getEpisode = () => '3', settings = {} } = {}) {
         post({ key: 'kodik_player_duration_update', value: duration });
         for (let t = from; t <= to; t++) post({ key: 'kodik_player_time_update', value: t });
     };
-    return { post, playKodik, log, syncs: () => log.filter(m => m.action === 'shiki_sync_progress') };
+    return { post, playKodik, log, leavePage: () => pagehide(), syncs: () => log.filter(m => m.action === 'shiki_sync_progress') };
 }
 
 test('Kodik: 80% просмотра → ровно одна синхронизация с верными данными', async () => {
@@ -41,7 +48,73 @@ test('Kodik: 80% просмотра → ровно одна синхрониза
     await flush();
     assert.equal(env.syncs().length, 1);
     const s = env.syncs()[0];
-    assert.deepEqual({ id: s.shikimoriId, ep: s.episode, total: s.totalEpisodes }, { id: 62218, ep: 3, total: 59 });
+    assert.deepEqual({ id: s.shikimoriId, ep: s.episode }, { id: 62218, ep: 3 });
+});
+
+test('просмотр кусками с перезагрузками страницы засчитывается', async () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage });
+    env.playKodik(1, 400);
+    env.leavePage();
+
+    env = makeEnv({ localStorage });
+    env.playKodik(401, 800);
+    env.leavePage();
+    await flush();
+    assert.equal(env.syncs().length, 0, 'до 80% серии отметки ещё нет');
+
+    env = makeEnv({ localStorage });
+    env.playKodik(1120, 1200);
+    await flush();
+    assert.equal(env.syncs().length, 1);
+});
+
+test('повторный просмотр одного куска не считается за новый', async () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage });
+    for (let i = 0; i < 4; i++) {
+        env.playKodik(1, 300);
+        env.leavePage();
+        env = makeEnv({ localStorage });
+    }
+    env.post({ key: 'kodik_player_duration_update', value: 1400 });
+    env.post({ key: 'kodik_player_time_update', value: 1350 });
+    env.post({ key: 'kodik_player_video_ended' });
+    await flush();
+    assert.equal(env.syncs().length, 0);
+});
+
+test('отмеченная серия забывает участки, пересмотр считается заново', async () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage });
+    env.playKodik(1, 1300);
+    await flush();
+    assert.equal(env.syncs().length, 1);
+    assert.deepEqual(JSON.parse(localStorage.getItem('ag_watch_progress')), {});
+
+    env.leavePage();
+    assert.deepEqual(JSON.parse(localStorage.getItem('ag_watch_progress')), {});
+});
+
+test('без входа в аккаунт участки сохраняются: после входа серия отметится', async () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage, syncResult: { success: false, reason: 'not_logged_in' } });
+    env.playKodik(1, 1200);
+    env.leavePage();
+    await flush();
+
+    env = makeEnv({ localStorage });
+    env.playKodik(1201, 1210);
+    await flush();
+    assert.equal(env.syncs().length, 1);
+});
+
+test('недоступный localStorage не ломает учёт', async () => {
+    const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } };
+    const env = makeEnv({ localStorage: broken });
+    env.playKodik(1, 1300);
+    await flush();
+    assert.equal(env.syncs().length, 1);
 });
 
 test('перемотка в конец без просмотра не засчитывается', async () => {

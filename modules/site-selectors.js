@@ -17,6 +17,7 @@
             playerContainer: ['.player__video', '#video-player', '.player-video'],
             playerLoaded: ['[data-controller~="anime-player"]', '#video-player iframe'],
             playerIframe: ['[data-anime-player-target="iframeContainer"] iframe', '.player-video__online iframe', '#video-player iframe'],
+            shikimoriIdSource: ['[data-player*="/cdn-iframe/"]', 'iframe[src*="/cdn-iframe/"]'],
             episodeItems: ['[data-anime-player-episodes-target="episode"][data-episode-number]'],
             episodeActive: ['[data-anime-player-episodes-target="episode"].active[data-episode-number]', '.player-video-bar__item.active[data-episode-number]'],
             legacyEpisodeSelect: ["select[name='series']"],

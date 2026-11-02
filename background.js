@@ -847,7 +847,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const res = await updateShikiUserRate({
                     shikimoriId: message.shikimoriId,
                     episode: message.episode,
-                    totalEpisodes: message.totalEpisodes,
                     status: message.status
                 });
                 sendResponse(res);

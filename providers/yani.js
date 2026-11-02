@@ -163,8 +163,7 @@
                 titles,
                 year: api?.year ? String(api.year) : '',
                 kind: api?.type?.alias || '',
-                shikimoriId: shikimoriId ? parseInt(shikimoriId, 10) : null,
-                totalEpisodes: api?.episodes?.count || 0
+                shikimoriId: shikimoriId ? parseInt(shikimoriId, 10) : null
             };
         }
 

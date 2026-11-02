@@ -76,7 +76,7 @@
         /**
          * Сведения о тайтле для учёта серий и поиска на других сайтах.
          * @returns {Promise<{pageKey: string, title: string, origTitle: string, titles: string[],
-         *           year?: string, kind?: string, shikimoriId?: number, totalEpisodes?: number}|null>}
+         *           year?: string, kind?: string, shikimoriId?: number}|null>}
          */
         async getTitleInfo() { return null; }
 

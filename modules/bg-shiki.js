@@ -511,6 +511,8 @@ async function resolveShikimoriId({ titles = [], year = '', kind = '' }) {
             const itemYear = item.aired_on ? String(item.aired_on).slice(0, 4) : '';
             if (year && itemYear) score += itemYear === String(year) ? 50 : -30;
             if (kind && item.kind && String(item.kind).toLowerCase() === String(kind).toLowerCase()) score += 10;
+            // Фильм и сериал с похожим началом названия: лучше не отметить ничего, чем отметить чужой тайтл
+            if (kind && item.kind && (String(kind).toLowerCase() === 'movie') !== (String(item.kind).toLowerCase() === 'movie')) score -= 60;
             if (score > bestScore) { bestScore = score; best = item; }
         });
         if (bestScore >= 100) break;
@@ -518,12 +520,12 @@ async function resolveShikimoriId({ titles = [], year = '', kind = '' }) {
 
     if (!best || bestScore < 0) return null;
 
-    const data = { id: best.id, episodes: best.episodes || best.episodes_aired || 0, name: best.name, russian: best.russian };
+    const data = { id: best.id, name: best.name, russian: best.russian };
     await updateStorageObject('shiki_id_cache', c => { c[cacheKey] = { ts: Date.now(), data }; }, { maxEntries: 500 });
     return data;
 }
 
-async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status }) {
+async function updateShikiUserRate({ shikimoriId, episode, status }) {
     let tokens = await getShikiTokens();
     if (tokens.shiki_access_token && !tokens.shiki_user) {
         try {
@@ -553,12 +555,15 @@ async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status
     }
 
     const epNumber = parseInt(episode) || 1;
-    const totalEp = parseInt(totalEpisodes) || 0;
+    // Сайты называют числом серий то, что уже вышло. У онгоинга без объявленного числа серий (episodes: 0) конца нет
+    const anime = await fetchShikimoriApi(`/api/animes/${targetId}`);
+    const totalEp = parseInt(anime && anime.episodes) || 0;
+    const isOngoing = anime && anime.status === 'ongoing';
 
     let targetStatus = status || 'watching';
     if (totalEp > 0 && epNumber >= totalEp) {
         targetStatus = 'completed';
-    } else if (existingRate && (existingRate.status === 'completed' || existingRate.status === 'rewatching' || (existingRate.rewatches && existingRate.rewatches > 0))) {
+    } else if (!isOngoing && existingRate && (existingRate.status === 'completed' || existingRate.status === 'rewatching' || (existingRate.rewatches && existingRate.rewatches > 0))) {
         targetStatus = 'rewatching';
     }
 
@@ -577,7 +582,7 @@ async function updateShikiUserRate({ shikimoriId, episode, totalEpisodes, status
             user_id: userId,
             target_id: targetId,
             target_type: 'Anime',
-            episodes: epNumber,
+            episodes: targetStatus === 'rewatching' ? epNumber : Math.max(epNumber, parseInt(existingRate?.episodes) || 0),
             status: targetStatus
         }
     };

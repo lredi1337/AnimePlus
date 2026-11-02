@@ -7,6 +7,7 @@
 //   - AniBoom:                 { source: 'aniboom-player', type: 'player.timeupdate' | 'player.ended', payload };
 //   - CDNVideoHub (CVH):       { source: 'cdnvideohub-player', eventType: 'timeupdate' | 'ended', data }.
 // Серия засчитывается один раз: при 80% длительности (и реально просмотренной половине) либо по событию ended.
+// Просмотренные участки хранятся в localStorage сайта, поэтому серию можно досмотреть после перезагрузки или смены озвучки.
 
 (function () {
     'use strict';
@@ -15,6 +16,52 @@
     const MIN_REAL_WATCH_RATIO = 0.5;
     const MIN_DURATION_SEC = 60; // отсекаем рекламные ролики
     const MAX_TICK_DELTA_SEC = 5; // большие скачки времени = перемотка, а не просмотр
+    const STORAGE_KEY = 'ag_watch_progress';
+    const SAVE_INTERVAL_MS = 15000;
+    const MAX_SAVED_EPISODES = 200;
+    const SAVED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+    // Участки [начало, конец] без пересечений: один и тот же кусок серии дважды не считается
+    function addRange(ranges, from, to) {
+        const start = Math.floor(from);
+        const end = Math.ceil(to);
+        const merged = [];
+        let current = [start, end];
+        for (const range of ranges) {
+            if (range[1] < current[0]) merged.push(range);
+            else if (range[0] > current[1]) { merged.push(current); current = range; }
+            else current = [Math.min(range[0], current[0]), Math.max(range[1], current[1])];
+        }
+        merged.push(current);
+        return merged;
+    }
+
+    const rangesLength = (ranges) => ranges.reduce((sum, [from, to]) => sum + to - from, 0);
+
+    function readSaved() {
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY));
+            return saved && typeof saved === 'object' ? saved : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function writeSaved(changes) {
+        try {
+            const saved = readSaved();
+            for (const [key, value] of Object.entries(changes)) {
+                if (value) saved[key] = value;
+                else delete saved[key];
+            }
+            const now = Date.now();
+            const fresh = Object.entries(saved)
+                .filter(([, item]) => item && now - item.ts < SAVED_TTL_MS)
+                .sort((a, b) => b[1].ts - a[1].ts)
+                .slice(0, MAX_SAVED_EPISODES);
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(fresh)));
+        } catch (e) {}
+    }
 
     function parsePlayerMessage(data) {
         if (!data || typeof data !== 'object') return null;
@@ -72,6 +119,8 @@
         // их нельзя смешивать при подсчёте просмотренного времени. WeakMap не удерживает окна удалённых iframe
         let sources = new WeakMap();
         const syncedEpisodes = new Set();
+        const watchedEpisodes = new Map();
+        let lastSaveTime = 0;
         let shikiIdPromise = null;
         let shikiIdPageKey = null;
 
@@ -81,8 +130,28 @@
                 streams = {};
                 sources.set(source, streams);
             }
-            if (!streams[stream]) streams[stream] = { episode: null, lastTime: null, watched: 0, duration: 0 };
+            if (!streams[stream]) streams[stream] = { episode: null, lastTime: null, duration: 0 };
             return streams[stream];
+        };
+
+        const getWatched = (key) => {
+            let watched = watchedEpisodes.get(key);
+            if (!watched) {
+                const saved = readSaved()[key];
+                watched = { ranges: Array.isArray(saved?.ranges) ? saved.ranges : [], dirty: false, done: false };
+                watchedEpisodes.set(key, watched);
+            }
+            return watched;
+        };
+
+        const saveWatched = () => {
+            const changes = {};
+            for (const [key, watched] of watchedEpisodes) {
+                if (!watched.dirty) continue;
+                watched.dirty = false;
+                changes[key] = watched.done ? null : { ranges: watched.ranges, ts: Date.now() };
+            }
+            if (Object.keys(changes).length > 0) writeSaved(changes);
         };
 
         const resolveShikiId = (info) => {
@@ -90,7 +159,7 @@
             shikiIdPageKey = info.pageKey;
             // Провайдер мог взять ID прямо со страницы (ссылка на Shikimori, API сайта) — тогда не угадываем
             if (info.shikimoriId) {
-                shikiIdPromise = Promise.resolve({ id: parseInt(info.shikimoriId, 10), episodes: info.totalEpisodes || 0 });
+                shikiIdPromise = Promise.resolve({ id: parseInt(info.shikimoriId, 10) });
                 return shikiIdPromise;
             }
             shikiIdPromise = window.agSendMessage({
@@ -102,7 +171,7 @@
             return shikiIdPromise;
         };
 
-        const commitEpisode = async (episode) => {
+        const commitEpisode = async (episode, watched) => {
             const info = await adapter.getTitleInfo();
             if (!info || (!info.shikimoriId && (!info.titles || info.titles.length === 0))) return;
 
@@ -125,11 +194,14 @@
                 action: 'shiki_sync_progress',
                 shikimoriId: anime.id,
                 episode: parseInt(episode, 10) || 1,
-                totalEpisodes: anime.episodes || 0,
                 status: 'watching'
             });
 
             if (res && res.success) {
+                // Серия отмечена: при пересмотре участки считаются заново
+                watched.done = true;
+                watched.dirty = true;
+                saveWatched();
                 if (settings.shiki_show_toasts !== false && window.showAgToast && !res.noop) {
                     window.showAgToast(`Shikimori: серия ${episode} отмечена ✓`);
                 }
@@ -147,38 +219,50 @@
             if (!e.source) return;
             const st = getSourceState(e.source, ev.stream);
             const episode = adapter.getEpisode(ev.episode || null) || '1';
+            const watched = getWatched(`${location.pathname}#${episode}`);
 
             if (st.episode !== episode) {
                 st.episode = episode;
                 st.lastTime = null;
-                st.watched = 0;
                 st.duration = 0;
             }
 
             if (ev.duration > 0) st.duration = ev.duration;
 
+            const longEnough = st.duration >= MIN_DURATION_SEC;
+
             if (typeof ev.currentTime === 'number' && ev.currentTime > 0) {
-                if (st.lastTime !== null) {
+                if (st.lastTime !== null && longEnough && !watched.done) {
                     const delta = ev.currentTime - st.lastTime;
-                    if (delta > 0 && delta <= MAX_TICK_DELTA_SEC) st.watched += delta;
+                    if (delta > 0 && delta <= MAX_TICK_DELTA_SEC) {
+                        watched.ranges = addRange(watched.ranges, st.lastTime, ev.currentTime);
+                        watched.dirty = true;
+                    }
                 }
                 st.lastTime = ev.currentTime;
             }
 
-            const longEnough = st.duration >= MIN_DURATION_SEC;
-            const reallyWatched = longEnough && st.watched >= st.duration * MIN_REAL_WATCH_RATIO;
+            if (Date.now() - lastSaveTime >= SAVE_INTERVAL_MS) {
+                lastSaveTime = Date.now();
+                saveWatched();
+            }
+
+            const reallyWatched = longEnough && rangesLength(watched.ranges) >= st.duration * MIN_REAL_WATCH_RATIO;
             const reachedEnd = longEnough && st.lastTime !== null && st.lastTime / st.duration >= WATCHED_RATIO;
 
             if (ev.legacyWatched || (reallyWatched && (reachedEnd || ev.ended))) {
-                commitEpisode(episode);
+                commitEpisode(episode, watched);
             }
         };
 
         window.addEventListener('message', onMessage);
+        window.addEventListener('pagehide', saveWatched);
 
         const api = {
             destroy() {
+                saveWatched();
                 window.removeEventListener('message', onMessage);
+                window.removeEventListener('pagehide', saveWatched);
                 sources = new WeakMap();
                 window.__agProgressTrackerActive = null;
             },
