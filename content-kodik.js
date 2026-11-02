@@ -49,6 +49,29 @@
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
     let currentSkipTarget = null;
 
+    // Пропуск по звуку: уточняет тайминги, дальше работает обычная логика пропуска
+    const audioSkip = globalThis.AgAudioSkip ? globalThis.AgAudioSkip.create({
+        getSettings: () => settings,
+        getVoice: () => {
+            const sel = document.querySelector('.serial-translations-box select, .serial-translations select, select[name="translation"]');
+            return sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.split(' (')[0].trim() : '';
+        },
+        getEpisode: () => {
+            const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"]');
+            return (sel && sel.value) || new URLSearchParams(window.location.search).get('episode') || '';
+        },
+        onTimings: (timings) => {
+            skipData = timings;
+            const v = document.querySelector('video');
+            if (v) updateTimelineZones(v);
+        }
+    }) : null;
+
+    if (audioSkip) {
+        const script = [...document.scripts].find(s => !s.src && s.textContent.includes('parseSkipButton('));
+        if (script) audioSkip.setNative(globalThis.AgAudioSkip.parseNativeMarks(script.textContent));
+    }
+
     const triggerKodikPlay = (btn) => {
         if (!btn || btn.dataset.agAutoclicked === '1') return;
         btn.dataset.agAutoclicked = '1';
@@ -421,9 +444,13 @@
         }
 
         if (e.data?.type === 'AS_DATA_UPDATE') {
-            skipData = e.data.data;
-            const v = document.querySelector('video');
-            if (v) updateTimelineZones(v);
+            if (audioSkip) {
+                audioSkip.setTitle(e.data.malId, e.data.data);
+            } else {
+                skipData = e.data.data;
+                const v = document.querySelector('video');
+                if (v) updateTimelineZones(v);
+            }
         }
 
         if (e.data?.type === 'AG_SWITCH_KODIK_EPISODE') {
@@ -488,7 +515,7 @@
     function updateTimelineZones(v) {
         if (!v || !v.duration) return;
 
-        if (document.querySelector('.fp-skip-button')) {
+        if (document.querySelector('.fp-skip-button.active')) {
             const container = document.getElementById('ag-timeline-zones');
             if (container) container.replaceChildren();
             return;
@@ -577,13 +604,47 @@
         btn.id = 'ag-smart-skip';
         document.body.appendChild(btn);
 
+        // Кнопка «Вернуться» после автопропуска: ошибка исправляется одним нажатием
+        const undoBtn = document.createElement('div');
+        undoBtn.id = 'ag-skip-undo';
+        undoBtn.innerText = '↩ Вернуться';
+        document.body.appendChild(undoBtn);
+        const autoSkipped = { op: false, ed: false };
+        const keepWatching = { op: false, ed: false };
+        let undoTimer = null;
+        const showUndo = (part, startOfSong) => {
+            undoBtn.style.display = 'block';
+            undoBtn.onclick = (e) => {
+                e.stopPropagation();
+                keepWatching[part] = true;
+                undoBtn.style.display = 'none';
+                v.currentTime = startOfSong;
+            };
+            clearTimeout(undoTimer);
+            undoTimer = setTimeout(() => { undoBtn.style.display = 'none'; }, 6000);
+        };
+        v.addEventListener('seeked', () => {
+            for (const part of ['op', 'ed']) {
+                const range = skipData[part];
+                if (autoSkipped[part] && range.end > 0 && v.currentTime >= range.start && v.currentTime < range.end - 1) keepWatching[part] = true;
+            }
+        });
+        v.addEventListener('loadstart', () => {
+            for (const part of ['op', 'ed']) {
+                autoSkipped[part] = false;
+                keepWatching[part] = false;
+            }
+            undoBtn.style.display = 'none';
+        });
+
         let lastTimeUpdate = 0;
         v.addEventListener('timeupdate', () => {
             const now = Date.now();
             if (now - lastTimeUpdate < 500) return;
             lastTimeUpdate = now;
 
-            if (document.querySelector('.fp-skip-button')) {
+            // Элемент кнопки Kodik есть всегда, а настоящая метка только у активной: её обрабатывает блок авто-скипа ниже
+            if (document.querySelector('.fp-skip-button.active')) {
                 btn.style.display = "none";
                 currentSkipTarget = null;
                 const container = document.getElementById('ag-timeline-zones');
@@ -630,6 +691,14 @@
                 return;
             }
 
+            const part = isOpTarget ? 'op' : (isEdTarget ? 'ed' : null);
+            // Пользователь вернулся к песне сам: значит, хочет её посмотреть
+            if (part && keepWatching[part]) {
+                currentSkipTarget = null;
+                btn.style.display = "none";
+                return;
+            }
+
             if (isOpTarget) {
                 btn.innerText = "Пропустить опенинг";
                 skipTarget = skipData.op.end;
@@ -641,7 +710,14 @@
             currentSkipTarget = skipTarget;
 
             if (skipTarget) {
-                if (settings.autoSkip) { v.currentTime = skipTarget; btn.style.display = "none"; }
+                const manualOnly = skipData[part].manual;
+                if (settings.autoSkip && !manualOnly) {
+                    const startOfSong = skipData[part].start;
+                    autoSkipped[part] = true;
+                    v.currentTime = skipTarget;
+                    btn.style.display = "none";
+                    showUndo(part, startOfSong);
+                }
                 else { btn.style.display = "block"; btn.onclick = (e) => { e.stopPropagation(); v.currentTime = skipTarget; }; }
             } else { btn.style.display = "none"; }
         });
@@ -682,14 +758,14 @@
             #ag-skip { left:0; top:calc(50% + 150px); transform:translateY(-50%); width:80px; height:140px; font-size:45px; transition: 0.4s; }
             body.ag-fs-active #ag-skip { top: auto !important; bottom: 80px !important; left: 0 !important; transform: translateY(0) !important; }
             
-            #ag-smart-skip {
+            #ag-smart-skip, #ag-skip-undo {
                 position:fixed; bottom:75px; right:25px; z-index:2147483647; 
                 padding:9px 16px; background:rgba(15,18,24,0.85); color:#fff; 
                 border:1px solid rgba(255,255,255,0.3); border-radius:8px; 
                 cursor:pointer; font-family:${font}; font-size:14px; font-weight:600; 
                 display:none; pointer-events:auto; transition:0.2s; user-select:none;
             }
-            #ag-smart-skip:hover {
+            #ag-smart-skip:hover, #ag-skip-undo:hover {
                 background: rgba(255,255,255,0.15); 
                 border-color: rgba(255,255,255,0.8);
             }
@@ -1101,7 +1177,20 @@
         v.addEventListener('ended', () => report(true));
     };
 
-    const scanVideos = () => document.querySelectorAll('video').forEach(attachProgressReporter);
+    // Реклама идёт в отдельном video: слушаем только саму серию
+    const bindAudioSkip = (v) => {
+        if (!audioSkip || v.dataset.agAudioBound) return;
+        v.dataset.agAudioBound = '1';
+        const check = () => { if (v.duration > 300) audioSkip.bind(v); };
+        v.addEventListener('loadedmetadata', check);
+        v.addEventListener('durationchange', check);
+        check();
+    };
+
+    const scanVideos = () => document.querySelectorAll('video').forEach((v) => {
+        attachProgressReporter(v);
+        bindAudioSkip(v);
+    });
     scanVideos();
     let videoScanTimer = null;
     new MutationObserver(() => {

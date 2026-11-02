@@ -96,6 +96,8 @@
         }
     }
 
+    const NO_MARKS = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
+
     window.AgFeatures = window.AgFeatures || {};
 
     window.AgFeatures.playerBridge = function ({ provider, scope, settings }) {
@@ -153,19 +155,17 @@
             if (!info) return;
             const key = `${info.pageKey}#${episode}`;
             if (skipCache.key !== key) {
-                let data = await provider.getSkipData(episode);
-                if (!data) {
-                    let shikimoriId = info.shikimoriId;
-                    if (!shikimoriId) {
-                        const resolved = await window.agSendMessage({ action: 'resolve_shikimori_id', titles: info.titles, year: info.year, kind: info.kind });
-                        shikimoriId = resolved && resolved.id;
-                    }
-                    data = await fetchAniSkip(shikimoriId, episode);
+                let shikimoriId = info.shikimoriId;
+                if (!shikimoriId) {
+                    const resolved = await window.agSendMessage({ action: 'resolve_shikimori_id', titles: info.titles, year: info.year, kind: info.kind });
+                    shikimoriId = resolved && resolved.id;
                 }
-                skipCache = { key, data };
+                const data = (await provider.getSkipData(episode)) || (await fetchAniSkip(shikimoriId, episode)) || NO_MARKS;
+                skipCache = { key, data, malId: shikimoriId };
             }
-            if (scope.disposed || !skipCache.data) return;
-            broadcast({ type: 'AS_DATA_UPDATE', data: skipCache.data }, target);
+            if (scope.disposed) return;
+            // ID Shikimori совпадает с MAL: по нему плеер находит отпечатки песен
+            broadcast({ type: 'AS_DATA_UPDATE', data: skipCache.data, malId: skipCache.malId }, target);
         };
 
         const fromPlayer = (e) => {

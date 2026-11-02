@@ -5,6 +5,7 @@
     'use strict';
 
     let cachedSkipData = null;
+    let cachedMalId = null;
     let lastFetchedEp = null;
     let skipRequestEp = null;
 
@@ -75,7 +76,7 @@
 
     const sendSkipData = (target, data) => {
         if (!target) return;
-        try { target.postMessage({ type: 'AS_DATA_UPDATE', data }, '*'); } catch (e) {}
+        try { target.postMessage({ type: 'AS_DATA_UPDATE', data, malId: cachedMalId }, '*'); } catch (e) {}
     };
 
     const getPlayerIframeWindow = () => {
@@ -127,6 +128,7 @@
                 kind: info.kind
             });
             if (!anime || !anime.id) return;
+            cachedMalId = anime.id;
 
             // Счёт берём из полной карточки (resolve хранит только ID)
             const details = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${anime.id}` });

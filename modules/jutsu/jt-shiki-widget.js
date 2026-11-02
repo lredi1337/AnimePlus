@@ -5,6 +5,7 @@
     'use strict';
 
     let cachedSkipData = null;
+    let cachedMalId = null;
     let lastFetchedEp = null;
 
     // Сведения о странице тайтла Jut-Su. Оригинальное название теперь в .jutsu-page__original
@@ -42,7 +43,7 @@
         const currentEp = episodeNum || "1";
 
         if (forceSendToWindow && cachedSkipData && lastFetchedEp === currentEp) {
-            forceSendToWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData }, '*');
+            forceSendToWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData, malId: cachedMalId }, '*');
             return;
         }
 
@@ -130,14 +131,15 @@
                     }
 
                     cachedSkipData = { op: { start: opStart, end: opEnd }, ed: { start: edStart, end: edEnd } };
+                    cachedMalId = shiki[0].id;
                     lastFetchedEp = currentEp;
 
                     const iframes = document.querySelectorAll('#jutsu-page__player iframe');
                     iframes.forEach(iframe => {
-                        iframe.contentWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData }, '*');
+                        iframe.contentWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData, malId: cachedMalId }, '*');
                     });
                     if (forceSendToWindow) {
-                        forceSendToWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData }, '*');
+                        forceSendToWindow.postMessage({ type: 'AS_DATA_UPDATE', data: cachedSkipData, malId: cachedMalId }, '*');
                     }
                 }
             } catch (err) {

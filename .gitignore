@@ -52,3 +52,8 @@ temp/
 .gemini/
 .agents/
 brain/
+
+# Local review and test artifacts
+review-tool/
+anime-plus-check.xlsx
+server/**/.wrangler/

@@ -1,0 +1,9 @@
+name = "animeplus-timings"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "animeplus-timings"
+database_id = "cbf19099-adae-4810-8cce-d8e7ec0c5de2"

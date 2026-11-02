@@ -556,7 +556,8 @@
                 ${renderRow('autoPlay', 'Авто-плей', 'Автоматически нажимает Play при открытии серии.')}
                 ${renderRow('autoNext', 'Авто-переход', 'Автоматически переключает на следующую серию в конце.')}
                 ${renderRow('autoFS', 'Псевдо-фуллскрин', 'Улучшенный фуллскрин без рамок.')}
-                ${renderRow('autoSkip', 'Авто-скип (AniSkip)', 'Автоматический пропуск опенингов и эндингов по базе AniSkip.')}
+                ${renderRow('autoSkip', 'Авто-скип', 'Автоматически пропускает опенинги и эндинги. Если выключить, появится кнопка пропуска.')}
+                ${renderRow('audioSkip', 'Пропуск по звуку', 'Узнаёт песню по звуку серии, точнее меток, но первые секунды будут слышны. Звук анализируется только на этом устройстве.')}
                 ${renderRow('showDBL', 'Двойной клик', 'Перемотка по краям и фуллскрин в центре по двойному клику.')}
             </div>
 
@@ -798,7 +799,7 @@
                 voice_priority_list: currentVoiceList,
                 keys: settings.keys
             };
-            ['autoPlay', 'autoNext', 'autoFS', 'autoSkip', 'showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'showDBL', ...(options.extraInterfaceRows || []).map(r => r.id)].forEach(k => {
+            ['autoPlay', 'autoNext', 'autoFS', 'autoSkip', 'audioSkip', 'showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'showDBL', ...(options.extraInterfaceRows || []).map(r => r.id)].forEach(k => {
                 const el = document.getElementById(`s-${k}`);
                 if (el) patch[k] = el.checked;
             });

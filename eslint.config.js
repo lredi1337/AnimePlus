@@ -14,12 +14,13 @@ const backgroundShared = Object.fromEntries([
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
     'openNotificationTarget', 'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'setDirectUrlInCache',
+    'getAudioFingerprints', 'getSharedTimings', 'reportAudioTiming',
     'shikiFetch', 'shikiPosterMemo', 'storageWriteQueues', 'toShikiApiUrl', 'updateShikiUserRate', 'updateStorageObject'
 ].map(name => [name, 'writable']));
 
 module.exports = [
     {
-        ignores: ['node_modules/**', 'assets/**', 'icons/**']
+        ignores: ['node_modules/**', 'assets/**', 'icons/**', 'review-tool/**']
     },
     {
         files: ['**/*.js'],
@@ -53,7 +54,15 @@ module.exports = [
         }
     },
     {
-        files: ['tests/**/*.js', 'eslint.config.js'],
+        files: ['tests/**/*.js', 'tools/**/*.js', 'eslint.config.js'],
         languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } }
+    },
+    {
+        files: ['server/**/*.js'],
+        languageOptions: { sourceType: 'module', globals: { ...globals.serviceworker } }
+    },
+    {
+        files: ['modules/audio/fingerprint.js'],
+        languageOptions: { globals: { module: 'writable' } }
     }
 ];

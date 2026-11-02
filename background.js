@@ -1,5 +1,5 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
-importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js');
+importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js');
 
 try {
     const workerUrl = (globalThis.SHIKI_CREDENTIALS && globalThis.SHIKI_CREDENTIALS.worker_url) || "https://animeplus.ruscadred.workers.dev";
@@ -95,6 +95,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 console.error('[AnimeGO+] Error fetching native template:', err);
                 sendResponse({ html: null });
             });
+        return true;
+    }
+
+    if (message.action === "get_audio_fingerprints") {
+        getAudioFingerprints(message.id)
+            .then(sendResponse)
+            .catch(() => sendResponse(null));
+        return true;
+    }
+
+    if (message.action === "get_shared_timings") {
+        getSharedTimings(message).then(sendResponse).catch(() => sendResponse(null));
+        return true;
+    }
+
+    if (message.action === "report_audio_timing") {
+        reportAudioTiming(message).then(sendResponse).catch(() => sendResponse(null));
         return true;
     }
 
