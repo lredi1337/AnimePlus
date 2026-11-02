@@ -24,6 +24,20 @@
         }
     }
 
+    // Выбор пользователя запоминается для тайтла и важнее приоритетов
+    const voiceChoice = globalThis.AgVoiceChoice;
+    let chosenVoice = null;
+    if (voiceChoice) {
+        document.addEventListener('click', (e) => {
+            if (!e.isTrusted || !e.target.closest) return;
+            const item = e.target.closest('.dropdown-content .item');
+            if (!item) return;
+            chosenVoice = voiceChoice.voiceName(item.textContent);
+            isJutsuVoiceDone = true;
+            voiceChoice.set(voiceChoice.pageKey(), chosenVoice);
+        }, true);
+    }
+
     function findAndSelectPriorityVoiceJutsu(settings) {
         if (isJutsuVoiceDone) return false;
 
@@ -34,7 +48,7 @@
         }
 
         const isAutoSelect = (settings && settings.auto_select_voice !== false);
-        if (!isAutoSelect) return false;
+        if (!isAutoSelect && !chosenVoice) return false;
 
         const priorityList = (settings && settings.voice_priority_list && settings.voice_priority_list.length > 0)
             ? settings.voice_priority_list
@@ -42,8 +56,8 @@
 
         const clean = (s) => (s || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
 
-        // Если топ-приоритет уже выбран — останавливаемся
-        const topPrioClean = clean(priorityList[0]);
+        // Если выбранная или главная озвучка уже стоит — останавливаемся
+        const topPrioClean = clean(chosenVoice || priorityList[0]);
         if (topPrioClean) {
             const selectedItem = document.querySelector('.dropdown-content .item.selected, .dropdown-content .item.active, select option:checked');
             if (selectedItem) {
@@ -71,6 +85,16 @@
         }
 
         dropdownItems = Array.from(document.querySelectorAll('.dropdown-content .item, .dropdown .item'));
+
+        if (chosenVoice) {
+            const own = voiceChoice.pick(dropdownItems, chosenVoice, el => el.innerText || el.textContent);
+            if (own) {
+                isJutsuVoiceDone = true;
+                clickElementNative(own);
+                return true;
+            }
+        }
+        if (!isAutoSelect) return false;
 
         for (const priorityName of priorityList) {
             const prioClean = clean(priorityName);
@@ -103,8 +127,9 @@
         return false;
     }
 
-    window.jtInitVoiceAutoSelect = function (settings) {
+    window.jtInitVoiceAutoSelect = async function (settings) {
         isJutsuVoiceDone = false;
+        if (voiceChoice) chosenVoice = await voiceChoice.get(voiceChoice.pageKey());
         findAndSelectPriorityVoiceJutsu(settings);
 
         if (jutsuVoiceObserver) jutsuVoiceObserver.disconnect();

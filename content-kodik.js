@@ -1199,11 +1199,42 @@
     }).observe(document.documentElement, { childList: true, subtree: true });
 
 
+    // Озвучка, выбранная пользователем: плеер перезагружается при смене озвучки, поэтому выбор хранится вне страницы
+    const voiceChoice = globalThis.AgVoiceChoice;
+    const titleVoiceKey = () => {
+        const name = (document.title || '').trim();
+        return name ? `kodik:${name.toLowerCase()}` : '';
+    };
+    let chosenVoice = null;
+    if (voiceChoice) {
+        const rememberChoice = (voice) => {
+            chosenVoice = voiceChoice.voiceName(voice);
+            isKodikVoiceDone = true;
+            voiceChoice.set(titleVoiceKey(), voice);
+            voiceChoice.tellPage(voice);
+        };
+        const VOICE_BOX = '.serial-translations-box, .serial-translations, .translation-select, [class*="translation"]';
+        document.addEventListener('change', (e) => {
+            if (!e.isTrusted || !e.target.matches || !e.target.matches('select') || !e.target.closest(VOICE_BOX)) return;
+            const option = e.target.selectedOptions && e.target.selectedOptions[0];
+            if (option) rememberChoice(option.textContent);
+        }, true);
+        document.addEventListener('click', (e) => {
+            if (!e.isTrusted || !e.target.closest) return;
+            const item = e.target.closest('.dropdown-content .item');
+            if (item && item.closest(VOICE_BOX)) rememberChoice(item.textContent);
+        }, true);
+        chosenVoice = (await voiceChoice.get(titleVoiceKey())) || (await voiceChoice.askPage());
+    }
+
     let isKodikVoiceDone = false;
     const findAndSelectPriorityVoiceKodik = () => {
-        if (isKodikVoiceDone || !settings || settings.auto_select_voice === false) return false;
-        const priorityList = settings.voice_priority_list || (window.DEFAULT_SETTINGS ? window.DEFAULT_SETTINGS.voice_priority_list : ["Anilibria", "Studio Band"]);
-        if (!priorityList || priorityList.length === 0) return false;
+        if (isKodikVoiceDone || !settings) return false;
+        // Выбор пользователя действует даже при выключенном автовыборе: это его решение, а не автоматика
+        if (!chosenVoice && settings.auto_select_voice === false) return false;
+        const savedList = settings.voice_priority_list || (window.DEFAULT_SETTINGS ? window.DEFAULT_SETTINGS.voice_priority_list : ["Anilibria", "Studio Band"]);
+        const priorityList = settings.auto_select_voice === false ? [] : savedList;
+        if (!chosenVoice && (!priorityList || priorityList.length === 0)) return false;
 
         const clean = (s) => (s || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
 
@@ -1211,6 +1242,18 @@
         const voiceSelect = document.querySelector('.serial-translations-box select, .serial-translations select, select[name="translation"], select[name="voice"], [class*="translation"] select');
         if (voiceSelect && voiceSelect.options) {
             const options = Array.from(voiceSelect.options);
+            if (chosenVoice && options.length > 0) {
+                const own = voiceChoice.pick(options, chosenVoice, o => o.text || o.value);
+                if (own) {
+                    isKodikVoiceDone = true;
+                    if (!own.selected) {
+                        voiceSelect.selectedIndex = options.indexOf(own);
+                        voiceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                        voiceSelect.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                    return true;
+                }
+            }
             for (const priorityName of priorityList) {
                 const prioClean = clean(priorityName);
                 if (!prioClean) continue;
@@ -1234,6 +1277,14 @@
         const dropdownItems = Array.from(document.querySelectorAll('.serial-translations-box .dropdown-content .item, .serial-translations .dropdown-content .item, .translation-select .dropdown-content .item, [class*="translation"] .dropdown-content .item'));
 
         if (dropdownItems.length > 0) {
+            if (chosenVoice) {
+                const own = voiceChoice.pick(dropdownItems, chosenVoice, el => el.innerText || el.textContent);
+                if (own) {
+                    isKodikVoiceDone = true;
+                    if (!own.classList.contains('selected') && !own.classList.contains('active')) own.click();
+                    return true;
+                }
+            }
             for (const priorityName of priorityList) {
                 const prioClean = clean(priorityName);
                 if (!prioClean) continue;

@@ -44,10 +44,11 @@
         const providers = window.agFindAll('animego', 'providers');
         if (translations.length === 0 && providers.length === 0) return false;
 
-        // 1. Озвучка по приоритету (одна попытка на загрузку меню, дальше выбор за пользователем)
-        if (!state.voiceDone && settings.auto_select_voice !== false && translations.length > 0) {
+        // 1. Озвучка: выбор пользователя, иначе приоритет (одна попытка на загрузку меню)
+        if (!state.voiceDone && (chosenVoice || settings.auto_select_voice !== false) && translations.length > 0) {
             const usable = translations.filter(t => !isBroken(t));
-            const target = findByPriority(usable, getPriorityList(settings), t => t.textContent);
+            const own = chosenVoice ? voiceChoice.pick(usable, chosenVoice, t => t.textContent) : null;
+            const target = own || (settings.auto_select_voice !== false ? findByPriority(usable, getPriorityList(settings), t => t.textContent) : null);
             state.voiceDone = true;
             if (target && !isActive(target)) {
                 safeClick(target);
@@ -88,9 +89,11 @@
             }
         }
 
-        if (!state.voiceDone && settings.auto_select_voice !== false) {
+        if (!state.voiceDone && (chosenVoice || settings.auto_select_voice !== false)) {
             const items = Array.from(document.querySelectorAll('#video-dubbing .item, .video-player__translation-item, .video-player__translations [data-translation]'));
-            const target = findByPriority(items, getPriorityList(settings), el => el.textContent || el.getAttribute('data-dubbing') || el.getAttribute('title'));
+            const voiceText = (el) => el.textContent || el.getAttribute('data-dubbing') || el.getAttribute('title');
+            const own = chosenVoice ? voiceChoice.pick(items, chosenVoice, voiceText) : null;
+            const target = own || (settings.auto_select_voice !== false ? findByPriority(items, getPriorityList(settings), voiceText) : null);
             if (target) {
                 state.voiceDone = true;
                 if (!isActive(target)) safeClick(target);
@@ -103,8 +106,29 @@
     let currentMenu = null;
     let state = null;
 
-    window.agInitVoiceAutoSelect = function (settings) {
+    // Выбор пользователя запоминается для тайтла и важнее приоритетов
+    const voiceChoice = globalThis.AgVoiceChoice;
+    let chosenVoice = null;
+    let choiceLoaded = false;
+    const VOICE_ITEMS = '[data-anime-player-target="translation"], #video-dubbing .item, .video-player__translation-item, .video-player__translations [data-translation]';
+
+    if (voiceChoice) {
+        document.addEventListener('click', (e) => {
+            if (!e.isTrusted || !e.target.closest) return;
+            const item = e.target.closest(VOICE_ITEMS);
+            if (!item) return;
+            chosenVoice = voiceChoice.voiceName(item.textContent);
+            if (state) state.voiceDone = true;
+            voiceChoice.set(voiceChoice.pageKey(), chosenVoice);
+        }, true);
+    }
+
+    window.agInitVoiceAutoSelect = async function (settings) {
         if (!settings || settings.global_enabled === false) return;
+        if (voiceChoice && !choiceLoaded) {
+            choiceLoaded = true;
+            chosenVoice = await voiceChoice.get(voiceChoice.pageKey());
+        }
 
         const menu = document.querySelector('[data-anime-player-target="translation"]')?.closest('[id], .player-video') || document.body;
         if (menu !== currentMenu || !menu.isConnected) {
