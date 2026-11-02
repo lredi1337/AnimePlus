@@ -221,6 +221,15 @@
                     sendSkipData(e.source);
                     break;
                 }
+                case 'AG_SHELL_GET':
+                    if (provider.getShellSite) post(e.source, { type: 'AG_SHELL_SITE', site: await provider.getShellSite() });
+                    break;
+                case 'AG_SHELL_PICK':
+                    if (provider.shellPick) {
+                        await provider.shellPick(data.kind, Number(data.index));
+                        scope.timeout(async () => post(e.source, { type: 'AG_SHELL_SITE', site: await provider.getShellSite() }), 600);
+                    }
+                    break;
                 case 'AG_EPISODE_CHANGED':
                     provider.getEpisode(data.episode);
                     sendSkipData(e.source);

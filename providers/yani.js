@@ -28,6 +28,92 @@
         return list ? Array.from(list.children) : [];
     };
 
+    // ---------- Меню «Озвучка» и «Плеер» (react-select): пункты появляются только при открытии ----------
+
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const MENU_HIDE_ID = 'ag-shell-menu-hide';
+
+    const findSelectControl = (word) => {
+        const value = Array.from(document.querySelectorAll('[class*="singleValue"]')).find(e => e.textContent.trim().startsWith(word));
+        return value ? value.closest('[class*="-control"]') : null;
+    };
+
+    const selectValue = (word) => {
+        const control = findSelectControl(word);
+        const value = control && control.querySelector('[class*="singleValue"]');
+        return value ? value.textContent : '';
+    };
+
+    /** «Озвучка AniLibria (28 эп.)» или «Озвучка AniLibria28 / 2855.5K» → имя и число серий */
+    function parseSelectText(word, text) {
+        const clean = String(text || '').replace(/\s+/g, ' ').trim().replace(new RegExp(`^${word}\\s*`), '');
+        const brackets = clean.match(/^(.*?)\s*\((\d+)\s*эп\.?\)\s*$/);
+        if (brackets) return { title: brackets[1].trim(), count: brackets[2] };
+        const pair = clean.match(/^(.*?)\s*(\d+)\s*\/\s*\d+/);
+        if (pair) return { title: pair[1].trim(), count: pair[2] };
+        return { title: clean, count: '' };
+    }
+
+    // Пункты только этого меню: на старом сайте в разметке всегда есть ещё и пункты выбора языка
+    const menuOptions = (control) => Array.from(control.parentElement.querySelectorAll('[class*="-option"]'));
+
+    // Открытие меню сайта незаметно для зрителя. В полном экране браузер не отдаёт фокус полям вне плеера,
+    // а без фокуса сам блок выбора не открывается, поэтому нажимаем стрелку: она открывает меню и без него
+    async function openMenu(word, action) {
+        const control = findSelectControl(word);
+        if (!control || menuOptions(control).length) return null;
+        const focused = document.activeElement;
+        const { scrollX, scrollY } = window;
+        const style = document.createElement('style');
+        style.id = MENU_HIDE_ID;
+        style.textContent = '[class*="-menu"] { opacity: 0 !important; }';
+        document.head.appendChild(style);
+        const arrow = control.querySelector('[class*="indicatorContainer"]') || control;
+        const press = () => arrow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+        try {
+            press();
+            let options = [];
+            for (let i = 0; i < 12 && !options.length; i++) {
+                await sleep(50);
+                options = menuOptions(control);
+            }
+            return await action(options, press);
+        } finally {
+            style.remove();
+            // Фокус и прокрутку возвращаем: иначе перестанут работать клавиши плеера, а страница подпрыгнет
+            if (focused && focused.focus) focused.focus({ preventScroll: true });
+            window.scrollTo(scrollX, scrollY);
+        }
+    }
+
+    // Запрос списков и выбор зрителя могут совпасть, а меню за раз открыто только одно
+    let menuQueue = Promise.resolve();
+    const withOpenMenu = (word, action) => {
+        const run = menuQueue.then(() => openMenu(word, action));
+        menuQueue = run.catch(() => {});
+        return run;
+    };
+
+    const readSelect = (word) => withOpenMenu(word, async (options, close) => {
+        const current = parseSelectText(word, selectValue(word)).title;
+        const list = options.map((el, index) => {
+            const parsed = parseSelectText(word, el.textContent);
+            return { index, title: parsed.title, count: parsed.count, selected: parsed.title === current, type: /субтитр|subtitles/i.test(parsed.title) ? 'subtitles' : 'voice' };
+        });
+        close();
+        return list;
+    });
+
+    const chooseSelect = (word, match) => withOpenMenu(word, async (options, close) => {
+        const target = options.find((el, index) => match(parseSelectText(word, el.textContent), index));
+        if (!target) {
+            close();
+            return false;
+        }
+        target.click();
+        return true;
+    });
+
     class YaniProvider extends BaseProvider {
         constructor(site, settings) {
             super(site, settings);
@@ -104,6 +190,58 @@
         getPlayerWindows() {
             const frame = findKodikFrame();
             return frame && frame.contentWindow ? [frame.contentWindow] : [];
+        }
+
+        /** Списки для панели плеера: Kodik открыт сайтом на одну серию и своих списков не имеет */
+        async getShellSite() {
+            const heading = (document.querySelector('h1')?.innerText || '').trim();
+            const current = this.getEpisode();
+            const episodes = findEpisodeButtons().map((el, index) => {
+                const label = el.textContent.trim();
+                return { index, label, title: label, selected: label === String(current) };
+            });
+            // Меню читаем только когда выбор на сайте изменился: открывать их при каждом запросе незачем
+            const key = `${slugFromPath()}|${selectValue('Озвучка')}|${selectValue('Плеер')}`;
+            if (this.shellMenusKey !== key) {
+                const voices = await readSelect('Озвучка');
+                const players = await readSelect('Плеер');
+                if (voices && voices.length) {
+                    this.shellMenus = { voices: await this.keepKodikVoices(voices), players: players || [] };
+                    this.shellMenusKey = key;
+                }
+            }
+            return { title: heading, episodes, ...(this.shellMenus || { voices: [], players: [] }) };
+        }
+
+        // Панель работает только в Kodik: озвучка без него увела бы зрителя в чужой плеер
+        async keepKodikVoices(voices) {
+            const api = await this.loadApi();
+            const names = new Set((api?.videos || []).filter(v => /kodik/i.test(v.data?.player || '')).map(v => parseSelectText('Озвучка', v.data?.dubbing).title));
+            return names.size ? voices.filter(v => names.has(v.title)) : voices;
+        }
+
+        async shellPick(kind, index) {
+            if (kind === 'episodes') {
+                const el = findEpisodeButtons()[index];
+                if (el) el.click();
+                return;
+            }
+            if (kind === 'players') {
+                await chooseSelect('Плеер', (_, i) => i === index);
+                return;
+            }
+            if (kind === 'voices') {
+                const before = selectValue('Озвучка');
+                const episode = String(this.getEpisode());
+                if (!await chooseSelect('Озвучка', (_, i) => i === index)) return;
+                for (let i = 0; i < 14 && selectValue('Озвучка') === before; i++) await sleep(100);
+                // При смене озвучки сайт всегда ставит первый плеер, поэтому Kodik возвращаем сами
+                await sleep(100);
+                if (!/kodik/i.test(selectValue('Плеер'))) await chooseSelect('Плеер', parsed => /kodik/i.test(parsed.title));
+                // Новый сайт при этом открывает первую серию, а зритель хотел сменить только озвучку
+                await sleep(300);
+                if (String(this.getEpisode()) !== episode) findEpisodeButtons().find(b => b.textContent.trim() === episode)?.click();
+            }
         }
 
         // Плеер выбирает сам сайт (React-селект «Плеер Kodik»); вмешиваться не нужно
