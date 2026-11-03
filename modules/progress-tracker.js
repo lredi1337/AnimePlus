@@ -22,6 +22,7 @@
     const MAX_SAVED_EPISODES = 200;
     const SAVED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
     const MIN_RESUME_SEC = 10; // первые секунды продолжать незачем
+    const HISTORY_AFTER_SEC = 60; // открыл и сразу ушёл — это ещё не просмотр
     const FINISHED_RATIO = 0.9; // досмотренная серия при новом запуске идёт сначала
 
     // Участки [начало, конец] без пересечений: один и тот же кусок серии дважды не считается
@@ -174,6 +175,33 @@
             return shikiIdPromise;
         };
 
+        // Карточка «Продолжить» в окне расширения: последний тайтл, который зритель действительно смотрел
+        // Адрес постера бывает без протокола (//static...): в окне расширения такой не откроется
+        const pagePoster = () => {
+            const src = window.document?.querySelector('meta[property="og:image"]')?.content;
+            return src ? new URL(src, location.href).href : '';
+        };
+        const rememberedEpisodes = new Set();
+        const rememberWatching = async (key) => {
+            if (rememberedEpisodes.has(key)) return;
+            rememberedEpisodes.add(key);
+            try {
+                const info = await adapter.getTitleInfo();
+                if (!info) return;
+                const anime = await resolveShikiId(info).catch(() => null);
+                window.agSendMessage({
+                    action: 'add_watch_history',
+                    item: {
+                        id: anime ? anime.id : null,
+                        russian: info.title,
+                        name: info.origTitle,
+                        poster: pagePoster(),
+                        url: location.href
+                    }
+                });
+            } catch (e) {}
+        };
+
         const commitEpisode = async (episode, watched) => {
             const info = await adapter.getTitleInfo();
             if (!info || (!info.shikimoriId && (!info.titles || info.titles.length === 0))) return;
@@ -262,6 +290,10 @@
             if (Date.now() - lastSaveTime >= SAVE_INTERVAL_MS) {
                 lastSaveTime = Date.now();
                 saveWatched();
+            }
+
+            if (longEnough && (watched.done || rangesLength(watched.ranges) >= HISTORY_AFTER_SEC)) {
+                rememberWatching(`${location.pathname}#${episode}`);
             }
 
             const reallyWatched = longEnough && rangesLength(watched.ranges) >= st.duration * MIN_REAL_WATCH_RATIO;

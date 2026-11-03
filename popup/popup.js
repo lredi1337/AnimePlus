@@ -415,7 +415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Карточка «Продолжить»: последний открытый тайтл, а если истории нет, первый недосмотренный из списка
+    // Карточка «Продолжить»: последний просмотренный тайтл, а если истории нет, первый недосмотренный из списка
     async function loadWatchHistory() {
         const card = document.getElementById('continueCard');
         if (!card) return;
@@ -424,7 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const last = Array.isArray(data.ag_watch_history) ? data.ag_watch_history[0] : null;
             const unfinished = (i) => !i.episodesTotal || i.episodesWatched < i.episodesTotal;
             const item = last
-                ? watchingItems.find(i => [i.russian, i.name].includes(last.russian) || (last.name && i.name === last.name))
+                ? watchingItems.find(i => (last.id && (i.animeId || i.id) === last.id) || [i.russian, i.name].includes(last.russian) || (last.name && i.name === last.name))
                 : watchingItems.find(unfinished);
             if (!last && !item) {
                 card.hidden = true;

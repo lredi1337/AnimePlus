@@ -140,10 +140,6 @@
                 // уже истёк. Поэтому после автооткрытия кнопка всегда остаётся на месте
                 const openTitle = (url) => {
                     window.open(url, '_blank');
-                    chrome.runtime.sendMessage({
-                        action: 'add_watch_history',
-                        item: { russian: title, name: origTitle, url }
-                    }, () => { void chrome.runtime.lastError; });
                 };
 
                 const addChoice = (html, color, url) => {

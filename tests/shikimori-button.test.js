@@ -51,9 +51,7 @@ test('несколько сайтов: кнопка на каждый найде
 
     container.querySelectorAll('a')[1].click();
     assert.deepStrictEqual(opened, ['https://yammyanime.club/catalog/item/a']);
-    const history = sent.find(m => m.action === 'add_watch_history');
-    assert.strictEqual(history.item.url, 'https://yammyanime.club/catalog/item/a');
-    assert.strictEqual(history.item.name, 'Fate/stay night');
+    assert.ok(!sent.some(m => m.action === 'add_watch_history'), 'нажатие ещё не просмотр: «Продолжить» не меняется');
 });
 
 test('один сайт: открывается сразу, кнопка остаётся на случай блокировки окна', async () => {

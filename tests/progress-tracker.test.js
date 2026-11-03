@@ -26,11 +26,11 @@ function makeEnv({ getEpisode = () => '3', localStorage = makeStorage(), syncRes
             return null;
         }
     };
-    loadInContext([isValidOriginSource(), 'modules/progress-tracker.js'], { window, location: { origin: 'https://animego.me', pathname: '/anime/strazhi-grobnits-4148' } });
+    loadInContext([isValidOriginSource(), 'modules/progress-tracker.js'], { window, location: { origin: 'https://animego.me', pathname: '/anime/strazhi-grobnits-4148', href: 'https://animego.me/anime/strazhi-grobnits-4148' } });
     window.agInitProgressTracker({
         site: 'test',
         getEpisode,
-        getTitleInfo: () => ({ pageKey: 'strazhi-grobnits-4148', titles: ['The Guardian of Daxia', 'Стражи гробниц'], year: '2026', kind: 'tv' })
+        getTitleInfo: () => ({ pageKey: 'strazhi-grobnits-4148', title: 'Стражи гробниц', origTitle: 'The Guardian of Daxia', titles: ['The Guardian of Daxia', 'Стражи гробниц'], year: '2026', kind: 'tv' })
     });
     const post = (data, { origin = 'https://kodikplayer.com', source = kodikFrame } = {}) =>
         listeners.forEach(fn => fn({ data, origin, source }));
@@ -156,6 +156,38 @@ test('поддельный origin не получает место остано�
     const replies = [];
     env.post({ type: 'AG_GET_RESUME', episode: '3' }, { origin: 'https://evil.example', source: { postMessage: (m) => replies.push(m) } });
     assert.deepEqual(replies, []);
+});
+
+test('«Продолжить»: тайтл запоминается только после минуты настоящего просмотра и один раз', async () => {
+    const env = makeEnv();
+    const history = () => env.log.filter(m => m.action === 'add_watch_history');
+    playOurs(env, 2, 40);
+    await flush();
+    assert.equal(history().length, 0, 'открыл и посмотрел немного');
+    env.post({ type: 'AG_VIDEO_PROGRESS', episode: '3', currentTime: 700, duration: 1400, isEnded: false });
+    await flush();
+    assert.equal(history().length, 0, 'перемотка не считается просмотром');
+    playOurs(env, 702, 730);
+    await flush();
+    assert.equal(history().length, 1);
+    const { id, russian, url } = history()[0].item;
+    assert.equal(id, 62218);
+    assert.equal(russian, 'Стражи гробниц');
+    assert.match(url, /strazhi-grobnits/);
+    playOurs(env, 732, 800);
+    await flush();
+    assert.equal(history().length, 1);
+});
+
+test('«Продолжить»: возвращение к серии с просмотренной частью снова поднимает тайтл', async () => {
+    const localStorage = makeStorage();
+    let env = makeEnv({ localStorage });
+    playOurs(env, 2, 80);
+    env.leavePage();
+    env = makeEnv({ localStorage });
+    playOurs(env, 82, 84);
+    await flush();
+    assert.equal(env.log.filter(m => m.action === 'add_watch_history').length, 1);
 });
 
 test('отмеченная серия забывает участки, пересмотр считается заново', async () => {

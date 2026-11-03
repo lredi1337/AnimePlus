@@ -216,9 +216,6 @@
                 row.href = url;
                 row.target = '_blank';
                 row.rel = 'noopener';
-                row.addEventListener('click', () => {
-                    window.agSendMessage({ action: 'add_watch_history', item: { russian: data.russian, name: data.name, url } });
-                });
             }
             const badge = document.createElement('span');
             badge.className = 'ag-wc__badge';

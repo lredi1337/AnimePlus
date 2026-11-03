@@ -51,13 +51,11 @@ test('не найдено: остаётся поиск на сайте, а гд�
     assert.match(box.querySelector('.ag-wc__note').textContent, /прямых ссылок/);
 });
 
-test('клик запоминает тайтл в недавних', async () => {
+test('клик не считается просмотром: «Продолжить» не меняется', async () => {
     const { rows, sent } = await render([{ siteId: 'jutsu', url: 'https://jut-su.net/6030-x.html' }]);
     rows[0].addEventListener('click', (e) => e.preventDefault());
     rows[0].click();
-    const history = sent.find(m => m.action === 'add_watch_history');
-    assert.strictEqual(history.item.url, 'https://jut-su.net/6030-x.html');
-    assert.strictEqual(history.item.russian, DATA.russian);
+    assert.ok(!sent.some(m => m.action === 'add_watch_history'));
 });
 
 test('все остальные сайты выключены: без поиска', async () => {

@@ -641,9 +641,11 @@ async function addToWatchHistory(item) {
         let history = Array.isArray(data.ag_watch_history) ? data.ag_watch_history : [];
 
         const title = item.russian || item.name;
-        history = history.filter(h => (h.russian || h.name) !== title);
+        // На разных сайтах название одного тайтла пишут по-разному: ID надёжнее
+        history = history.filter(h => (h.russian || h.name) !== title && !(item.id && h.id === item.id));
 
         history.unshift({
+            id: item.id || null,
             russian: item.russian || item.name,
             name: item.name || '',
             poster: item.poster || '',
