@@ -9,10 +9,10 @@
 
     window.AgProviders.start = async function () {
         const site = window.AgSites.byHost(location.hostname);
-        if (!site || site.legacy) return; // AnimeGO.me / Jut-Su — собственные модули
+        if (!site) return;
 
         let settings = await window.getSettings();
-        const Provider = window.AgProviders.registry[site.platform];
+        const Provider = window.AgProviders.registry[site.provider || site.platform];
         if (!Provider) {
             console.warn(`[Anime+] Нет провайдера для платформы «${site.platform}» (${site.id})`);
             return;

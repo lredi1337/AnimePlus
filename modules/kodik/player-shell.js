@@ -307,17 +307,7 @@
         body.ag-shell-on .fp-ui, body.ag-shell-on .serial-panel { opacity: 0 !important; pointer-events: none !important; }
         body.ag-shell-on { background: #000 !important; }
         body.ag-shell-on .play_button, body.ag-shell-on .play_background { opacity: 0 !important; }
-        body.ag-shell-on #ag-ui { opacity: 1 !important; }
-        body.ag-shell-on #ag-ui > :not(#ag-flash) { display: none !important; }
-        body.ag-shell-on #ag-flash { display: none !important; }
-        body.ag-shell-on #ag-vol-osd { display: none !important; }
-        body.ag-shell-on #ag-smart-skip, body.ag-shell-on #ag-skip-undo {
-            right: 24px !important; bottom: 76px !important; padding: 10px 18px !important; border: 0 !important; border-radius: 7px !important;
-            font-size: 14px !important; font-weight: 600 !important; transition: none !important;
-        }
-        body.ag-shell-on #ag-smart-skip { background: #fff !important; color: #111 !important; }
         body.ag-shell-panel #ag-smart-skip, body.ag-shell-panel #ag-skip-undo { right: calc(clamp(280px, 40%, 420px) + 24px) !important; }
-        body.ag-shell-on #ag-skip-undo { background: #101319 !important; color: #fff !important; }
     `;
 
     /**

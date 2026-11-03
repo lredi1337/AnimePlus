@@ -9,8 +9,7 @@
         // Включение по сайтам: { [siteId]: false } выключает расширение на сайте (см. modules/shared/sites.js)
         sites_enabled: {},
         autoNext: true, autoSkip: true, autoPlay: true, audioSkip: true,
-        showNav: true, showSkipBtn: true, showPiP: true, showCenterBtn: true, showDBL: true,
-        hideTime: 2000,
+        showDBL: true,
         ongoing_enabled: true,
         ongoing_hide_chinese: true,
         ongoing_hide_long_running: false,
@@ -18,13 +17,7 @@
         random_min_score: 6.0,
         random_kinds: ["tv", "movie", "ona", "ova", "special"],
         ongoing_types: ["TV", "ONA", "OVA"],
-        shiki_enabled: true,
-        shiki_client_id: "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
-        shiki_worker_url: "",
-        shiki_sync_episodes: true,
-        shiki_show_toasts: true,
         notif_enabled: true,
-        notif_interval_min: 30,
         auto_select_voice: true,
         voice_priority_list: [
             "Anilibria",

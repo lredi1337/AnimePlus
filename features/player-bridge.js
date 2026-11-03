@@ -212,11 +212,8 @@
                     if (data.episode) provider.getEpisode(data.episode);
                     const info = await provider.getTitleInfo();
                     const episode = provider.getEpisode();
-                    const num = parseInt(episode, 10) || 1;
                     post(e.source, {
                         type: 'AG_DATA',
-                        prevTitle: num > 1 ? `${num - 1} серия` : '',
-                        nextTitle: `${num + 1} серия`,
                         currentTitle: `${episode} серия - ${info ? info.title : document.title}`
                     });
                     post(e.source, { type: 'AG_FS_STATE', active: !!fsContainer });

@@ -5,7 +5,6 @@
     'use strict';
 
     window.AG_RED = "#ef4444";
-    window.AG_FONT = '"Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
     window.agEscapeHtml = function (str) {
         if (!str) return '';

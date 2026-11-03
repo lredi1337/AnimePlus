@@ -9,6 +9,8 @@ const CONTENT_FILES = [
     'modules/ui-utils.js',
     'providers/base.js',
     'providers/dle.js',
+    'providers/jutsu.js',
+    'providers/animego.js',
     'providers/yani.js'
 ];
 

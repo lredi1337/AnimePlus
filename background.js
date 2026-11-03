@@ -1,11 +1,6 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
 importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js');
 
-try {
-    const workerUrl = (globalThis.SHIKI_CREDENTIALS && globalThis.SHIKI_CREDENTIALS.worker_url) || "https://animeplus.ruscadred.workers.dev";
-    chrome.storage.local.set({ shiki_worker_url: workerUrl });
-} catch (e) {}
-
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const EXTENSION_USER_AGENT = `AnimePlus/${EXTENSION_VERSION} (Browser Extension)`;
 
@@ -75,6 +70,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         getShikiPosters(message.ids || [])
             .then(posters => sendResponse({ posters }))
             .catch(() => sendResponse({ posters: {} }));
+        return true;
+    }
+
+    if (message.action === "search_shikimori_anime") {
+        searchShikimoriAnime(message.query)
+            .then(results => sendResponse({ results }))
+            .catch(() => sendResponse({ results: [] }));
         return true;
     }
 
@@ -806,7 +808,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 isLoggedIn: !!(tokens.shiki_access_token && tokens.shiki_user),
                 user: tokens.shiki_user || null,
                 clientId: tokens.shiki_client_id || "",
-                clientSecret: tokens.shiki_client_secret || "",
                 lastSyncTime: storageData.shiki_last_sync_time || null,
                 lastSyncStatus: storageData.shiki_last_sync_status || null,
                 authError: storageData.shiki_auth_error === true,

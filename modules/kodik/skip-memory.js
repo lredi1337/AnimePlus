@@ -49,12 +49,5 @@
         };
     }
 
-    /** Сэкономленное время копится за текущий месяц: новый месяц начинает счёт заново */
-    function addSaved(stat, seconds, now = new Date()) {
-        const month = `${now.getFullYear()}-${now.getMonth() + 1}`;
-        const base = stat && stat.month === month ? stat.seconds : 0;
-        return { month, seconds: base + Math.max(0, Math.round(seconds)) };
-    }
-
-    root.AgSkipMemory = { create, addSaved };
+    root.AgSkipMemory = { create };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

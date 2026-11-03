@@ -1,5 +1,5 @@
 // popup/guide-tour.js
-// Экскурсия по окну расширения при первом открытии и задания кота, которые отмечаются сами
+// Экскурсия по окну расширения при первом открытии, задания лисы, которые отмечаются сами, и просьба об оценке
 
 (async function () {
     'use strict';
@@ -37,9 +37,7 @@
         $('questFox').innerHTML = AgGuideFox.svg(finished ? 'party' : 'calm');
         $('questTitle').textContent = finished ? 'Все задания выполнены!' : 'Задания лисы';
         $('questCount').textContent = `${done} из ${total}`;
-        $('questRate').hidden = !finished || state.rated;
         $('questToggle').setAttribute('aria-expanded', String(questOpen));
-        $('questList').hidden = finished && !state.rated;
         $('questBar').style.width = `${Math.round(done / total * 100)}%`;
         $('questList').replaceChildren(...AgGuide.TASKS.map((task) => {
             const li = document.createElement('li');
@@ -63,15 +61,23 @@
         questOpen = !questOpen;
         renderQuest();
     });
-    const closeRate = async () => {
-        state = await AgGuide.patch({ rated: true });
-        renderQuest();
-    };
-    $('questRateGo').addEventListener('click', () => {
+    // ---------- Оценка ----------
+    function renderRate() {
+        $('rateCard').hidden = !AgGuide.ratingDue(state);
+    }
+
+    const openReviews = async () => {
         chrome.tabs.create({ url: AgGuide.REVIEW_URL });
-        closeRate();
+        state = await AgGuide.patch({ rated: true });
+        renderRate();
+    };
+    $('rateFox').innerHTML = AgGuideFox.svg('hello');
+    $('rateGo').addEventListener('click', openReviews);
+    $('btnRate').addEventListener('click', openReviews);
+    $('rateLater').addEventListener('click', async () => {
+        state = await AgGuide.patch(AgGuide.ratingLater(state));
+        renderRate();
     });
-    $('questRateLater').addEventListener('click', closeRate);
 
     $('questClose').addEventListener('click', async () => {
         state = await AgGuide.patch({ questHidden: true });
@@ -83,14 +89,15 @@
         if (area !== 'local' || !changes[AgGuide.KEY]) return;
         state = AgGuide.normalize(changes[AgGuide.KEY].newValue);
         renderQuest();
+        renderRate();
     });
 
     const { shiki_access_token: token } = await chrome.storage.local.get(['shiki_access_token']);
     if (token) await AgGuide.mark('shiki');
-    state = await AgGuide.read();
-    // Все задания выполнены: просьба об оценке сразу на виду
-    if (AgGuide.progress(state).finished && !state.rated) questOpen = true;
+    // Отсчёт дней до просьбы об оценке начинается с первого открытия окна или первой серии
+    state = await AgGuide.patch({});
     renderQuest();
+    renderRate();
 
     // ---------- Экскурсия ----------
     const tour = $('tour');
@@ -142,6 +149,7 @@
         state = await AgGuide.patch({ tourDone: true });
         questOpen = true;
         renderQuest();
+        renderRate();
     }
 
     $('tourNext').addEventListener('click', () => {

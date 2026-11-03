@@ -243,7 +243,7 @@
     });
 
     $('resetBtn').addEventListener('click', async () => {
-        if (!window.confirm('Сбросить все настройки Anime+? Вход в Shikimori и сэкономленное время останутся.')) return;
+        if (!window.confirm('Сбросить все настройки Anime+? Вход в Shikimori останется.')) return;
         await chrome.storage.local.set({ ag_settings: JSON.parse(JSON.stringify(window.DEFAULT_SETTINGS)) });
         location.reload();
     });

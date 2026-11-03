@@ -20,9 +20,12 @@ function open(respond) {
         }
     });
     w.eval(read('modules/shared/ui-kit.js'));
-    ['modules/site-selectors.js', 'features/top-overlay.js', 'features/legacy-top.js'].forEach(f => w.eval(read(f)));
+    ['modules/site-selectors.js', 'features/top-overlay.js', 'providers/dle.js', 'providers/jutsu.js'].forEach(f => w.eval(read(f)));
     w.agBindPostersIn = () => {};
-    w.agMountLegacyTop('jutsu', { sites_enabled: {} });
+    const site = w.AgSites.byId('jutsu');
+    const Provider = w.AgProviders.registry[site.provider || site.platform];
+    const settings = { sites_enabled: {} };
+    w.AgFeatures.topOverlay({ provider: new Provider(site, settings), scope: new w.AgProviders.Scope(), site, settings });
     w.document.querySelector('.ag-top-nav-link').click();
     return { doc: w.document, urls, w };
 }

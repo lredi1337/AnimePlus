@@ -70,6 +70,9 @@
             this.settings = settings; // ag_settings с дефолтами
         }
 
+        /** Куда вести кнопке «Случайное аниме» по ответу background */
+        getRandomUrl(res) { return res.url || null; }
+
         /** Это страница конкретного тайтла (есть плеер / метаданные)? */
         isTitlePage() { return false; }
 
@@ -131,6 +134,13 @@
     window.AgProviders.BaseProvider = BaseProvider;
 
     /** Регистрация реализации провайдера для платформы ('dle', 'yani', ...) */
+    /** Раньше у AnimeGO и Jut-Su был свой адрес Топа: старые ссылки ведут в общее окно */
+    window.AgProviders.redirectOldTopLink = function () {
+        if (location.pathname !== '/top-shikimori' && !new URLSearchParams(location.search).has('show_ag_top')) return false;
+        location.replace('/#ag-top-shikimori');
+        return true;
+    };
+
     window.AgProviders.register = function (platform, ProviderClass) {
         window.AgProviders.registry[platform] = ProviderClass;
     };

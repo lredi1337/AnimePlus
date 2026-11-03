@@ -100,3 +100,59 @@ test('yani: getNavAnchor находит div меню на ru.yummyani.me и li �
     assert.equal(anchorOld.tagName, 'LI');
 });
 
+
+// Меню сайта (react-select): пункты появляются, только пока оно открыто
+function playerMenu(w, names, current) {
+    const box = w.document.createElement('div');
+    box.innerHTML = `<div class="sel-control"><div class="sel-singleValue">Плеер ${current}</div><div class="sel-indicatorContainer"></div></div>`;
+    w.document.body.appendChild(box);
+    const picked = [];
+    box.querySelector('[class*="indicatorContainer"]').addEventListener('mousedown', () => {
+        const open = box.querySelectorAll('[class*="-option"]');
+        if (open.length) { open.forEach(o => o.remove()); return; }
+        names.forEach(name => {
+            const option = w.document.createElement('div');
+            option.className = 'sel-option';
+            option.textContent = `Плеер ${name} (28 эп.)`;
+            option.addEventListener('click', () => { picked.push(name); box.querySelectorAll('[class*="-option"]').forEach(o => o.remove()); });
+            box.appendChild(option);
+        });
+    });
+    return picked;
+}
+
+const NO_KODIK_PAGE = '<h1>Тайтл</h1><iframe src="https://aksor.example/embed/1"></iframe>';
+
+async function untilPicked(provider) {
+    for (let i = 0; i < 40; i++) {
+        if (provider.selectPreferredPlayer()) return true;
+        await new Promise(r => setTimeout(r, 25));
+    }
+    return false;
+}
+
+test('yani: сайт открыл другой плеер — выбирается Kodik, причём один раз', async () => {
+    const { provider, w } = makeYani(NO_KODIK_PAGE);
+    const picked = playerMenu(w, ['Aksor', 'Alloha', 'Kodik', 'CVH'], 'Aksor');
+    assert.equal(await untilPicked(provider), true);
+    assert.deepEqual(picked, ['Kodik']);
+    assert.equal(provider.selectPreferredPlayer(), true);
+    assert.deepEqual(picked, ['Kodik']);
+});
+
+test('yani: Kodik уже открыт — меню не трогаем, Kodik нет у тайтла — не зацикливаемся', async () => {
+    const open = makeYani();
+    const untouched = playerMenu(open.w, ['Aksor', 'Kodik'], 'Kodik');
+    assert.equal(open.provider.selectPreferredPlayer(), true);
+    assert.deepEqual(untouched, []);
+
+    const none = makeYani(NO_KODIK_PAGE);
+    const picked = playerMenu(none.w, ['Aksor', 'Alloha'], 'Aksor');
+    assert.equal(await untilPicked(none.provider), true);
+    assert.deepEqual(picked, []);
+});
+
+test('yani: меню ещё не появилось — ждём, а не считаем выбор сделанным', () => {
+    const { provider } = makeYani(NO_KODIK_PAGE);
+    assert.equal(provider.selectPreferredPlayer(), false);
+});

@@ -374,8 +374,8 @@
                         shikiBtn.id = 'ag-shiki-btn';
                         shikiBtn.href = `https://shikimori.io/animes/${data.id}`;
                         shikiBtn.target = '_blank';
-                        shikiBtn.className = 'btn d-inline-flex align-items-center';
-                        shikiBtn.style.cssText = 'background-color: rgb(33, 33, 33); color: white; font-weight: 600; border-radius: 4px; padding: 0px 12px; font-size: 13px; height: 32px; text-decoration: none; margin-left: 8px;';
+                        shikiBtn.className = 'd-inline-flex align-items-center';
+                        shikiBtn.style.cssText = 'background: var(--ap-raised); border: 1px solid var(--ap-line); color: var(--ap-text); font-weight: 600; border-radius: var(--ap-radius); padding: 0 12px; font-size: var(--ap-fs-md); height: 32px; text-decoration: none;';
                         shikiBtn.textContent = `Shikimori ★ ${data.score}`;
                         ratingContainer.appendChild(shikiBtn);
                     }

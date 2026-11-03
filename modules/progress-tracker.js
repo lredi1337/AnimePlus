@@ -75,9 +75,7 @@
                 currentTime: Number(data.currentTime) || 0,
                 duration: Number(data.duration) || 0,
                 ended: data.isEnded === true,
-                episode: data.episode != null ? String(data.episode) : null,
-                // Старый формат (без времени) приходил только после 80% — доверяем ему
-                legacyWatched: data.currentTime === undefined
+                episode: data.episode != null ? String(data.episode) : null
             };
         }
 
@@ -184,9 +182,6 @@
             if (syncedEpisodes.has(key)) return;
             syncedEpisodes.add(key);
 
-            const settings = await window.getSettings();
-            if (settings.shiki_enabled === false || settings.shiki_sync_episodes === false) return;
-
             const anime = await resolveShikiId(info);
             if (!anime) {
                 console.warn(`[Anime+][${adapter.site}] Shikimori ID not resolved for`, info.titles);
@@ -208,7 +203,7 @@
                 watched.ranges = [];
                 watched.dirty = true;
                 saveWatched();
-                if (settings.shiki_show_toasts !== false && window.showAgToast && !res.noop) {
+                if (window.showAgToast && !res.noop) {
                     window.showAgToast(`Shikimori: серия ${episode} отмечена ✓`);
                 }
             } else if (res && res.reason !== 'not_logged_in') {
@@ -272,7 +267,7 @@
             const reallyWatched = longEnough && rangesLength(watched.ranges) >= st.duration * MIN_REAL_WATCH_RATIO;
             const reachedEnd = longEnough && st.lastTime !== null && st.lastTime / st.duration >= WATCHED_RATIO;
 
-            if (ev.legacyWatched || (reallyWatched && (reachedEnd || ev.ended))) {
+            if (reallyWatched && (reachedEnd || ev.ended)) {
                 commitEpisode(episode, watched);
             }
         };

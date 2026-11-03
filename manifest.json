@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "10.1.4",
+  "version": "10.2.0",
   "description": "Улучшает просмотр аниме на AnimeGO, Jut-Su, YummyAnime и других сайтах: выбор озвучки, учёт серий в Shikimori, пропуск опенингов 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
     "storage",
-    "activeTab",
     "scripting",
     "tabs",
     "windows",
@@ -45,7 +44,6 @@
     "https://dbcode.info/*",
     "https://*.kodik-storage.com/*",
     "https://kodik-storage.com/*",
-    "https://*.cloud.kodik-storage.com/*",
     "https://*.tube-storage.com/*",
     "https://tube-storage.com/*",
     "https://*.kodik.biz/*",
@@ -65,7 +63,6 @@
     "https://api.aniskip.com/*",
     "https://shikimori.one/*",
     "https://shikimori.io/*",
-    "https://shikimori.org/*",
     "https://shikimori.me/*",
     "https://api.animethemes.moe/*",
     "https://kitsu.io/*",
@@ -75,10 +72,7 @@
     "https://ru.yummyani.me/*",
     "https://yummyanime.tv/*",
     "https://animego.online/*",
-    "https://yammyanime.club/*",
-    "https://*.yummyanime.tv/*",
-    "https://*.animego.online/*",
-    "https://*.yammyanime.club/*"
+    "https://yammyanime.club/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -99,18 +93,19 @@
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
-        "modules/animego/ag-random.js",
         "modules/animego/ag-schedule.js",
-        "modules/animego/ag-player.js",
-        "modules/animego/ag-shiki-widget.js",
         "modules/animego/ag-voice.js",
-        "modules/animego/ag-shell-bridge.js",
         "modules/animego/ag-synthetic.js",
         "modules/animego/ag-jutsu-search.js",
         "providers/base.js",
+        "providers/animego.js",
+        "features/player-bridge.js",
+        "features/title-widgets.js",
         "features/top-overlay.js",
-        "features/legacy-top.js",
-        "content-animego.js"
+        "features/search-redirect.js",
+        "features/random-anime.js",
+        "providers/runtime.js",
+        "content-sites.js"
       ],
       "run_at": "document_end",
       "all_frames": false,
@@ -121,36 +116,7 @@
     {
       "matches": [
         "https://jut-su.net/*",
-        "https://*.jut-su.net/*"
-      ],
-      "js": [
-        "config.js",
-        "modules/shared/native-fs.js",
-        "modules/shared/voice-choice.js",
-        "modules/shared/sites.js",
-        "modules/shared/ui-kit.js",
-        "modules/shared/title-match.js",
-        "modules/ui-utils.js",
-        "modules/site-selectors.js",
-        "modules/progress-tracker.js",
-        "modules/jutsu/jt-search.js",
-        "modules/jutsu/jt-random.js",
-        "modules/jutsu/jt-player.js",
-        "modules/jutsu/jt-shiki-widget.js",
-        "modules/jutsu/jt-voice.js",
-        "providers/base.js",
-        "features/top-overlay.js",
-        "features/legacy-top.js",
-        "content-jutsu.js"
-      ],
-      "run_at": "document_end",
-      "all_frames": false,
-      "css": [
-        "modules/shared/tokens.css"
-      ]
-    },
-    {
-      "matches": [
+        "https://*.jut-su.net/*",
         "https://old.yummyani.me/*",
         "https://ru.yummyani.me/*",
         "https://yummyanime.tv/*",
@@ -169,6 +135,7 @@
         "modules/progress-tracker.js",
         "providers/base.js",
         "providers/dle.js",
+        "providers/jutsu.js",
         "providers/yani.js",
         "features/player-bridge.js",
         "features/title-widgets.js",
@@ -196,7 +163,6 @@
         "https://dbcode.info/*",
         "https://*.kodik-storage.com/*",
         "https://kodik-storage.com/*",
-        "https://*.cloud.kodik-storage.com/*",
         "https://*.tube-storage.com/*",
         "https://tube-storage.com/*",
         "https://*.kodik.biz/*",
@@ -232,7 +198,6 @@
         "https://dbcode.info/*",
         "https://*.kodik-storage.com/*",
         "https://kodik-storage.com/*",
-        "https://*.cloud.kodik-storage.com/*",
         "https://*.tube-storage.com/*",
         "https://tube-storage.com/*",
         "https://*.kodik.biz/*",
@@ -322,7 +287,6 @@
         "https://jut-su.net/*",
         "https://shikimori.one/*",
         "https://shikimori.io/*",
-        "https://shikimori.org/*",
         "https://shikimori.me/*",
         "https://old.yummyani.me/*",
         "https://ru.yummyani.me/*",

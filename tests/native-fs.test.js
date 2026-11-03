@@ -20,7 +20,6 @@ test('браузер разрешил: полный экран у блока п�
     const { w, el, fsApi, setCurrent } = setup();
     el.requestFullscreen = async () => setCurrent(el);
     assert.equal(await fsApi.request(el), true);
-    assert.equal(fsApi.isActive(), true);
     assert.ok(w.document.getElementById('ag-native-fs-style').textContent.includes(':fullscreen iframe'));
 });
 

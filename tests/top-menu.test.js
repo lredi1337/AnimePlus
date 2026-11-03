@@ -1,4 +1,4 @@
-// Общее окно Топа на сайтах с собственными модулями (features/legacy-top.js)
+// Общее окно Топа на AnimeGO и Jut-Su: пункт меню и что открыть, если тайтла нет на сайте (providers/animego.js, jutsu.js)
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { read } = require('./helpers');
@@ -19,9 +19,12 @@ function mount(html, url, siteId, onMessage) {
     const { window: w, sent } = makeContentWindow(html, url, {
         onMessage: (msg) => (msg.action === 'fetch_shikimori' ? { data: TOP, status: 200 } : onMessage(msg))
     });
-    ['modules/site-selectors.js', 'features/top-overlay.js', 'features/legacy-top.js'].forEach(f => w.eval(read(f)));
+    ['modules/site-selectors.js', 'features/top-overlay.js', 'providers/dle.js', 'providers/jutsu.js', 'providers/animego.js'].forEach(f => w.eval(read(f)));
     w.agBindPostersIn = () => {};
-    w.agMountLegacyTop(siteId, { sites_enabled: {} });
+    const site = w.AgSites.byId(siteId);
+    const Provider = w.AgProviders.registry[site.provider || site.platform];
+    const settings = { sites_enabled: {} };
+    w.AgFeatures.topOverlay({ provider: new Provider(site, settings), scope: new w.AgProviders.Scope(), site, settings });
     return { w, doc: w.document, sent };
 }
 

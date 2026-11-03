@@ -1,7 +1,6 @@
 // features/search-redirect.js
 // Автопереход со страницы поиска на страницу тайтла, если поиск открыло само расширение
 // (параметры ag_from / ag_russian / ag_name). Обычный поиск пользователя не трогается.
-// Общая версия логики Jut-Su (modules/jutsu/jt-top.js → handleJutsuSearch) для сайтов-провайдеров.
 
 (function () {
     'use strict';

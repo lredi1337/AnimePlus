@@ -121,6 +121,7 @@
             this.apiPromise = null;
             this.apiSlug = null;
             this.msgEpisode = null;
+            this.playerPicked = false;
         }
 
         isTitlePage() {
@@ -245,7 +246,19 @@
         }
 
         // Плеер выбирает сам сайт (React-селект «Плеер Kodik»); вмешиваться не нужно
-        selectPreferredPlayer() { return true; }
+        // Наши функции плеера работают только в Kodik, а сайт по умолчанию может открыть другой плеер.
+        // Меню появляется не сразу: runtime зовёт этот метод повторно, пока он не вернёт true
+        selectPreferredPlayer() {
+            if (this.playerPicked || findKodikFrame()) return true;
+            if (this.playerPicking || !findSelectControl('Плеер')) return false;
+            this.playerPicking = true;
+            chooseSelect('Плеер', (option) => /kodik/i.test(option.title))
+                // null: меню сейчас открыл сам зритель, попробуем позже. false: Kodik у этого тайтла нет
+                .then((result) => { this.playerPicked = result !== null; })
+                .catch(() => {})
+                .finally(() => { this.playerPicking = false; });
+            return false;
+        }
 
         navigate(dir) {
             const buttons = findEpisodeButtons();
@@ -298,6 +311,7 @@
 
         mount(scope) {
             this.msgEpisode = null;
+            this.playerPicked = false;
             // ru.yummyani.me кладёт поверх Kodik свою кнопку полного экрана, и она дублирует кнопку новой оболочки.
             // Классы меняются при каждой сборке сайта, поэтому узнаём её по значку
             const style = document.createElement('style');

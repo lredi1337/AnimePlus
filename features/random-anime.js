@@ -19,7 +19,7 @@
         return false;
     };
 
-    window.AgFeatures.randomAnime = function ({ scope, site }) {
+    window.AgFeatures.randomAnime = function ({ provider, scope, site }) {
         let isBusy = false;
 
         scope.listen(document, 'click', (e) => {
@@ -59,12 +59,9 @@
 
             Promise.resolve(send(msg))
                 .then(res => {
-                    if (res && res.url) {
-                        if (typeof window.agNavigateTo === 'function') {
-                            window.agNavigateTo(res.url);
-                        } else {
-                            location.href = res.url;
-                        }
+                    const target = res ? provider.getRandomUrl(res) : null;
+                    if (target) {
+                        location.href = target;
                         setTimeout(restore, 4000);
                     } else {
                         restore();

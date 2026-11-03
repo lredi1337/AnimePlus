@@ -582,13 +582,6 @@ a { color: var(--ap-accent); }
 
 .shiki-code-wrapper { margin-top: 8px; }
 
-.custom-creds-toggle-row { margin-top: 6px; }
-
-.shiki-input-group {
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 6px;
-}
 
 .shiki-input { width: 100%; }
 
@@ -1135,42 +1128,27 @@ a { color: var(--ap-accent); }
 
 /* ===== Подвал ===== */
 .footer {
-    display: flex;
+    display: grid;
     flex: none;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px 14px;
+    grid-template-columns: 1fr 1fr;
     border-top: 1px solid var(--ap-line);
 }
 
-.saved-time {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: var(--ap-fs-sm);
-    color: var(--ap-text-2);
-    white-space: nowrap;
-}
-
-.saved-time b {
-    font-weight: 600;
-    color: var(--ap-text);
-}
-
-.saved-time[hidden] + .tracker-link { margin: 0 auto; }
-
 .tracker-link {
-    padding: 2px 6px;
+    padding: 9px 6px;
     font-size: var(--ap-fs-sm);
     font-weight: 600;
     color: var(--ap-text-3);
+    text-align: center;
     border: none;
+    border-radius: 0;
 }
+
+.tracker-link + .tracker-link { border-left: 1px solid var(--ap-line); }
 
 .tracker-link:hover {
     color: var(--ap-text);
-    background: none;
+    background: var(--ap-hover);
 }
 
 .ext-off-note {
@@ -1330,12 +1308,26 @@ a { color: var(--ap-accent); }
 
 .quest-list .done .quest-mark { background: var(--ap-accent); border-color: transparent; }
 
-.quest-list[hidden], .quest-rate[hidden] { display: none; }
-.quest-rate { display: none; padding: 2px 12px 10px; text-align: center; }
-.quest.open .quest-rate:not([hidden]) { display: block; }
-.quest-stars { color: var(--ap-warning); font-size: 22px; letter-spacing: 3px; line-height: 1.2; }
-.quest-rate p { margin: 4px 0 8px; color: var(--ap-text); font-size: var(--ap-fs-md); line-height: 1.35; }
-.quest-rate-actions { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.rate {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    margin: 8px 14px 0;
+    padding: 8px 12px 10px 6px;
+    background: var(--ap-surface);
+    border: 1px solid var(--ap-accent-line);
+    border-radius: var(--ap-radius);
+}
+
+.rate[hidden] { display: none; }
+.rate-fox { flex: none; align-self: flex-end; width: 72px; height: 82px; }
+.rate-fox svg { display: block; width: 100%; height: 100%; }
+.rate-main { flex: 1; min-width: 0; }
+.rate-stars { color: var(--ap-warning); font-size: 18px; letter-spacing: 2px; line-height: 1.2; }
+.rate-main p { margin: 2px 0 8px; color: var(--ap-text); font-size: var(--ap-fs-md); line-height: 1.35; }
+.rate-actions { display: flex; align-items: center; gap: 10px; }
+.rate-link { color: var(--ap-warning); }
+.rate-link:hover { color: var(--ap-warning); }
 
 /* ===== Экскурсия ===== */
 html.tour-open .popup { min-height: 560px; }

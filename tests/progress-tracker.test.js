@@ -11,7 +11,7 @@ function makeStorage() {
     return { getItem: (k) => (items.has(k) ? items.get(k) : null), setItem: (k, v) => items.set(k, String(v)) };
 }
 
-function makeEnv({ getEpisode = () => '3', settings = {}, localStorage = makeStorage(), syncResult = { success: true } } = {}) {
+function makeEnv({ getEpisode = () => '3', localStorage = makeStorage(), syncResult = { success: true } } = {}) {
     const listeners = [];
     const log = [];
     let pagehide = () => {};
@@ -19,7 +19,6 @@ function makeEnv({ getEpisode = () => '3', settings = {}, localStorage = makeSto
         localStorage,
         addEventListener: (t, fn) => { if (t === 'message') listeners.push(fn); if (t === 'pagehide') pagehide = fn; },
         removeEventListener: (t, fn) => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); },
-        getSettings: async () => ({ shiki_enabled: true, shiki_sync_episodes: true, shiki_show_toasts: false, ...settings }),
         agSendMessage: async (m) => {
             log.push(m);
             if (m.action === 'resolve_shikimori_id') return { id: 62218 };
@@ -258,13 +257,6 @@ test('реклама короче минуты не засчитывается',
         env.post({ source: 'cdnvideohub-player', eventType: 'timeupdate', data: { position: t, duration: 30 } }, { origin: 'https://animego.me', source: cvhFrame });
     }
     env.post({ source: 'cdnvideohub-player', eventType: 'ended' }, { origin: 'https://animego.me', source: cvhFrame });
-    await flush();
-    assert.equal(env.syncs().length, 0);
-});
-
-test('настройка shiki_sync_episodes=false отключает синхронизацию', async () => {
-    const env = makeEnv({ settings: { shiki_sync_episodes: false } });
-    env.playKodik(1, 1300);
     await flush();
     assert.equal(env.syncs().length, 0);
 });

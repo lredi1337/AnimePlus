@@ -102,7 +102,7 @@
 </svg>
 `);
 
-    window.agInitJutsuSearchEnhancer = function (mainObserver) {
+    window.agInitJutsuSearchEnhancer = function () {
         function renderNativeJutsuItems(results, query) {
             if (isRenderingJutsuSearch || !query || query.length < 2) return;
             isRenderingJutsuSearch = true;
@@ -123,13 +123,12 @@
                     }
                 }
 
+                if (!resContainer) resContainer = document.getElementById('site-search-results');
                 if (!resContainer) return;
 
                 if (resContainer.dataset.agRenderedQuery === query && resContainer.querySelector('.ag-jutsu-item')) {
                     return;
                 }
-
-                if (mainObserver) mainObserver.disconnect();
 
                 const nativeItems = Array.from(resContainer.querySelectorAll('.ajax-search__item:not(.ag-jutsu-item)'));
 
@@ -280,11 +279,21 @@
                 console.error("Error rendering Jut-su search items:", e);
             } finally {
                 isRenderingJutsuSearch = false;
-                if (mainObserver && document.body) {
-                    mainObserver.observe(document.body, { childList: true, subtree: true });
-                }
             }
         }
+
+        // Сайт строит выдачу по запросу и пересоздаёт её при каждом вводе: дорисовываем свои пункты после него
+        let lastSearch = null;
+        let redrawTimer = null;
+        const watchSiteResults = () => {
+            new MutationObserver(() => {
+                if (!lastSearch || redrawTimer) return;
+                redrawTimer = setTimeout(() => {
+                    redrawTimer = null;
+                    if (lastSearch) renderNativeJutsuItems(lastSearch.results, lastSearch.query);
+                }, 100);
+            }).observe(document.getElementById('site-search-results') || document.body, { childList: true, subtree: true });
+        };
 
         const handleSearchInput = (inputEl) => {
             if (!inputEl || inputEl.dataset.agJutsuAttached) return;
@@ -295,6 +304,7 @@
             inputEl.addEventListener('input', (e) => {
                 const query = e.target.value.trim();
                 clearTimeout(searchTimeout);
+                lastSearch = null;
 
                 if (query.length < 2) return;
 
@@ -303,7 +313,10 @@
                         action: "search_shikimori_anime",
                         query: query
                     }, (res) => {
+                        // Пока ждали ответ, зритель мог ввести что-то ещё
+                        if (inputEl.value.trim() !== query) return;
                         const results = res && res.results ? res.results : [];
+                        lastSearch = { results, query };
                         renderNativeJutsuItems(results, query);
                     });
                 }, 250);
@@ -312,6 +325,7 @@
 
         const searchInputs = document.querySelectorAll('input[type="search"], input[name="q"], .header-search input, .navbar-search input');
         searchInputs.forEach(handleSearchInput);
+        if (searchInputs.length) watchSiteResults();
 
         return { renderNativeJutsuItems, handleSearchInput };
     };

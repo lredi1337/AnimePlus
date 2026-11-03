@@ -38,8 +38,6 @@ AnimePlus-main/
 ├── config.js                  # Глобальные константы, дефолтные настройки (DEFAULT_SETTINGS), хелперы
 ├── credentials.js             # OAuth Client ID и URL Cloudflare Worker для авторизации Shikimori
 ├── background.js              # Service Worker: центральный маршрутизатор сообщений и событий
-├── content-animego.js         # Точка входа Content Script для AnimeGO
-├── content-jutsu.js           # Точка входа Content Script для Jut-Su
 ├── content-kodik.js           # Content Script для iframe плееров Kodik (all_frames: true)
 ├── content-external.js        # Content Script для страниц Shikimori (кнопка "Смотреть с Anime+")
 ├── content-shiki-auth.js      # Перехватчик OAuth-страницы Shikimori (стилизация + авто-подтверждение)
@@ -54,20 +52,11 @@ AnimePlus-main/
 │   ├── ui-utils.js            # Общие UI-утилиты (тоасты, логотипы, нормализация постеров)
 │   │
 │   ├── animego/               # Подсистема AnimeGO
-│   │   ├── ag-player.js       # Управление плеером AnimeGO, псевдо-фуллскрин, скролл-лок
 │   │   ├── ag-voice.js        # Автовыбор приоритетной озвучки и переключение на Kodik
-│   │   ├── ag-shiki-widget.js # Виджет рейтинга Shikimori и AniSkip на AnimeGO
 │   │   ├── ag-synthetic.js    # Генерация синтетических карточек аниме на 404 страницах
 │   │   ├── ag-schedule.js     # Расширение расписания онгоингов AnimeGO
 │   │   ├── ag-jutsu-search.js # Встраивание поиска Jut-Su в поисковую строку AnimeGO
-│   │   ├── ag-random.js       # Логика кнопки «Случайное аниме»
 │   │
-│   └── jutsu/                 # Подсистема Jut-Su
-│       ├── jt-player.js       # Управление плеером Jut-Su, псевдо-фуллскрин, хоткеи
-│       ├── jt-voice.js        # Автовыбор приоритетной озвучки на Jut-Su
-│       ├── jt-shiki-widget.js # Рейтинг Shikimori и AniSkip на Jut-Su
-│       ├── jt-search.js       # Автопереход на тайтл со страницы поиска Jut-Su
-│       ├── jt-random.js       # Логика кнопки «Случайное аниме» для Jut-Su
 │
 ├── popup/                     # Всплывающее меню расширения (Popup)
 │   ├── popup.html             # Разметка Popup (Glassmorphism, адаптивная тема)
@@ -104,15 +93,9 @@ AnimePlus-main/
   random_kinds: ["tv", "movie", "ona", "ova", "special"],
   
   // Shikimori интеграция
-  shiki_enabled: true,                // Включить функции Shikimori
-  shiki_client_id: "...",             // Client ID OAuth-приложения
-  shiki_worker_url: "",               // URL прокси Cloudflare Worker
-  shiki_sync_episodes: true,          // Синхронизация номеров серий
-  shiki_show_toasts: true,            // Показывать уведомления о синхронизации
   
   // Уведомления
   notif_enabled: true,                // Включить push-уведомления о новых сериях
-  notif_interval_min: 30,             // Интервал проверки (в минутах)
   
   // Озвучки
   auto_select_voice: true,            // Автовыбор озвучки
@@ -143,7 +126,6 @@ AnimePlus-main/
 - `shiki_today_date`, `shiki_today_count`, `shiki_today_episodes`: Дневная статистика просмотренных серий (массив строк вида `"${animeId}_${episode}"`).
 - `shiki_list_cache_watching`, `shiki_list_cache_rewatching`: Кэш списков аниме пользователя.
 - `ag_watch_history`: Последние 5 просмотренных тайтлов: первый показывается в карточке «Продолжить».
-- `ag_saved_time`: Сколько секунд пропуск опенингов и эндингов сэкономил за текущий месяц (`{ month, seconds }`).
 - `ag_top_band_pages`: С какой страницы рейтинга Shikimori начинается каждый диапазон оценок в окне Топа (обновляется раз в 14 дней).
 - `cache_{ru}_{en}_{year}`: 7-дневный кэш резолвинга прямых URL на тайтлы Jut-Su и AnimeGO.
 - `ag_schedule_covers_cache`: Кэш резолвинга обложек для виджета расписания.
@@ -168,8 +150,8 @@ AnimePlus-main/
         v           v                               v               v
 +-----------------------+               +-----------------------+   +---------------+
 |     Main Web Page     |               |    Popup Dashboard    |   | Notification  |
-|  content-animego.js   |               |      (popup.js)       |   | (notification)|
-|   content-jutsu.js    |               +-----------------------+   +---------------+
+|  content-sites.js     |               |      (popup.js)       |   | (notification)|
+|   providers/*.js      |               +-----------------------+   +---------------+
 +-----------------------+
         ^
         | window.postMessage (AG_*, AS_*)
@@ -222,7 +204,7 @@ AnimePlus-main/
 
 ## 5. Детальное описание ключевых подсистем
 
-### 5.1. Умный плеер и псевдо-фуллскрин (`content-kodik.js`, `ag-player.js`, `jt-player.js`)
+### 5.1. Умный плеер и псевдо-фуллскрин (`content-kodik.js`, `features/player-bridge.js`)
 - **Проблема нативных плееров**: Нативный Fullscreen API браузера перекрывает системные оверлеи, ломает переключение вкладок и работу расширений.
 - **Решение Anime+**: Режим **Pseudo-Fullscreen**. Плееру (`#video-player` или контейнеру `iframe`) динамически присваивается класс `.ag-pseudo-fs-active` со стилями:
   ```css
@@ -258,7 +240,7 @@ AnimePlus-main/
 **Диагностика:** настройка `audioDebug` записывает состояние в `video.dataset.agAudio`.
 
 ### 5.2.1. AniSkip Engine
-1. Контентные скрипты страниц (`ag-shiki-widget.js`, `jt-shiki-widget.js`) извлекают название аниме из DOM, нормализуют его (отсекая лишние подзаголовки функцией `simplifyTitle`) и через background запрашивают ID тайтла в Shikimori API.
+1. Контентные скрипты страниц (`modules/progress-tracker.js`, подключается в `providers/runtime.js`) извлекают название аниме из DOM, нормализуют его (отсекая лишние подзаголовки функцией `simplifyTitle`) и через background запрашивают ID тайтла в Shikimori API.
 2. Делается запрос к API AniSkip:
    `https://api.aniskip.com/v2/skip-times/{shikimori_id}/{episode}?types=op&types=ed&episodeLength=0`
 3. Полученные интервалы транслируются через `postMessage` в iframe Kodik (`AS_DATA_UPDATE`).
@@ -273,7 +255,7 @@ AnimePlus-main/
 ### 5.2.3. Новый плеер (`modules/kodik/player-shell.js`, аварийное отключение `kodikShell` в удалённом `config.json`)
 Оболочка в Shadow DOM внутри кадра Kodik. Управляет родным `video.fp-engine` и родными `select` сезонов, серий и озвучек, своей логики воспроизведения нет. `modules/kodik/shell-boot.js` запускается на `document_start` и скрывает родное управление до появления оболочки. Режимы (`playerMode`): запуск, загрузка, эпизод и реклама; во время рекламы оболочка уходит с экрана. При ошибке оболочка снимается. Ключ `kodikShell` в `v1/config.json` отключает её удалённо.
 
-### 5.3. Автовыбор приоритетной озвучки (`ag-voice.js`, `jt-voice.js`)
+### 5.3. Автовыбор приоритетной озвучки (`ag-voice.js`, в Kodik — `content-kodik.js`)
 - Озвучка, выбранная вручную, запоминается для тайтла (`modules/shared/voice-choice.js`) и важнее приоритетов.
 - Пользователь задает приоритетный порядок студий (например: *AniLibria -> Studio Band -> Dream Cast -> Дубляж*).
 - **На AnimeGO**: сначала выбирается озвучка по приоритету (`[data-anime-player-target="translation"]`), затем провайдер Kodik именно для этой озвучки (`[data-anime-player-target="provider"][data-provider-slug="kodik"]`, сопоставление по `data-ptranslation`).

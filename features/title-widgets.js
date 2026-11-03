@@ -59,7 +59,7 @@
             const resolved = await window.agSendMessage({ action: 'resolve_shikimori_id', titles: info.titles, year: info.year, kind: info.kind });
             shikimoriId = resolved && resolved.id;
         }
-        if (shikimoriId && !scope.disposed) {
+        if (shikimoriId && !scope.disposed && !provider.showsShikimoriRating) {
             const details = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${shikimoriId}` });
             const score = details && details.data && details.data.score;
             bar.prepend(el('a', { class: 'ag-tw__btn', href: `https://shikimori.io/animes/${shikimoriId}`, target: '_blank', rel: 'noopener' }, `Shikimori ★ ${score || '?'}`));

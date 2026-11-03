@@ -63,8 +63,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const shikiLoggedOut = document.getElementById('shiki-logged-out');
     const shikiLoggedIn = document.getElementById('shiki-logged-in');
-    const shikiClientIdInput = document.getElementById('shiki-client-id');
-    const shikiClientSecretInput = document.getElementById('shiki-client-secret');
     const shikiAuthCodeInput = document.getElementById('shiki-auth-code');
     const shikiCodeWrapper = document.getElementById('shiki-code-wrapper');
     const shikiErrorMsg = document.getElementById('shiki-error-msg');
@@ -73,8 +71,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnShikiSubmitCode = document.getElementById('btn-shiki-submit-code');
     const btnShikiLogout = document.getElementById('btn-shiki-logout');
 
-    const toggleCustomCreds = document.getElementById('toggle-custom-credentials');
-    const customCredsWrapper = document.getElementById('custom-credentials-wrapper');
 
     const statusTextEl = document.getElementById('shiki-status-text');
     const todayCountEl = document.getElementById('shiki-today-count');
@@ -209,11 +205,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const site = AgSites.byId(siteId);
         showToast(siteToast, `${site.name}: ${enabled ? 'включено' : 'выключено'}`);
-        // Сайты-провайдеры включаются/выключаются на лету; старые модули AnimeGO / Jut-Su — после перезагрузки
-        if (site.legacy) {
-            const patterns = site.hosts.flatMap(h => [`*://${h}/*`, `*://*.${h}/*`]);
-            chrome.tabs.query({ url: patterns }, (tabs) => tabs.forEach(tab => chrome.tabs.reload(tab.id)));
-        }
         renderSitesList();
         if (currentSite && currentSite.id === siteId) {
             if (statusText) statusText.textContent = enabled ? 'активно' : 'выключено для этого сайта';
@@ -322,13 +313,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- Shikimori Auth & Watchlist ---
-    if (toggleCustomCreds && customCredsWrapper) {
-        toggleCustomCreds.onclick = () => {
-            const isHidden = customCredsWrapper.style.display === 'none';
-            customCredsWrapper.style.display = isHidden ? 'flex' : 'none';
-        };
-    }
-
     function showCustomConfirm(title, desc, onConfirm) {
         const overlay = document.getElementById('customModalOverlay');
         const btnCancel = document.getElementById('btnModalCancel');
@@ -356,17 +340,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let activeClientId = "";
-    let activeClientSecret = "";
 
     async function loadShikiStatus() {
         chrome.runtime.sendMessage({ action: "shiki_get_status" }, (res) => {
             if (chrome.runtime.lastError || !res) return;
 
             activeClientId = res.clientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
-            activeClientSecret = res.clientSecret || "";
-
-            if (res.clientId && shikiClientIdInput) shikiClientIdInput.value = res.clientId;
-            if (res.clientSecret && shikiClientSecretInput) shikiClientSecretInput.value = res.clientSecret;
 
             if (todayCountEl) {
                 todayCountEl.textContent = res.todayCount || 0;
@@ -489,20 +468,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Сэкономленное за месяц время: считает content-kodik.js при каждом пропуске опенинга или эндинга
-    async function renderSavedTime() {
-        const box = document.getElementById('savedTime');
-        if (!box) return;
-        const { ag_saved_time: saved } = await chrome.storage.local.get(['ag_saved_time']);
-        const now = new Date();
-        const month = `${now.getFullYear()}-${now.getMonth() + 1}`;
-        const minutes = saved && saved.month === month ? Math.floor(saved.seconds / 60) : 0;
-        box.hidden = minutes < 1;
-        if (minutes < 1) return;
-        const hours = Math.floor(minutes / 60);
-        box.innerHTML = `${AgUI.icon('clock', 13)}<span>Сэкономлено: <b>${hours ? `${hours} ч ` : ''}${minutes % 60} мин</b></span>`;
-    }
-    renderSavedTime().catch(() => {});
-
     let activeTabStatus = null;
     let currentLoadedItems = [];
     let watchingItems = [];
@@ -743,31 +708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (shikiCodeWrapper) shikiCodeWrapper.style.display = 'block';
             shikiErrorMsg.style.display = 'none';
 
-            const customId = shikiClientIdInput ? shikiClientIdInput.value.trim() : "";
-            const customSecret = shikiClientSecretInput ? shikiClientSecretInput.value.trim() : "";
-
-            const targetClientId = customId || activeClientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
-
-            if (!targetClientId || targetClientId.includes('DefaultID')) {
-                shikiErrorMsg.style.display = 'block';
-                shikiErrorMsg.innerHTML = 'Введите ваш <b>Client ID</b> в разворачиваемом поле ниже или вставьте в <code>config.js</code>.<br><a href="https://shikimori.one/oauth/applications/new" target="_blank" style="color:var(--accent);">Создать приложение на Shikimori (1 раз)</a>';
-                if (customCredsWrapper) customCredsWrapper.style.display = 'flex';
-                return;
-            }
-
-            if (customId || customSecret) {
-                const currentSettings = await window.getSettings();
-                const storageObj = { ag_settings: currentSettings };
-                if (customId) {
-                    currentSettings.shiki_client_id = customId;
-                    storageObj.shiki_client_id = customId;
-                }
-                if (customSecret) {
-                    currentSettings.shiki_client_secret = customSecret;
-                    storageObj.shiki_client_secret = customSecret;
-                }
-                await chrome.storage.local.set(storageObj);
-            }
+            const targetClientId = activeClientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
 
             const authUrl = `https://shikimori.io/oauth/authorize?client_id=${encodeURIComponent(targetClientId)}&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&scope=user_rates`;
 
@@ -785,8 +726,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (btnShikiSubmitCode) {
         btnShikiSubmitCode.onclick = () => {
-            const customId = shikiClientIdInput ? shikiClientIdInput.value.trim() : "";
-            const customSecret = shikiClientSecretInput ? shikiClientSecretInput.value.trim() : "";
             const code = shikiAuthCodeInput.value.trim();
 
             if (!code) {
@@ -803,8 +742,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             chrome.runtime.sendMessage({
                 action: "shiki_oauth_exchange",
                 code: code,
-                clientId: customId || activeClientId,
-                clientSecret: customSecret || activeClientSecret
+                clientId: activeClientId
             }, (res) => {
                 btnShikiSubmitCode.disabled = false;
                 btnShikiSubmitCode.textContent = 'Войти';

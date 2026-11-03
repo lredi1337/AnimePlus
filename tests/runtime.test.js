@@ -46,7 +46,7 @@ async function startRuntime({ url, html, settings = {} }) {
                 return { status: 200, data: { id: 61987, score: '8.92' } };
             case 'resolve_shiki_posters': return { posters: { 100: 'https://shikimori.io/uploads/poster/animes/100/main.webp' } };
             case 'resolve_all_sites': return { results: msg.siteIds.map(id => ({ siteId: id, url: id === 'jutsu' ? 'https://jut-su.net/1-x.html' : null })) };
-            case 'get_random_shikimori_anime': return { url: 'https://ru.yummyani.me/catalog/item/naruto-tv-1', id: 20, name: 'Naruto', russian: 'Наруто' };
+            case 'get_random_shikimori_anime': return { url: 'https://ru.yummyani.me/catalog#naruto-tv-1', id: 20, name: 'Naruto', russian: 'Наруто' };
             default: return null;
         }
     };
@@ -130,8 +130,6 @@ test('runtime на yammyanime.club: Kodik, виджеты, Топ, мост пл
     await tick();
     const agData = replies.find(m => m.type === 'AG_DATA');
     assert.ok(agData, 'ответ AG_DATA');
-    assert.equal(agData.prevTitle, '3 серия');
-    assert.equal(agData.nextTitle, '5 серия');
     assert.ok(replies.some(m => m.type === 'AG_FS_STATE'));
 
     // Чужой origin игнорируется
@@ -284,8 +282,6 @@ test('runtime: кнопка СЛУЧАЙНОЕ на ru.yummyani.me перехв�
         settings: { random_min_score: '8.0', random_kinds: ['tv', 'movie'] }
     });
     const doc = w.document;
-    let navigated = null;
-    w.agNavigateTo = (url) => { navigated = url; };
     await tick(300);
 
     const randomLink = doc.querySelector('a[href="/catalog/random"]');
@@ -300,7 +296,7 @@ test('runtime: кнопка СЛУЧАЙНОЕ на ru.yummyani.me перехв�
     const randomMsg = sent.find(m => m.action === 'get_random_shikimori_anime');
     assert.ok(randomMsg, 'сообщение get_random_shikimori_anime отправлено');
     assert.equal(randomMsg.siteId, 'yummy_ru', 'передан siteId yummy_ru');
-    assert.equal(navigated, 'https://ru.yummyani.me/catalog/item/naruto-tv-1', 'выполнен переход по подобранному URL');
+    assert.equal(w.location.hash, '#naruto-tv-1', 'выполнен переход по подобранному URL');
 
     w.close();
 });

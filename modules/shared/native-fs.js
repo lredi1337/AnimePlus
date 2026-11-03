@@ -82,7 +82,6 @@
     root.AgNativeFs = {
         request,
         exit,
-        isActive: () => !!document.fullscreenElement,
         /** Срабатывает при любом выходе: Esc, F11, кнопка браузера, удаление блока со страницы */
         onExit(handler) {
             document.addEventListener('fullscreenchange', () => {

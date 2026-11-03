@@ -1,5 +1,5 @@
 // modules/site-selectors.js
-// Единый реестр селекторов AnimeGO и Jut-Su + проверка их актуальности.
+// Реестр селекторов AnimeGO и каркаса Jut-Su + проверка их актуальности.
 // Каждый ключ — список вариантов от новой разметки к старой. При обновлении сайта правим только этот файл.
 // Проверка (agCheckSelectorHealth) пишет предупреждение в консоль и в storage (ag_selector_health),
 // а popup показывает, что разметка сайта изменилась, — о поломке становится известно сразу.
@@ -20,7 +20,6 @@
             shikimoriIdSource: ['[data-player*="/cdn-iframe/"]', 'iframe[src*="/cdn-iframe/"]'],
             episodeItems: ['[data-anime-player-episodes-target="episode"][data-episode-number]'],
             episodeActive: ['[data-anime-player-episodes-target="episode"].active[data-episode-number]', '.player-video-bar__item.active[data-episode-number]'],
-            legacyEpisodeSelect: ["select[name='series']"],
             translations: ['[data-anime-player-target="translation"][data-translation]'],
             providers: ['[data-anime-player-target="provider"][data-ptranslation]'],
             navNext: ['.player-video-bar__arrow.next:not([disabled])', '.next.m-ep-arrow:not([disabled])'],
@@ -32,11 +31,6 @@
             main: ['main.content', 'main', '.wrapper[data-dynamic-content]']
         },
         jutsu: {
-            title: ['.jutsu-page__title-text h1', '.title_video', 'h1'],
-            originalTitle: ['.jutsu-page__original', '.jutsu-page__title-original', '[class*="title-original"]'],
-            info: ['.jutsu-page__info'],
-            player: ['#jutsu-page__player', '.jutsu-page__player-video'],
-            playerTabs: ['.tabs-block__select'],
             content: ['.jutsu-content', '.jutsu-wrapper__main'],
             navTop100: ['a[href*="/top100/"]']
         }
@@ -51,7 +45,6 @@
             any: ['headerNav', 'main']
         },
         jutsu: {
-            anime: ['title', 'originalTitle', 'player', 'playerTabs'],
             any: ['content', 'navTop100']
         }
     };

@@ -13,7 +13,7 @@ const backgroundShared = Object.fromEntries([
     'cleanupOldNotifications', 'ensureEpisodesAlarm', 'exchangeShikiCode', 'fetchShikimoriApi', 'fillShikiPosters',
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
-    'openNotificationTarget', 'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'setDirectUrlInCache',
+    'openNotificationTarget', 'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'searchShikimoriAnime', 'setDirectUrlInCache',
     'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming',
     'shikiFetch', 'shikiPosterMemo', 'storageWriteQueues', 'toShikiApiUrl', 'updateShikiUserRate', 'updateStorageObject'
 ].map(name => [name, 'writable']));

@@ -7,8 +7,8 @@
 // Добавление нового сайта = запись здесь + провайдер (providers/*.js) + matches в manifest.json.
 //
 // platform:
-//   'animego' — AnimeGO.me (собственные модули modules/animego/*, исторический код)
-//   'dle'     — DLE-движок с плеерами в обёртке xfp (Jut-Su и его «семейство»)
+//   'animego' — AnimeGO.me (providers/animego.js и то, что есть только у него: modules/animego/*)
+//   'dle'     — DLE-движок с плеерами в обёртке xfp (Jut-Su и его «семейство»), provider — свой класс поверх общего
 //   'yani'    — платформа YummyAnime с JSON API (/api/anime/{slug}, /api/search)
 
 (function (root) {
@@ -18,12 +18,12 @@
         {
             id: 'animego', name: 'AnimeGO', short: 'AG', color: '#ef4444',
             hosts: ['animego.me', 'animego.org'], home: 'https://animego.me',
-            platform: 'animego', legacy: true
+            platform: 'animego'
         },
         {
             id: 'jutsu', name: 'Jut-Su', short: 'JS', color: '#3b82f6',
             hosts: ['jut-su.net'], home: 'https://jut-su.net',
-            platform: 'dle', legacy: true,
+            platform: 'dle', provider: 'jutsu',
             dle: { titlePath: /^\/\d+-[^/]+\.html$/, searchPath: '/?do=search&subaction=search&story=' }
         },
         {

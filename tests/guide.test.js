@@ -34,6 +34,45 @@ test('два действия подряд не теряют задание', as
     assert.equal(store.ag_guide.tipsDone, true);
 });
 
+test('оценка: Shikimori не нужен, а без обучения просьба приходит через три дня', async () => {
+    const { AgGuide } = loadGuide({});
+    const DAY = 864e5;
+    const now = 100 * DAY;
+    const state = (s) => AgGuide.normalize({ tourDone: true, firstSeen: now, ...s });
+    const trained = { play: true, skip: true, panel: true, settings: true };
+
+    assert.equal(AgGuide.ratingDue(state({ tasks: trained }), now), true, 'все задания, кроме Shikimori');
+    assert.equal(AgGuide.ratingDue(state({ tasks: { play: true } }), now), false, 'только начал');
+    assert.equal(AgGuide.ratingDue(state({ tasks: { play: true }, firstSeen: now - 3 * DAY }), now), true, 'смотрит три дня');
+    assert.equal(AgGuide.ratingDue(state({ tasks: {}, firstSeen: now - 30 * DAY }), now), false, 'ни разу не смотрел');
+    assert.equal(AgGuide.ratingDue(AgGuide.normalize({ tasks: trained }), now), false, 'пока идёт экскурсия');
+    assert.equal(AgGuide.ratingDue(state({ tasks: trained, rated: true }), now), false, 'уже оценил');
+});
+
+test('«Не сейчас»: ещё раз через две недели, после второго отказа больше не спрашиваем', async () => {
+    const { AgGuide } = loadGuide({});
+    const DAY = 864e5;
+    const now = 100 * DAY;
+    let state = AgGuide.normalize({ tourDone: true, firstSeen: 1, tasks: { play: true, skip: true, panel: true, settings: true } });
+
+    state = AgGuide.normalize({ ...state, ...AgGuide.ratingLater(state, now) });
+    assert.equal(AgGuide.ratingDue(state, now + 13 * DAY), false);
+    assert.equal(AgGuide.ratingDue(state, now + 15 * DAY), true);
+
+    state = AgGuide.normalize({ ...state, ...AgGuide.ratingLater(state, now + 15 * DAY) });
+    assert.equal(state.rated, true);
+    assert.equal(AgGuide.ratingDue(state, now + 100 * DAY), false);
+});
+
+test('день первого запуска запоминается один раз', async () => {
+    const { AgGuide, store } = loadGuide({});
+    await AgGuide.mark('play');
+    const first = store.ag_guide.firstSeen;
+    assert.ok(first > 0);
+    await AgGuide.patch({ tourDone: true });
+    assert.equal(store.ag_guide.firstSeen, first);
+});
+
 test('прогресс и испорченные данные', async () => {
     const { AgGuide } = loadGuide('мусор');
     const state = await AgGuide.read();

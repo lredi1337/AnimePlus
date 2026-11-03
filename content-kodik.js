@@ -44,16 +44,11 @@
     // ==========================================
     // --- ЛОГИКА ВНУТРИ ПЛЕЕРА (IFRAME) ---
     // ==========================================
-    let hideTimeout, rewindSum = 0, rewindTimer = null, clickCount = 0, clickTimer = null;
+    let rewindSum = 0, rewindTimer = null;
     let canAutoPlay = false;
     let skipData = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
     const skipMemory = globalThis.AgSkipMemory.create();
-    const recordSavedTime = (seconds) => {
-        if (globalThis.AgGuide) globalThis.AgGuide.mark('skip');
-        chrome.storage.local.get('ag_saved_time')
-            .then(data => chrome.storage.local.set({ ag_saved_time: globalThis.AgSkipMemory.addSaved(data.ag_saved_time, seconds) }))
-            .catch(() => {});
-    };
+    const markSongSkipped = () => { if (globalThis.AgGuide) globalThis.AgGuide.mark('skip'); };
     // Перехват на всём документе: видео рекламы и серии — разные элементы, а события видео не всплывают
     document.addEventListener('seeking', (e) => skipMemory.onSeek(e.target.currentTime), true);
     let currentSkipTarget = null;
@@ -73,8 +68,6 @@
         },
         onTimings: (timings) => {
             skipData = timings;
-            const v = document.querySelector('video');
-            if (v) updateTimelineZones(v);
         }
     }) : null;
 
@@ -203,7 +196,6 @@
                     targetItem.dispatchEvent(new MouseEvent('mouseup', opts));
                     targetItem.click();
                     setTimeout(() => {
-                        updateLocalEpisodeNumbers();
                         reportActiveEpisode();
                     }, 200);
                     return true;
@@ -233,7 +225,6 @@
                 sel.dispatchEvent(new Event('input', { bubbles: true }));
                 sel.dispatchEvent(new Event('change', { bubbles: true }));
                 setTimeout(() => {
-                    updateLocalEpisodeNumbers();
                     reportActiveEpisode();
                 }, 200);
                 return true;
@@ -258,7 +249,6 @@
                 nextBtn.dispatchEvent(new MouseEvent('mouseup', opts));
                 nextBtn.click();
                 setTimeout(() => {
-                    updateLocalEpisodeNumbers();
                     reportActiveEpisode();
                 }, 200);
                 return true;
@@ -276,7 +266,6 @@
                 prevBtn.dispatchEvent(new MouseEvent('mouseup', opts));
                 prevBtn.click();
                 setTimeout(() => {
-                    updateLocalEpisodeNumbers();
                     reportActiveEpisode();
                 }, 200);
                 return true;
@@ -360,34 +349,17 @@
         return { current: "1", prev: "", next: "" };
     };
 
-    const updateLocalEpisodeNumbers = () => {
-        const data = getLocalEpisodeData();
-        if (document.getElementById('ag-pn')) document.getElementById('ag-pn').textContent = data.prev || "";
-        if (document.getElementById('ag-nn')) document.getElementById('ag-nn').textContent = data.next || "";
-    };
-
     const reportActiveEpisode = () => {
         const data = getLocalEpisodeData();
         window.top.postMessage({ type: 'AG_EPISODE_CHANGED', episode: data.current }, '*');
     };
-    let flashTimeout = null; // Оптимизация: вынесли из window
 
-    function applyVisualSettings() {
-        const navs = document.querySelectorAll('.ag-nav');
-        navs.forEach(el => el.style.display = settings.showNav ? 'flex' : 'none');
-
-        const skipBtn = document.getElementById('ag-skip');
-        if (skipBtn) skipBtn.style.display = settings.showSkipBtn ? 'flex' : 'none';
-
-        const centerBtns = document.querySelectorAll('.ag-center-btn');
-        centerBtns.forEach(el => el.style.display = settings.showCenterBtn ? 'flex' : 'none');
-
-        const pipBtn = document.getElementById('ag-pip');
-        if (pipBtn) pipBtn.style.display = (settings.showPiP !== false) ? 'flex' : 'none';
-    }
-
+    // Свои клавиши Kodik перематывает сам: без перехвата нажатие срабатывало дважды, а стрелки уводили на 10-20 секунд.
+    // Поэтому слушаем раньше плеера и не отдаём ему ни нажатие, ни отпускание, ни повтор при удержании
+    const interceptedKeys = new Set();
     document.addEventListener('keydown', (e) => {
-        if (e.repeat) return;
+        // Поля ввода плеера (поиск серии) получают клавиши как обычно
+        if (e.composedPath().some(n => n.tagName === 'INPUT')) return;
 
         const pressed = [];
         if (e.ctrlKey) pressed.push('ctrl');
@@ -398,8 +370,20 @@
         }
         const combo = pressed.join('+');
 
-        const v = document.querySelector('video');
+        // Первым в кадре бывает пустой служебный элемент video: серия идёт в fp-engine
+        const v = document.querySelector('video.fp-engine') || document.querySelector('video');
         if (!v) return;
+
+        if (Object.values(settings.keys).includes(combo)) {
+            interceptedKeys.add(e.code);
+            if (e.repeat) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+        } else if (e.repeat) {
+            return;
+        }
 
         if (combo === settings.keys.fs) {
             e.preventDefault(); e.stopPropagation();
@@ -415,29 +399,32 @@
         }
         else if (combo === settings.keys.next) {
             e.preventDefault(); e.stopPropagation();
-            if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
+            if (shouldUseLocalNav()) { switchKodikEpisode('next'); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
         }
         else if (combo === settings.keys.prev) {
             e.preventDefault(); e.stopPropagation();
-            if (shouldUseLocalNav()) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
+            if (shouldUseLocalNav()) { switchKodikEpisode('prev'); }
             else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
         }
         else if (combo === settings.keys.skip) {
             e.preventDefault(); e.stopPropagation();
             if (currentSkipTarget) {
-                recordSavedTime(currentSkipTarget - v.currentTime);
+                markSongSkipped();
                 v.currentTime = currentSkipTarget;
-                showFlash("Skipped!");
             } else {
                 v.currentTime += 89;
-                showFlash("Skip +89s");
             }
         }
         else if (e.key === 'Escape') {
             window.top.postMessage({ type: 'AG_PSEUDO_FS', action: 'disable' }, '*');
         }
-    });
+    }, true);
+    document.addEventListener('keyup', (e) => {
+        if (!interceptedKeys.delete(e.code)) return;
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
 
     window.addEventListener('message', (e) => {
         if (!isParentSiteOrigin(e.origin)) return;
@@ -452,12 +439,11 @@
             checkAndClickPlayButton();
         }
         if (e.data?.type === 'AG_FS_STATE') {
-            if (e.data.active) {
-                document.body.classList.add('ag-fs-active');
-            } else {
-                document.body.classList.remove('ag-fs-active');
-            }
             document.body.dataset.agFsState = e.data.active;
+        }
+
+        if (e.data?.type === 'AG_DATA' && 'mediaSession' in navigator && navigator.mediaSession.metadata) {
+            navigator.mediaSession.metadata.title = e.data.currentTitle || 'Anime+';
         }
 
         if (e.data?.type === 'AS_DATA_UPDATE') {
@@ -465,31 +451,22 @@
                 audioSkip.setTitle(e.data.malId, e.data.data);
             } else {
                 skipData = e.data.data;
-                const v = document.querySelector('video');
-                if (v) updateTimelineZones(v);
             }
         }
 
         if (e.data?.type === 'AG_SWITCH_KODIK_EPISODE') {
             switchKodikEpisode(e.data.dir, true);
-            updateLocalEpisodeNumbers();
         }
 
     });
 
     window.agOnSettingsChange((fresh) => {
         settings = fresh;
-        applyVisualSettings();
     });
 
     const syncFsState = () => {
         const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
         document.body.dataset.agFsState = isFS ? "true" : "false";
-        if (isFS) {
-            document.body.classList.add('ag-fs-active');
-        } else {
-            document.body.classList.remove('ag-fs-active');
-        }
     };
     document.addEventListener('fullscreenchange', syncFsState);
     document.addEventListener('webkitfullscreenchange', syncFsState);
@@ -517,110 +494,26 @@
 
     function sendFs(action) { window.top.postMessage({ type: 'AG_PSEUDO_FS', action: action }, '*'); }
     function doRewind(s, v) {
-        rewindSum += s; showFlash(`${rewindSum > 0 ? '+' : ''}${rewindSum}с`);
+        rewindSum += s;
         clearTimeout(rewindTimer);
         rewindTimer = setTimeout(() => { v.currentTime += rewindSum; rewindSum = 0; if (v.paused) v.play(); }, 450);
     }
-    function showFlash(t) {
-        const f = document.getElementById('ag-flash'); if (!f) return;
-        f.textContent = t; f.style.opacity = '1';
-        clearTimeout(flashTimeout);
-        flashTimeout = setTimeout(() => f.style.opacity = '0', 800);
-    }
-
-    function updateTimelineZones(v) {
-        if (!v || !v.duration) return;
-
-        if (document.querySelector('.fp-skip-button.active')) {
-            const container = document.getElementById('ag-timeline-zones');
-            if (container) container.replaceChildren();
-            return;
-        }
-
-        const timeline = document.querySelector('.fp-timeline');
-        if (!timeline) return;
-
-        let tooltip = document.getElementById('ag-timeline-tooltip');
-        let tooltipText = document.getElementById('ag-timeline-tooltip-text');
-        if (!tooltip) {
-            tooltip = document.createElement('div');
-            tooltip.id = 'ag-timeline-tooltip';
-            tooltip.style = `
-                position: fixed; padding: 5px 10px; background: white; 
-                color: black; border-radius: 4px; font-size: 13px; z-index: 1000000; 
-                pointer-events: none; display: none; transform: translate(-50%, -135%);
-                font-family: sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-                font-weight: 500;
-            `;
-            tooltipText = document.createElement('span');
-            tooltipText.id = 'ag-timeline-tooltip-text';
-            tooltip.appendChild(tooltipText);
-
-            const arrow = document.createElement('div');
-            arrow.style = `
-                position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
-                width: 0; height: 0; border-left: 6px solid transparent;
-                border-right: 6px solid transparent; border-top: 6px solid white;
-            `;
-            tooltip.appendChild(arrow);
-            document.body.appendChild(tooltip);
-        }
-
-        let container = document.getElementById('ag-timeline-zones');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'ag-timeline-zones';
-            container.style = "position:absolute; inset:0; pointer-events:none; z-index:0;";
-            timeline.appendChild(container);
-        } else {
-            container.replaceChildren();
-        }
-
-        const formatTime = (s) => {
-            const m = Math.floor(s / 60);
-            const sec = Math.floor(s % 60);
-            return `${m}:${sec < 10 ? '0' : ''}${sec}`;
-        }
-
-        const createZone = (start, end, label) => {
-            if (start < 0 || end <= 0) return;
-
-            const left = (start / v.duration) * 100;
-            const width = ((end - start) / v.duration) * 100;
-            const zone = document.createElement('div');
-            zone.style = `
-                position:absolute; top:0; bottom:0;
-                left:${left}%; width:${width}%;
-                background: rgba(255, 255, 255, 0.25);
-                border-left: 1px solid rgba(255,255,255,0.1);
-                border-right: 1px solid rgba(255,255,255,0.1);
-                pointer-events: auto; cursor: pointer;
-            `;
-            zone.onmouseenter = () => { tooltip.style.display = 'block'; };
-            zone.onmousemove = (e) => {
-                const rect = timeline.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                const currentTime = v.duration * percent;
-                const textSpan = document.getElementById('ag-timeline-tooltip-text');
-                if (textSpan) textSpan.textContent = `${formatTime(currentTime)}: ${label}`;
-                tooltip.style.left = e.clientX + 'px';
-                tooltip.style.top = (rect.top + window.scrollY) + 'px';
-            };
-            zone.onmouseleave = () => { tooltip.style.display = 'none'; };
-            container.appendChild(zone);
-        };
-
-        if (skipData.op.end > 0) createZone(skipData.op.start, skipData.op.end, "Опенинг");
-        if (skipData.ed.end > 0) createZone(skipData.ed.start, skipData.ed.end, "Эндинг");
-    }
-
-    const VOLUME_STEP = 0.01;
-
     // Метка Kodik без известных таймингов: примерная длина песни для запоминания возврата к ней
     const NATIVE_SKIP_RANGE_SEC = 120;
 
     function setupSmartSkip(v) {
-        if (document.getElementById('ag-smart-skip')) return;
+        const style = document.createElement('style');
+        style.textContent = `
+            #ag-smart-skip, #ag-skip-undo {
+                position: fixed; right: 24px; bottom: 76px; z-index: 2147483647; display: none; padding: 10px 18px;
+                font-family: ${window.AG_FONT || 'sans-serif'}; font-size: 14px; font-weight: 600; border-radius: 7px;
+                cursor: pointer; pointer-events: auto; user-select: none;
+            }
+            #ag-smart-skip { background: #fff; color: #111; }
+            #ag-skip-undo { background: #101319; color: #fff; }
+        `;
+        document.head.appendChild(style);
+
         const btn = document.createElement('div');
         btn.id = 'ag-smart-skip';
         document.body.appendChild(btn);
@@ -658,8 +551,6 @@
             if (!playerShell && document.querySelector('.fp-skip-button.active')) {
                 btn.style.display = "none";
                 currentSkipTarget = null;
-                const container = document.getElementById('ag-timeline-zones');
-                if (container && container.childNodes.length > 0) container.replaceChildren();
                 return;
             }
 
@@ -673,40 +564,6 @@
             // Зритель вернулся к песне сам: значит, хочет её посмотреть, и пропустить её можно только кнопкой
             const kept = !!part && skipMemory.isKept(part);
             let skipTarget = null;
-            let nativeSkip = null;
-
-            if (!playerShell && (isOpTarget || isEdTarget)) {
-                nativeSkip = Array.from(document.querySelectorAll('[class*="skip"]'))
-                    .find(el => {
-                        if (el.offsetParent === null) return false;
-                        const text = el.innerText.trim().toLowerCase();
-                        if (!text.includes('пропустить') && !text.includes('skip')) return false;
-
-                        const style = window.getComputedStyle(el);
-                        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
-                    });
-            }
-
-            if (nativeSkip) {
-                btn.style.display = "none";
-                currentSkipTarget = null;
-                if (settings.autoSkip && !kept && settings[isEdTarget ? 'autoSkipEd' : 'autoSkipOp'] !== false) {
-                    skipMemory.markSkipped(part, skipData[part]);
-                    recordSavedTime(skipData[part].end - v.currentTime);
-                    const timeBeforeClick = v.currentTime;
-                    const skipEndTime = isEdTarget ? skipData.ed.end : skipData.op.end;
-                    const opts = { bubbles: true, cancelable: true, view: window };
-                    nativeSkip.dispatchEvent(new MouseEvent('mousedown', opts));
-                    nativeSkip.dispatchEvent(new MouseEvent('mouseup', opts));
-                    nativeSkip.click();
-                    setTimeout(() => {
-                        if (Math.abs(v.currentTime - timeBeforeClick) < 1 && skipEndTime > 0) {
-                            v.currentTime = skipEndTime;
-                        }
-                    }, 300);
-                }
-                return;
-            }
 
             if (isOpTarget) {
                 btn.innerText = "Пропустить опенинг";
@@ -723,299 +580,64 @@
                 if (settings.autoSkip && !manualOnly) {
                     const startOfSong = skipData[part].start;
                     skipMemory.markSkipped(part, skipData[part]);
-                    recordSavedTime(skipTarget - v.currentTime);
+                    markSongSkipped();
                     v.currentTime = skipTarget;
                     btn.style.display = "none";
                     showUndo(part, startOfSong);
                 }
-                else { btn.style.display = "block"; btn.onclick = (e) => { e.stopPropagation(); recordSavedTime(skipTarget - v.currentTime); v.currentTime = skipTarget; }; }
+                else { btn.style.display = "block"; btn.onclick = (e) => { e.stopPropagation(); markSongSkipped(); v.currentTime = skipTarget; }; }
             } else { btn.style.display = "none"; }
         });
-
-        v.addEventListener('loadedmetadata', () => updateTimelineZones(v));
     }
 
-    function handleZone(e, type, v) {
-        if (!settings.showDBL) return;
-        e.stopPropagation(); e.preventDefault();
-        clickCount++;
-        if (clickCount >= 2) {
-            if (type === 'prev') doRewind(-5, v);
-            if (type === 'next') doRewind(5, v);
-            if (type === 'mid') document.getElementById('ag-fs-patch').click();
-            clickCount = 0; clearTimeout(clickTimer);
-        } else {
-            clearTimeout(clickTimer);
-            clickTimer = setTimeout(() => {
-                if (clickCount === 1) { v.paused ? v.play() : v.pause(); }
-                clickCount = 0;
-            }, 250);
-        }
-    }
-
-    function drawUI(v) {
-        if (document.getElementById('ag-ui')) return;
-        setupSmartSkip(v);
-
-        const font = window.AG_FONT || 'sans-serif';
-
-        const style = document.createElement("style");
-        style.innerText = `
-            #ag-ui { position:absolute; inset:0; pointer-events:none; z-index:9999990; opacity:0; transition:0.5s; display:flex; align-items:center; justify-content:center; font-family:${font}; }
-            .ag-btn { position:absolute; pointer-events:auto; cursor:pointer; background:rgba(15,18,24,0.6); border:1px solid rgba(255,255,255,0.1); color:#fff; display:flex; align-items:center; justify-content:center; transition:0.15s; border-radius:10px; user-select:none; opacity:0.3; z-index:9999997; }
-            .ag-btn:hover { opacity:1; background:rgba(15,18,24,0.85); border-color:rgba(255,255,255,0.3); }
-            .ag-nav { width:80px; height:140px; font-size:35px; top:50%; transform:translateY(-50%); } 
-            #ag-skip { left:0; top:calc(50% + 150px); transform:translateY(-50%); width:80px; height:140px; font-size:45px; transition: 0.4s; }
-            body.ag-fs-active #ag-skip { top: auto !important; bottom: 80px !important; left: 0 !important; transform: translateY(0) !important; }
-            
-            #ag-smart-skip, #ag-skip-undo {
-                position:fixed; bottom:75px; right:25px; z-index:2147483647; 
-                padding:9px 16px; background:rgba(15,18,24,0.85); color:#fff; 
-                border:1px solid rgba(255,255,255,0.3); border-radius:8px; 
-                cursor:pointer; font-family:${font}; font-size:14px; font-weight:600; 
-                display:none; pointer-events:auto; transition:0.2s; user-select:none;
-            }
-            #ag-smart-skip:hover, #ag-skip-undo:hover {
-                background: rgba(255,255,255,0.15); 
-                border-color: rgba(255,255,255,0.8);
-            }
-
-            .ag-center-btn { position:relative; width:60px; height:60px; font-size:18px; border-radius:50%; margin:0 40px; }
-            #ag-pip { top:25px; right:25px; width:48px; height:48px; }
-            #ag-flash { position:absolute; top:30%; left:50%; transform:translateX(-50%); color:white; font-size:32px; font-weight:bold; opacity:0; text-shadow:0 0 10px #000; z-index:10000; }
-            .ag-click-zone { position:absolute; top:55px; height:calc(75% - 55px); pointer-events:auto; z-index:9999980; }
-            #ag-fs-patch { position:absolute; bottom:0; right:0; width:60px; height:60px; pointer-events:auto; z-index:9999999; cursor:pointer; }
-            #ag-tooltip { position:absolute; bottom:65px; right:10px; background:rgba(21,21,21,0.9); color:#fff; padding:4px 9px; border-radius:4px; font-size:12px; opacity:0; transition:0.1s; pointer-events:none; white-space:nowrap; border:1px solid #333; }
-            #ag-fs-patch:hover + #ag-tooltip { opacity:1; }
-            .ag-num { position:absolute; top:12px; font-size:16px; font-weight:bold; opacity:0.9; }
-            body.ag-fs-transitioning, body.ag-fs-transitioning * { transition: none !important; animation: none !important; }
-            
-            /* Нативные выпадающие меню Kodik (серии, озвучки, сезоны) поднимаем выше наших клик-зон */
-            .serial-seasons-box, .serial-series-box, .serial-translations-box {
-                z-index: 9999995 !important;
-            }
-            /* Отключаем наши клик-зоны и весь интерфейс, когда наведен курсор или открыты меню выбора */
-            body:has(.serial-seasons-box.active) .ag-click-zone,
-            body:has(.serial-series-box.active) .ag-click-zone,
-            body:has(.serial-translations-box.active) .ag-click-zone,
-            body:has(.serial-seasons-box:hover) .ag-click-zone,
-            body:has(.serial-series-box:hover) .ag-click-zone,
-            body:has(.serial-translations-box:hover) .ag-click-zone,
-            body:has(.serial-seasons-box.active) #ag-ui,
-            body:has(.serial-series-box.active) #ag-ui,
-            body:has(.serial-translations-box.active) #ag-ui,
-            body:has(.serial-seasons-box:hover) #ag-ui,
-            body:has(.serial-series-box:hover) #ag-ui,
-            body:has(.serial-translations-box:hover) #ag-ui {
-                pointer-events: none !important;
-                opacity: 0 !important;
-            }
-        `;
-        document.head.appendChild(style);
-        const ui = document.createElement('div'); ui.id = 'ag-ui';
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(`<div class="ag-btn ag-nav" style="left:0" id="ag-p"><span>&lt;</span><div id="ag-pn" class="ag-num"></div></div><div class="ag-btn ag-nav" style="right:0" id="ag-n"><span>&gt;</span><div id="ag-nn" class="ag-num"></div></div><div class="ag-btn" id="ag-skip"><span>»</span></div><div class="ag-btn ag-center-btn" id="ag-c1">«5</div><div class="ag-btn ag-center-btn" id="ag-c2">5»</div><div class="ag-btn" id="ag-pip" title="PiP (Картинка в картинке)"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg></div><div id="ag-flash"></div><div class="ag-click-zone" style="left:0; width:20%;" id="z-p"></div><div class="ag-click-zone" style="right:0; width:20%;" id="z-n"></div><div class="ag-click-zone" style="left:20%; width:60%;" id="z-m"></div><div id="ag-fs-patch"></div><div id="ag-tooltip">Anime+: развернуть плеер</div>`, 'text/html');
-        ui.replaceChildren(...doc.body.childNodes);
-        document.body.appendChild(ui);
-
-        applyVisualSettings();
-
-        const fsPatch = document.getElementById('ag-fs-patch');
-        if (fsPatch) {
-            const handleFsPatch = (e) => {
-                if (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                }
-                sendFs('toggle');
-                return false;
-            };
-            fsPatch.onclick = handleFsPatch;
-            fsPatch.addEventListener('mousedown', (e) => { e.stopPropagation(); e.stopImmediatePropagation(); }, true);
-            fsPatch.addEventListener('mouseup', (e) => { e.stopPropagation(); e.stopImmediatePropagation(); }, true);
-            fsPatch.addEventListener('click', handleFsPatch, true);
-        }
-
-        document.getElementById('ag-p').onclick = () => {
-            if (shouldUseLocalNav()) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
-            else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
+    // Медиаклавиши клавиатуры и наушников. Название серии приходит в ответ на AG_GET_DATA
+    function setupMediaSession(v) {
+        if (!('mediaSession' in navigator)) return;
+        const nav = (dir) => {
+            if (shouldUseLocalNav()) switchKodikEpisode(dir);
+            else window.top.postMessage({ type: 'AG_NAV', dir }, '*');
         };
-        document.getElementById('ag-n').onclick = () => {
-            if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
-            else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
-        };
-        document.getElementById('ag-skip').onclick = () => v.currentTime += 89;
-        document.getElementById('ag-c1').onclick = () => doRewind(-5, v);
-        document.getElementById('ag-c2').onclick = () => doRewind(5, v);
-        document.getElementById('ag-pip').onclick = async () => {
-            try {
-                if (document.pictureInPictureElement) await document.exitPictureInPicture();
-                else await v.requestPictureInPicture();
-            } catch (err) { console.error("PiP error:", err); }
-        };
-        document.getElementById('z-p').onclick = (e) => handleZone(e, 'prev', v);
-        document.getElementById('z-n').onclick = (e) => handleZone(e, 'next', v);
-        document.getElementById('z-m').onclick = (e) => handleZone(e, 'mid', v);
-
-        const preventNativeDblClick = (e) => { e.preventDefault(); e.stopPropagation(); };
-        document.getElementById('z-p').ondblclick = preventNativeDblClick;
-        document.getElementById('z-n').ondblclick = preventNativeDblClick;
-        document.getElementById('z-m').ondblclick = preventNativeDblClick;
-
-        const triggerUiAutoHide = () => {
-            if (ui.style.opacity !== '1') ui.style.opacity = '1';
-            clearTimeout(hideTimeout);
-            hideTimeout = setTimeout(() => ui.style.opacity = '0', settings.hideTime);
-        };
-
-        v.addEventListener('play', triggerUiAutoHide);
-        v.addEventListener('pause', triggerUiAutoHide);
-
-        let moveTimer;
-        window.addEventListener('mousemove', () => {
-            if (moveTimer) return;
-            moveTimer = setTimeout(() => { moveTimer = null; }, 150);
-            triggerUiAutoHide();
-        });
-
-        window.addEventListener('message', (e) => {
-            // Исправлено: window.isValidOrigin нет в скрипте, заменил на базовую проверку
-            if (!isParentSiteOrigin(e.origin)) return;
-
-            if (e.data?.type === 'AG_MOUSE_MOVE') {
-                triggerUiAutoHide();
-            }
-
-            if (e.data?.type === 'AG_DATA') {
-                const getN = (s) => s ? s.match(/\d+/)?.[0] : "";
-                const prevNum = getN(e.data.prevTitle);
-                const nextNum = getN(e.data.nextTitle);
-
-                if (document.getElementById('ag-pn')) document.getElementById('ag-pn').textContent = prevNum;
-                if (document.getElementById('ag-nn')) document.getElementById('ag-nn').textContent = nextNum;
-
-                if ('mediaSession' in navigator && navigator.mediaSession.metadata) {
-                    navigator.mediaSession.metadata.title = e.data.currentTitle || 'Anime+';
-                }
-            }
-        });
-
+        try {
+            navigator.mediaSession.metadata = new MediaMetadata({ title: 'Anime+', artist: 'Anime+' });
+            navigator.mediaSession.setActionHandler('seekforward', () => { v.currentTime += 5; });
+            navigator.mediaSession.setActionHandler('seekbackward', () => { v.currentTime -= 5; });
+            navigator.mediaSession.setActionHandler('previoustrack', () => nav('prev'));
+            navigator.mediaSession.setActionHandler('nexttrack', () => nav('next'));
+        } catch (e) { console.warn("MediaSession not fully supported."); }
         window.top.postMessage({ type: 'AG_GET_DATA' }, '*');
+    }
 
-        if ('mediaSession' in navigator) {
-            try {
-                navigator.mediaSession.metadata = new MediaMetadata({
-                    title: 'Anime+',
-                    artist: 'Anime+',
-                    album: 'AnimeGO Series'
-                });
-
-                navigator.mediaSession.setActionHandler('seekforward', () => { v.currentTime += 5; });
-                navigator.mediaSession.setActionHandler('seekbackward', () => { v.currentTime -= 5; });
-                navigator.mediaSession.setActionHandler('previoustrack', () => {
-                    if (shouldUseLocalNav()) { switchKodikEpisode('prev'); updateLocalEpisodeNumbers(); }
-                    else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
-                });
-                navigator.mediaSession.setActionHandler('nexttrack', () => {
-                    if (shouldUseLocalNav()) { switchKodikEpisode('next'); updateLocalEpisodeNumbers(); }
-                    else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
-                });
-            } catch (e) { console.warn("MediaSession not fully supported."); }
-        }
-
-        const showVolumeOSD = (vol) => {
-            let osd = document.getElementById('ag-vol-osd');
-            if (!osd) {
-                osd = document.createElement('div');
-                osd.id = 'ag-vol-osd';
-                osd.style = `
-                    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-                    background: rgba(0,0,0,0.7); color: #fff; padding: 10px 20px;
-                    border-radius: 8px; font-size: 16px; font-weight: 600; z-index: 9999999;
-                    pointer-events: none; transition: opacity 0.3s;
-                    font-family: ${font}; border: 1px solid rgba(255,255,255,0.1);
-                `;
-                document.body.appendChild(osd);
+    // Серии переключаются внутри Kodik: страница сайта узнаёт номер только от нас
+    function watchLocalEpisodes() {
+        if (!shouldUseLocalNav()) return;
+        const checkInterval = setInterval(() => {
+            const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
+            const items = document.querySelectorAll(KODIK_SERIES_ITEMS);
+            if ((sel && sel.options && sel.options.length > 0) || items.length > 0) {
+                reportActiveEpisode();
+                clearInterval(checkInterval);
             }
-            const volPercent = Math.round(vol * 100);
-            osd.innerHTML = `${window.AgUI ? window.AgUI.icon('volume', 20) : ''} ${volPercent}%`;
-            osd.style.opacity = '1';
+        }, 500);
+        setTimeout(() => clearInterval(checkInterval), 10000);
 
-            clearTimeout(osd.hideTimeout);
-            osd.hideTimeout = setTimeout(() => {
-                osd.style.opacity = '0';
-            }, 1500);
-        };
-
-        document.addEventListener('wheel', (e) => {
-            const volBar = e.target.closest('.fp-volume');
-            if (volBar) {
-                e.preventDefault();
-                const step = VOLUME_STEP;
-                const delta = e.deltaY < 0 ? step : -step;
-                let newVol = v.volume + delta;
-                newVol = Math.max(0, Math.min(1, newVol));
-                v.volume = newVol;
-
-                showVolumeOSD(newVol);
-
-                try {
-                    const slider = volBar.querySelector('.fp-volumeslider');
-                    if (slider) {
-                        const bars = Array.from(slider.querySelectorAll('em'));
-                        if (bars.length > 0) {
-                            const activeCount = Math.round(newVol * bars.length);
-                            bars.forEach((em, idx) => {
-                                em.className = idx < activeCount ? 'fp-color' : 'fp-grey';
-                            });
-                        }
-                    }
-                } catch (err) { /* Игнорируем ошибки при изменении верстки плеера */ }
+        document.addEventListener('change', (e) => {
+            if (e.target.matches('.serial-series-box select, .serial-series select, select[name="series"], .series-select')) {
+                lastSwitchTime = Date.now();
+                setTimeout(reportActiveEpisode, 100);
             }
-        }, { passive: false });
+        });
 
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.fp-volume') && e.isTrusted) {
-                setTimeout(() => { showVolumeOSD(v.volume); }, 50);
+            const target = e.target.closest(`${KODIK_SERIES_ITEMS}, .serial-next-button, .serial-next, [class*="next-series"], [class*="next-episode"]`);
+            const isNextText = !target && (e.target.innerText || e.target.textContent || '').trim().toLowerCase().startsWith('дальше');
+            if (target || isNextText) {
+                lastSwitchTime = Date.now();
+                setTimeout(reportActiveEpisode, 200);
             }
         });
-
-        if (shouldUseLocalNav()) {
-            const checkInterval = setInterval(() => {
-                const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-                const items = document.querySelectorAll(KODIK_SERIES_ITEMS);
-                if ((sel && sel.options && sel.options.length > 0) || items.length > 0) {
-                    updateLocalEpisodeNumbers();
-                    reportActiveEpisode();
-                    clearInterval(checkInterval);
-                }
-            }, 500);
-            setTimeout(() => clearInterval(checkInterval), 10000);
-            
-            document.addEventListener('change', (e) => {
-                if (e.target.matches('.serial-series-box select, .serial-series select, select[name="series"], .series-select')) {
-                    lastSwitchTime = Date.now();
-                    setTimeout(() => {
-                        updateLocalEpisodeNumbers();
-                        reportActiveEpisode();
-                    }, 100);
-                }
-            });
-
-            document.addEventListener('click', (e) => {
-                const target = e.target.closest(`${KODIK_SERIES_ITEMS}, .serial-next-button, .serial-next, [class*="next-series"], [class*="next-episode"]`);
-                const isNextText = !target && (e.target.innerText || e.target.textContent || '').trim().toLowerCase().startsWith('дальше');
-                if (target || isNextText) {
-                    lastSwitchTime = Date.now();
-                    setTimeout(() => {
-                        updateLocalEpisodeNumbers();
-                        reportActiveEpisode();
-                    }, 200);
-                }
-            });
-        }
     }
+
+    let playerControlsReady = false;
 
     const iframeObserver = new MutationObserver(() => {
         checkAndClickPlayButton();
@@ -1023,7 +645,12 @@
         const v = document.querySelector('video');
         if (v && !v.dataset.agInit) {
             v.dataset.agInit = '1';
-            drawUI(v);
+            if (!playerControlsReady) {
+                playerControlsReady = true;
+                setupSmartSkip(v);
+                setupMediaSession(v);
+                watchLocalEpisodes();
+            }
 
             let isHandlingEnded = false;
             const handleEndedEvent = (e) => {
@@ -1042,7 +669,6 @@
                 if (settings.autoNext) {
                     if (shouldUseLocalNav()) {
                         switchKodikEpisode('next', true);
-                        updateLocalEpisodeNumbers();
                     } else {
                         window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
                     }
@@ -1093,7 +719,7 @@
                     // Записываем текущее время как время последнего скипа
                     btn.dataset.agSkipTime = curTime.toString();
                     skipMemory.markSkipped(nativePart, nativeRange.end > 0 ? nativeRange : { start: curTime, end: curTime + NATIVE_SKIP_RANGE_SEC });
-                    recordSavedTime(nativeRange.end > 0 ? nativeRange.end - curTime : 0);
+                    markSongSkipped();
 
                     const seekTime = btn.getAttribute('data-seek-to');
                     if (seekTime && video) {
@@ -1399,7 +1025,6 @@
             nav: (dir) => {
                 if (shouldUseLocalNav()) {
                     switchKodikEpisode(dir);
-                    updateLocalEpisodeNumbers();
                 } else {
                     window.top.postMessage({ type: 'AG_NAV', dir }, '*');
                 }

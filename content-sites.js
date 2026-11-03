@@ -1,5 +1,4 @@
 // content-sites.js
 // Точка входа для сайтов, подключённых через провайдеры (providers/*.js):
-// YummyAnime (old/ru), YummyAnime.TV, AnimeGO.online, YummyAnime.Club.
-// AnimeGO.me и Jut-Su запускаются своими точками входа (content-animego.js, content-jutsu.js).
+// Все сайты подключены через провайдеры (modules/shared/sites.js, providers/*.js).
 window.AgProviders.start().catch(e => console.error('[Anime+] provider runtime:', e));

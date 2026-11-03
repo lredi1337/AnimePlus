@@ -177,9 +177,7 @@ async function shikiFetch(url, options = {}, isRetry = false) {
 }
 
 async function postShikiOAuthToken(bodyObj, isRetry = false) {
-    const storageData = await chrome.storage.local.get(['ag_settings', 'shiki_worker_url']);
-    const settings = storageData.ag_settings || {};
-    const workerUrl = settings.shiki_worker_url || storageData.shiki_worker_url || (globalThis.SHIKI_CREDENTIALS && globalThis.SHIKI_CREDENTIALS.worker_url) || "https://animeplus.ruscadred.workers.dev";
+    const workerUrl = (globalThis.SHIKI_CREDENTIALS && globalThis.SHIKI_CREDENTIALS.worker_url) || "https://animeplus.ruscadred.workers.dev";
 
     if (workerUrl && workerUrl.trim().startsWith('http')) {
         try {
@@ -525,6 +523,25 @@ async function resolveShikimoriId({ titles = [], year = '', kind = '' }) {
     return data;
 }
 
+/** Тайтлы для объединённого поиска на AnimeGO: нет в выдаче сайта — ссылка ведёт на поиск Jut-Su */
+async function searchShikimoriAnime(query) {
+    const list = await fetchShikimoriApi(`/api/animes?search=${encodeURIComponent(query)}&limit=8&censored=true`);
+    if (!Array.isArray(list)) return [];
+    return list.filter(item => !['music', 'pv', 'cm'].includes(item.kind)).map(item => {
+        const russian = item.russian || '';
+        const name = item.name || '';
+        const year = item.aired_on ? item.aired_on.slice(0, 4) : '';
+        const params = new URLSearchParams({ do: 'search', subaction: 'search', story: russian || name, ag_from: 'animeplus', ag_russian: russian, ag_name: name, ag_year: year });
+        return {
+            russian, name, year,
+            kind: item.kind || '',
+            score: item.score,
+            poster: item.image && item.image.original ? `https://shikimori.io${item.image.original}` : '',
+            jutsuUrl: `https://jut-su.net/?${params}`
+        };
+    });
+}
+
 async function updateShikiUserRate({ shikimoriId, episode, status }) {
     let tokens = await getShikiTokens();
     if (tokens.shiki_access_token && !tokens.shiki_user) {
@@ -799,10 +816,10 @@ try {
 // Раньше create вызывался при каждом пробуждении service worker (а он просыпается на каждое сообщение),
 // поэтому при активном просмотре проверка могла откладываться бесконечно.
 const EPISODES_ALARM = 'check_new_episodes_alarm';
+const EPISODES_PERIOD_MIN = 30;
 
 async function ensureEpisodesAlarm({ force = false } = {}) {
-    const { ag_settings: settings = {} } = await chrome.storage.local.get(['ag_settings']);
-    const period = Math.max(5, parseInt(settings.notif_interval_min, 10) || 30);
+    const period = EPISODES_PERIOD_MIN;
     const existing = await chrome.alarms.get(EPISODES_ALARM);
     if (!force && existing && existing.periodInMinutes === period) return;
     await chrome.alarms.create(EPISODES_ALARM, { periodInMinutes: period, delayInMinutes: existing && !force ? period : 1 });
@@ -814,13 +831,6 @@ try {
     });
     chrome.runtime.onInstalled.addListener(() => ensureEpisodesAlarm({ force: true }));
     chrome.runtime.onStartup.addListener(() => ensureEpisodesAlarm());
-    // Пересоздаём alarm, только если пользователь поменял интервал в настройках
-    chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== 'local' || !changes.ag_settings) return;
-        const oldVal = changes.ag_settings.oldValue || {};
-        const newVal = changes.ag_settings.newValue || {};
-        if (oldVal.notif_interval_min !== newVal.notif_interval_min) ensureEpisodesAlarm({ force: true });
-    });
     // Страховка: alarm мог потеряться (например, при обновлении браузера) — создаём, только если его нет
     ensureEpisodesAlarm();
 } catch (e) {}
