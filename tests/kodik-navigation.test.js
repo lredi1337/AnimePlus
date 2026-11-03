@@ -1,5 +1,5 @@
 // tests/kodik-navigation.test.js
-// Тестирование логики переключения серий в Kodik плеере (content-kodik.js)
+// Тестирование логики переключения серий в Kodik плеере (content-player.js)
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
@@ -49,7 +49,7 @@ test('Kodik navigation: переключение серии через каст�
         it.addEventListener('click', () => clicked.push(idx));
     });
 
-    // Функция переключения из content-kodik.js
+    // Функция переключения из content-player.js
     const switchEpisode = (dir) => {
         const currentIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active'));
         let newIdx = currentIdx;

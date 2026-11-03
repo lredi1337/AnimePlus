@@ -1,6 +1,6 @@
 {
   "name": "anime-plus",
-  "version": "10.2.1",
+  "version": "11.0.0",
   "private": true,
   "description": "Anime+ — браузерное расширение для AnimeGO и Jut-Su (Manifest V3)",
   "scripts": {

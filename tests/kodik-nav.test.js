@@ -1,4 +1,4 @@
-// Переключение серий внутри Kodik (content-kodik.js). Скрипт работает только в iframe, поэтому запускается
+// Переключение серий внутри Kodik (content-player.js). Скрипт работает только в iframe, поэтому запускается
 // во вложенном окне jsdom. Разметка панели снята с живого kodikplayer.com (сокращена):
 // три одинаковых выпадающих списка — сезоны, серии, озвучки.
 const test = require('node:test');
@@ -47,8 +47,9 @@ async function startKodik(current, panelOptions) {
         if (e.target.closest('.serial-next-button')) clicked.push('next-button');
     }, true);
 
-    frame.eval(read('modules/kodik/skip-memory.js'));
-    frame.eval(read('content-kodik.js'));
+    frame.eval(read('modules/player/adapters.js'));
+    frame.eval(read('modules/player/skip-memory.js'));
+    frame.eval(read('content-player.js'));
     await new Promise(r => setTimeout(r, 150));
 
     const send = (dir) => frame.dispatchEvent(new frame.MessageEvent('message', {

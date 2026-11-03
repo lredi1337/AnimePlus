@@ -55,11 +55,12 @@
             }
         }
 
-        // 2. Kodik для активной озвучки (наши функции плеера работают только внутри Kodik)
+        // 2. Плеер зрителя для активной озвучки, а без выбора Kodik: на нём есть всё аниме и работают все функции
         if (!state.providerDone) {
             const activeTranslation = translations.find(isActive);
             const key = activeTranslation ? activeTranslation.dataset.translation : null;
-            const kodik = providers.find(p => p.dataset.providerSlug === 'kodik' && !isBroken(p) && (!key || p.dataset.ptranslation === key));
+            const usableFor = (slug) => providers.find(p => p.dataset.providerSlug === slug && !isBroken(p) && (!key || p.dataset.ptranslation === key));
+            const kodik = (chosenPlayer && usableFor(chosenPlayer)) || usableFor('kodik');
             if (!kodik) {
                 state.providerDone = true;
                 return true;
@@ -84,11 +85,29 @@
     let choiceLoaded = false;
     const VOICE_ITEMS = '[data-anime-player-target="translation"]';
 
+    // Плеер, выбранный зрителем: запоминается для сайта
+    const playerChoice = globalThis.AgPlayerChoice;
+    let chosenPlayer = null;
+    const PLAYER_ITEMS = '[data-anime-player-target="provider"]';
+    window.agRememberPlayer = (slug) => {
+        chosenPlayer = playerChoice.isKodik(slug) ? null : slug;
+        if (state) state.providerDone = true;
+        playerChoice.set('animego', slug);
+    };
+    document.addEventListener('click', (e) => {
+        if (!e.isTrusted || !e.target.closest) return;
+        const item = e.target.closest(PLAYER_ITEMS);
+        if (!item || !item.dataset.providerSlug) return;
+        if (!isActive(item)) document.dispatchEvent(new CustomEvent('ag-player-switch'));
+        window.agRememberPlayer(item.dataset.providerSlug);
+    }, true);
+
     if (voiceChoice) {
         document.addEventListener('click', (e) => {
             if (!e.isTrusted || !e.target.closest) return;
             const item = e.target.closest(VOICE_ITEMS);
             if (!item) return;
+            if (!isActive(item)) document.dispatchEvent(new CustomEvent('ag-voice-switch'));
             chosenVoice = voiceChoice.voiceName(item.textContent);
             if (state) state.voiceDone = true;
             voiceChoice.set(voiceChoice.pageKey(), chosenVoice);
@@ -105,9 +124,10 @@
 
     window.agInitVoiceAutoSelect = async function (settings) {
         if (!settings || settings.global_enabled === false) return;
-        if (voiceChoice && !choiceLoaded) {
+        if (!choiceLoaded) {
             choiceLoaded = true;
-            chosenVoice = await voiceChoice.get(voiceChoice.pageKey());
+            chosenPlayer = await playerChoice.get('animego');
+            if (voiceChoice) chosenVoice = await voiceChoice.get(voiceChoice.pageKey());
         }
 
         const menu = document.querySelector('[data-anime-player-target="translation"]')?.closest('[id], .player-video') || document.body;

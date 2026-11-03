@@ -2,7 +2,7 @@
 // Учёт просмотра серий и синхронизация с Shikimori, не зависящая от конкретного плеера.
 //
 // Источники событий (все приходят в верхнее окно через postMessage):
-//   - AG_VIDEO_PROGRESS — наш content-kodik.js (Kodik внутри iframe, в т.ч. вложенный на Jut-Su);
+//   - AG_VIDEO_PROGRESS — наш content-player.js (Kodik внутри iframe, в т.ч. вложенный на Jut-Su);
 //   - нативные события Kodik:  { key: 'kodik_player_time_update' | 'kodik_player_duration_update' | 'kodik_player_video_ended', value };
 //   - AniBoom:                 { source: 'aniboom-player', type: 'player.timeupdate' | 'player.ended', payload };
 //   - CDNVideoHub (CVH):       { source: 'cdnvideohub-player', eventType: 'timeupdate' | 'ended', data }.
@@ -114,6 +114,17 @@
      * @param {(msgEpisode: string|null) => string|null} adapter.getEpisode — текущий номер серии
      * @param {() => {pageKey: string, titles: string[], year?: string, kind?: string}|null} adapter.getTitleInfo
      */
+    /** Серия этой страницы, на которой зритель остановился: { episode, finished } или null */
+    window.agLastWatched = function () {
+        const prefix = `${location.pathname}#`;
+        let last = null;
+        for (const [key, item] of Object.entries(readSaved())) {
+            if (!key.startsWith(prefix) || !item || (last && last.ts >= item.ts)) continue;
+            last = { episode: key.slice(prefix.length), finished: !(Number(item.position) > 0), ts: item.ts };
+        }
+        return last;
+    };
+
     window.agInitProgressTracker = function (adapter) {
         if (window.__agProgressTrackerActive) return window.__agProgressTrackerActive;
 
@@ -152,7 +163,7 @@
                 if (!watched.dirty) continue;
                 watched.dirty = false;
                 changes[key] = watched.ranges.length > 0 || watched.position > 0
-                    ? { ranges: watched.ranges, position: watched.position, ts: Date.now() }
+                    ? { ranges: watched.ranges, position: watched.position, ts: watched.at || Date.now() }
                     : null;
             }
             if (Object.keys(changes).length > 0) writeSaved(changes);
@@ -279,6 +290,8 @@
                 // Перемотать может только наш скрипт в плеере, поэтому место берём из его сообщений
                 if (ev.stream === 'ag' && longEnough) {
                     watched.position = ev.currentTime / st.duration < FINISHED_RATIO ? ev.currentTime : 0;
+                    // Несколько серий сохраняются разом: по этому времени видно, какую смотрели последней
+                    watched.at = Date.now();
                     watched.dirty = true;
                 }
             }

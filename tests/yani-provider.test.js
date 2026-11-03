@@ -143,7 +143,7 @@ test('yani: сайт открыл другой плеер — выбираетс
 test('yani: Kodik уже открыт — меню не трогаем, Kodik нет у тайтла — не зацикливаемся', async () => {
     const open = makeYani();
     const untouched = playerMenu(open.w, ['Aksor', 'Kodik'], 'Kodik');
-    assert.equal(open.provider.selectPreferredPlayer(), true);
+    assert.equal(await untilPicked(open.provider), true);
     assert.deepEqual(untouched, []);
 
     const none = makeYani(NO_KODIK_PAGE);
@@ -155,4 +155,43 @@ test('yani: Kodik уже открыт — меню не трогаем, Kodik н
 test('yani: меню ещё не появилось — ждём, а не считаем выбор сделанным', () => {
     const { provider } = makeYani(NO_KODIK_PAGE);
     assert.equal(provider.selectPreferredPlayer(), false);
+});
+
+test('yani: выбранный зрителем плеер важнее Kodik, а если его нет у тайтла — Kodik', async () => {
+    const own = makeYani(NO_KODIK_PAGE);
+    own.w.AgPlayerChoice.get = async () => 'Alloha';
+    const picked = playerMenu(own.w, ['Aksor', 'Alloha', 'Kodik'], 'Aksor');
+    assert.equal(await untilPicked(own.provider), true);
+    assert.deepEqual(picked, ['Alloha']);
+
+    const kodikOpen = makeYani();
+    kodikOpen.w.AgPlayerChoice.get = async () => 'Aksor';
+    const replaced = playerMenu(kodikOpen.w, ['Aksor', 'Kodik'], 'Kodik');
+    assert.equal(await untilPicked(kodikOpen.provider), true);
+    assert.deepEqual(replaced, ['Aksor'], 'открытый сайтом Kodik уступает выбору зрителя');
+
+    const gone = makeYani(NO_KODIK_PAGE);
+    gone.w.AgPlayerChoice.get = async () => 'CVH';
+    const fallback = playerMenu(gone.w, ['Aksor', 'Kodik'], 'Aksor');
+    assert.equal(await untilPicked(gone.provider), true);
+    assert.deepEqual(fallback, ['Kodik']);
+});
+
+test('yani: выбор в панели плеера запоминается', async () => {
+    const { provider, w } = makeYani(NO_KODIK_PAGE);
+    const saved = [];
+    w.AgPlayerChoice.set = (site, name) => { saved.push([site, name]); return Promise.resolve(); };
+    const picked = playerMenu(w, ['Aksor', 'Kodik'], 'Kodik');
+    await provider.shellPick('players', 0);
+    assert.deepEqual(picked, ['Aksor']);
+    assert.deepEqual(saved, [['yummy_old', 'Aksor']]);
+});
+
+test('yani: адрес плеера без номера серии — активная кнопка узнаётся по цвету, а метка просмотренных не мешает', () => {
+    const { window: w } = makeContentWindow(`<h1>Тайтл</h1><iframe src="https://player.aksor.tv/video/abc"></iframe>
+        <div id="eps"><div class="a seen" style="background-color: rgb(75, 75, 75)">1</div><div class="a seen" style="background-color: rgb(34, 34, 34)">2</div><div class="a" style="background-color: rgb(60, 206, 123)">3</div><div class="a">4</div></div>`, 'https://old.yummyani.me/catalog/item/x');
+    const site = w.AgSites.byId('yummy_old');
+    const provider = new w.AgProviders.registry[site.provider || site.platform](site, {});
+    assert.strictEqual(provider.getEpisode(), '3');
+    w.close();
 });

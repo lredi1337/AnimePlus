@@ -108,6 +108,13 @@
             return windows;
         }
 
+        // Страница Kodik для этой серии и озвучки: у других плееров берём метки с неё
+        getKodikUrl() {
+            const voice = items(VOICES).find(isActive);
+            const kodik = items(PLAYERS).find(p => p.dataset.providerSlug === 'kodik' && (!voice || p.dataset.ptranslation === voice.dataset.translation));
+            return kodik ? kodik.dataset.player || null : null;
+        }
+
         // Сначала список серий: стрелки сайта бывают скрыты и меняются, а пункты списка работают всегда
         navigate(dir) {
             const list = items(EPISODES);
@@ -172,15 +179,19 @@
                 const el = items(VOICES)[index];
                 if (!el) return;
                 if (window.agRememberVoice) window.agRememberVoice(label(el));
+                const slug = items(PLAYERS).find(isActive)?.dataset.providerSlug;
                 el.click();
-                // Оболочка работает только в Kodik: сайт мог выбрать для этой озвучки другой плеер
+                // Сайт мог выбрать для этой озвучки другой плеер: остаёмся на плеере зрителя, если он здесь есть
                 setTimeout(() => {
-                    const kodik = items(PLAYERS).find(p => p.dataset.providerSlug === 'kodik' && p.dataset.ptranslation === el.dataset.translation);
-                    if (kodik && !isActive(kodik)) kodik.click();
+                    const forVoice = items(PLAYERS).filter(p => p.dataset.ptranslation === el.dataset.translation);
+                    const own = forVoice.find(p => p.dataset.providerSlug === slug) || forVoice.find(p => p.dataset.providerSlug === 'kodik');
+                    if (own && !isActive(own)) own.click();
                 }, 300);
             } else if (kind === 'players') {
                 const el = items(PLAYERS)[index];
-                if (el) el.click();
+                if (!el) return;
+                if (window.agRememberPlayer) window.agRememberPlayer(el.dataset.providerSlug);
+                el.click();
             }
         }
 

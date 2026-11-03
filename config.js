@@ -67,7 +67,8 @@
     const TRUSTED_ORIGIN_SUFFIXES = [
         'animego.me', 'animego.org', 'jut-su.net',
         'kodik.info', 'kodikplayer.com', 'kodikres.com', 'kodik.biz', 'kodik.cc', 'kodik-storage.com',
-        'dbcode.info', 'tube-storage.com', 'anivod.com', 'aniqizm.com', 'aniboom.one', 'anifilm.top', 'kombik.info'
+        'dbcode.info', 'tube-storage.com', 'anivod.com', 'aniqizm.com', 'aniboom.one', 'anifilm.top', 'kombik.info',
+        'alloha.yani.tv', 'thealloha.club', 'player.aksor.tv', 'player.cdnvideohub.com', 'ceramet.net'
     ];
     window.isValidOrigin = function (origin) {
         try {

@@ -1,5 +1,5 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
-importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js');
+importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js');
 
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const EXTENSION_USER_AGENT = `AnimePlus/${EXTENSION_VERSION} (Browser Extension)`;
@@ -100,6 +100,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "get_audio_fingerprints") {
         getAudioFingerprints(message.id)
             .then(sendResponse)
+            .catch(() => sendResponse(null));
+        return true;
+    }
+
+    if (message.action === "get_kodik_marks") {
+        const fetchPage = (url) => fetch(url, { credentials: 'omit' }).then(r => (r.ok ? r.text() : ''));
+        AgKodikMarks.find(message, fetchPage)
+            .then((ranges) => {
+                // Метка за концом серии: у этого плеера другой файл, и время Kodik к нему не подходит
+                const fits = ranges.filter(r => !(message.duration > 0) || r.end <= message.duration + 2);
+                sendResponse(AgKodikMarks.splitMarks(fits, message.duration));
+            })
             .catch(() => sendResponse(null));
         return true;
     }

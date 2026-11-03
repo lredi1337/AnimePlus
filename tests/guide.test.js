@@ -98,10 +98,11 @@ async function mountShell(seen = false) {
     const dom = new JSDOM(PLAYER, { url: 'https://kodikplayer.com/serial/1/a/720p', runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window;
     w.chrome = { storage: { local: { get: async () => ({}), set: async () => {} } } };
-    w.eval(read('modules/kodik/player-shell.js'));
+    w.eval(read('modules/player/adapters.js'));
+    w.eval(read('modules/player/shell.js'));
     const marks = [];
     let done = 0;
-    const shell = w.AgKodikShell.create({
+    const shell = w.AgPlayerShell.create({
         getSettings: () => ({ voice_priority_list: [] }),
         patchSettings: async () => {},
         getTimings: () => ({ op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } }),
@@ -144,4 +145,27 @@ test('подсказки показываются один раз, задани�
     sh.querySelector('[data-act="skip"]').click();
     assert.ok(marks.includes('panel'));
     shell.destroy();
+});
+
+test('бесшовная смена: новичок видит её в подсказках, панель открывается, задание не засчитано заранее', async () => {
+    const { sh, shell, marks } = await mountShell();
+    const box = sh.querySelector('.guide');
+    box.querySelector('.go').click();
+    box.querySelector('.go').click();
+    box.querySelector('.go').click();
+    assert.match(box.querySelector('p').textContent, /без перерыва/);
+    assert.ok(sh.querySelector('.panel').classList.contains('on'));
+    assert.ok(!marks.includes('panel'));
+    assert.ok(!marks.includes('switch'));
+    box.querySelector('.go').click();
+    assert.ok(!sh.querySelector('.panel').classList.contains('on'));
+    shell.destroy();
+});
+
+test('смена плеера не отодвигает просьбу об оценке', async () => {
+    const { AgGuide } = loadGuide({});
+    const now = 100 * 864e5;
+    const state = AgGuide.normalize({ tourDone: true, firstSeen: now, tasks: { play: true, skip: true, panel: true, settings: true } });
+    assert.equal(AgGuide.ratingDue(state, now), true);
+    assert.equal(AgGuide.normalize({ switchTipDone: true }).switchTipDone, true);
 });

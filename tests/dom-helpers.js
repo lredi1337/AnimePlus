@@ -6,6 +6,7 @@ const CONTENT_FILES = [
     'modules/shared/sites.js',
     'modules/shared/title-match.js',
     'modules/shared/native-fs.js',
+    'modules/shared/player-choice.js',
     'modules/ui-utils.js',
     'providers/base.js',
     'providers/dle.js',

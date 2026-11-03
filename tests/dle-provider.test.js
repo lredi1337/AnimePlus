@@ -73,13 +73,14 @@ for (const page of TITLE_PAGES) {
         }
     });
 
-    test(`${page.siteId}: выбирается вкладка Kodik («${page.kodikTab}»)`, () => {
+    test(`${page.siteId}: выбирается вкладка Kodik («${page.kodikTab}»)`, async () => {
         const { provider, w } = makeProvider(page.siteId, page.url, html);
         const clicked = [];
         w.document.querySelectorAll('[data-player-anime-id] .tabs-block__select > *').forEach(tab => {
             tab.addEventListener('click', () => clicked.push(tab.textContent.trim()));
         });
         provider.selectPreferredPlayer();
+        await new Promise(r => setTimeout(r, 30)); // Сохранённый выбор читается не мгновенно
         assert.deepEqual(clicked, [page.kodikTab]);
     });
 }

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "10.2.1",
-  "description": "Улучшает просмотр аниме на AnimeGO, Jut-Su, YummyAnime и других сайтах: выбор озвучки, учёт серий в Shikimori, пропуск опенингов 🚀",
+  "version": "11.0.0",
+  "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
     "storage",
@@ -60,6 +60,12 @@
     "https://anifilm.top/*",
     "https://*.kombik.info/*",
     "https://kombik.info/*",
+    "https://alloha.yani.tv/*",
+    "https://*.thealloha.club/*",
+    "https://player.aksor.tv/*",
+    "https://player.cdnvideohub.com/*",
+    "https://ceramet.net/*",
+    "https://*.ceramet.net/*",
     "https://api.aniskip.com/*",
     "https://shikimori.one/*",
     "https://shikimori.io/*",
@@ -90,6 +96,7 @@
         "modules/shared/sites.js",
         "modules/shared/ui-kit.js",
         "modules/shared/title-match.js",
+        "modules/shared/player-choice.js",
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
@@ -130,6 +137,7 @@
         "modules/shared/sites.js",
         "modules/shared/ui-kit.js",
         "modules/shared/title-match.js",
+        "modules/shared/player-choice.js",
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
@@ -178,10 +186,16 @@
         "https://*.anifilm.top/*",
         "https://anifilm.top/*",
         "https://*.kombik.info/*",
-        "https://kombik.info/*"
+        "https://kombik.info/*",
+        "https://alloha.yani.tv/*",
+        "https://*.thealloha.club/*",
+        "https://player.aksor.tv/*",
+        "https://player.cdnvideohub.com/*",
+        "https://ceramet.net/*",
+        "https://*.ceramet.net/*"
       ],
       "js": [
-        "modules/kodik/shell-boot.js"
+        "modules/player/boot.js"
       ],
       "run_at": "document_start",
       "all_frames": true
@@ -213,7 +227,13 @@
         "https://*.anifilm.top/*",
         "https://anifilm.top/*",
         "https://*.kombik.info/*",
-        "https://kombik.info/*"
+        "https://kombik.info/*",
+        "https://alloha.yani.tv/*",
+        "https://*.thealloha.club/*",
+        "https://player.aksor.tv/*",
+        "https://player.cdnvideohub.com/*",
+        "https://ceramet.net/*",
+        "https://*.ceramet.net/*"
       ],
       "js": [
         "config.js",
@@ -221,12 +241,14 @@
         "modules/shared/sites.js",
         "modules/shared/ui-kit.js",
         "modules/audio/fingerprint.js",
+        "modules/audio/lookahead.js",
         "modules/audio/audio-skip.js",
         "modules/shared/guide.js",
         "modules/shared/guide-fox.js",
-        "modules/kodik/player-shell.js",
-        "modules/kodik/skip-memory.js",
-        "content-kodik.js"
+        "modules/player/adapters.js",
+        "modules/player/shell.js",
+        "modules/player/skip-memory.js",
+        "content-player.js"
       ],
       "run_at": "document_end",
       "all_frames": true,

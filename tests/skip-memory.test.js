@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-require('../modules/kodik/skip-memory.js');
+require('../modules/player/skip-memory.js');
 
 const OP = { start: 195, end: 286 };
 const skippedAt = (now = 1000) => {

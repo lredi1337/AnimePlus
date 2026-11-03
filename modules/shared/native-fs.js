@@ -48,6 +48,15 @@
         }
     }
 
+    /** Плеер на весь экран сменился: прячем соседей заново, уже вокруг нового кадра */
+    function retidy() {
+        const element = document.fullscreenElement;
+        if (!element) return;
+        document.querySelectorAll('.ag-fs-hidden').forEach(e => e.classList.remove('ag-fs-hidden'));
+        document.querySelectorAll('.ag-fs-fill').forEach(e => e.classList.remove('ag-fs-fill'));
+        tidy(element);
+    }
+
     /** true, если браузер перешёл в полный экран. Вызывать сразу, без задержек: разрешение действует недолго */
     async function request(element) {
         if (!element || !element.requestFullscreen) return false;
@@ -82,6 +91,7 @@
     root.AgNativeFs = {
         request,
         exit,
+        retidy,
         /** Срабатывает при любом выходе: Esc, F11, кнопка браузера, удаление блока со страницы */
         onExit(handler) {
             document.addEventListener('fullscreenchange', () => {

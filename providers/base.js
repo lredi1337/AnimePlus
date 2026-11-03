@@ -86,6 +86,11 @@
         /** Номер текущей серии. msgEpisode — номер из сообщения плеера (Kodik), если он есть */
         getEpisode(msgEpisode) { return msgEpisode || '1'; }
 
+        /** Номер сезона, который открыт на странице: в плеере со всеми сезонами нужно открыть именно его */
+        getWantedSeason(info) {
+            return window.AgProviders.seasonFromTitle(info && info.title);
+        }
+
         /** Контейнер плеера (для псевдо-фуллскрина) */
         getPlayerContainer() { return null; }
 
@@ -135,6 +140,13 @@
 
     /** Регистрация реализации провайдера для платформы ('dle', 'yani', ...) */
     /** Раньше у AnimeGO и Jut-Su был свой адрес Топа: старые ссылки ведут в общее окно */
+    /** Сезон из названия страницы: «(2 сезон)», «Сезон 2», «Season 2», «Название 2». Без номера это первый сезон */
+    window.AgProviders.seasonFromTitle = function (title) {
+        const text = String(title || '');
+        const match = text.match(/(\d+)\s*(?:-?[йя]\s*)?сезон/i) || text.match(/(?:сезон|season)\s*(\d+)/i) || text.match(/\s(\d)\s*$/);
+        return match ? Number(match[1]) : 1;
+    };
+
     window.AgProviders.redirectOldTopLink = function () {
         if (location.pathname !== '/top-shikimori' && !new URLSearchParams(location.search).has('show_ag_top')) return false;
         location.replace('/#ag-top-shikimori');

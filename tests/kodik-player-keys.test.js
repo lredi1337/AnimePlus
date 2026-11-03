@@ -1,4 +1,4 @@
-// Клавиши плеера и то, что заменило старый экран (content-kodik.js). Скрипт работает во вложенном окне jsdom
+// Клавиши плеера и то, что заменило старый экран (content-player.js). Скрипт работает во вложенном окне jsdom
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
@@ -22,8 +22,9 @@ async function startPlayer() {
     }
     frame.eval(read('config.js'));
     frame.eval(read('modules/shared/sites.js'));
-    frame.eval(read('modules/kodik/skip-memory.js'));
-    frame.eval(read('content-kodik.js'));
+    frame.eval(read('modules/player/adapters.js'));
+    frame.eval(read('modules/player/skip-memory.js'));
+    frame.eval(read('content-player.js'));
     await sleep(100);
     frame.document.body.appendChild(frame.document.createElement('div')); // Плеер запускается по изменению страницы
     await sleep(50);

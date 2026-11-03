@@ -4,7 +4,7 @@ const globals = require('globals');
 
 // Функции и константы, которые фоновые скрипты делят через importScripts (общая глобальная область service worker)
 const backgroundShared = Object.fromEntries([
-    'AgTitleMatch', 'AgSites', 'SHIKI_CREDENTIALS',
+    'AgTitleMatch', 'AgSites', 'AgKodikMarks', 'SHIKI_CREDENTIALS',
     'SITE_URL_CACHE_TTL', 'stripTags', 'parseDleSearchCards', 'searchDleSite', 'searchYaniSite', 'resolveSiteUrl', 'resolveAllSites', 'resolveShikiIdFromRedirect',
     'CACHE_TTL_MS', 'EPISODES_ALARM', 'SHIKI_API_BASE', 'SHIKI_API_DOMAINS', 'SHIKI_APP_USER_AGENT',
     'SHIKI_ID_CACHE_TTL', 'SHIKI_POSTER_MISS_TTL', 'SHIKI_POSTER_TTL', 'SHIKI_REDIRECT_URI',
@@ -62,7 +62,7 @@ module.exports = [
         languageOptions: { sourceType: 'module', globals: { ...globals.serviceworker } }
     },
     {
-        files: ['modules/audio/fingerprint.js', 'modules/kodik/player-shell.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js'],
+        files: ['modules/audio/fingerprint.js', 'modules/audio/lookahead.js', 'modules/player/shell.js', 'modules/player/adapters.js', 'modules/shared/kodik-marks.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/player-choice.js'],
         languageOptions: { globals: { module: 'writable' } }
     }
 ];

@@ -1,6 +1,7 @@
 // modules/audio/audio-skip.js
 // Пропуск по звуку внутри плеера: узнаёт опенинг или эндинг по базе отпечатков песен.
-// Порядок для каждой части отдельно: метка самого плеера → общая база таймингов → узнанная песня → AniSkip.
+// Порядок для каждой части отдельно: метка самого плеера → метка сайта → общая база таймингов → узнанная песня → AniSkip.
+// Метка сайта обычно точна и срабатывает сразу, но бывает грубо неверной: такую показываем кнопкой, пока песню не подтвердит звук.
 // Время в AniSkip часто не совпадает с конкретной озвучкой, поэтому узнанная песня важнее метки.
 // Звук анализируется на устройстве, не сохраняется и никуда не отправляется. В общую базу уходит только найденное время.
 
@@ -14,10 +15,10 @@
     const END_TRIM_SEC = 1;
     // Если метка AniSkip начинается там же, что и песня, её конец точнее: песня в серии бывает короче образца
     const SAME_START_SEC = 3;
-    // Песню за это время не узнали: метка могла съехать, поэтому только предлагаем кнопку
-    const ANISKIP_GRACE_SEC = 30;
     const MAIN_VIDEO_MIN_SEC = 300;
     const CHUNK = 4096;
+    const CAPTURE_TRIES = 15;
+    const CAPTURE_STEP_MS = 200;
     // Абсолютная тишина столько времени при включённом звуке: значит, наш обработчик сломал звук видео
     const SILENCE_LIMIT_SEC = 30;
     // Видео идёт, а обработчик не получает звук: контекст встал, и пользователю тоже ничего не слышно
@@ -53,6 +54,20 @@
         };
     }
 
+    /** Копия звука видео. Дорожка появляется не сразу после запуска */
+    async function captureSource(ctx, video) {
+        if (!video.captureStream) return null;
+        try {
+            const stream = video.captureStream();
+            for (let i = 0; i < CAPTURE_TRIES && !stream.getAudioTracks().length; i++) {
+                await new Promise(r => setTimeout(r, CAPTURE_STEP_MS));
+            }
+            return stream.getAudioTracks().length ? ctx.createMediaStreamSource(stream) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     /**
      * Прослушивание одного элемента video. Источник создаётся один раз на элемент и с этого момента
      * звук идёт через AudioContext, поэтому подключаемся только когда контекст точно работает.
@@ -71,13 +86,19 @@
             return null;
         }
         let source;
+        let passive = false;
         try {
             source = ctx.createMediaElementSource(video);
+            source.connect(ctx.destination);
         } catch (e) {
+            // Плеер сам подключён к обработке звука (Alloha, Aksor), а подключиться можно только один раз. Берём копию звука: зритель слышит всё как раньше
+            source = await captureSource(ctx, video);
+            passive = true;
+        }
+        if (!source) {
             ctx.close().catch(() => {});
             return null;
         }
-        source.connect(ctx.destination);
         const proc = ctx.createScriptProcessor(CHUNK, 1, 1);
         const sink = ctx.createGain();
         sink.gain.value = 0;
@@ -90,7 +111,7 @@
         const wake = () => { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); };
         ctx.addEventListener('statechange', wake);
         video.addEventListener('play', wake);
-        return { ctx, stopFeed };
+        return { ctx, stopFeed, passive };
     }
 
     const clockToSec = (s) => s.split(':').reduce((sum, x) => sum * 60 + Number(x), 0);
@@ -99,6 +120,14 @@
     const MIN_MARK_SEC = 60;
     // Сайт отключает метки Kodik значениями вроде [opening]999999-1000000: таких длинных серий не бывает
     const MAX_MARK_START_SEC = 6 * 60 * 60;
+    // Точные метки опенинга у сайтов длятся около 89 с, а грубо неверные заметно отличаются: 0-64, 0-109, 0-159.
+    // Эндинг бывает разной длины, неверной считаем только явно слишком длинную метку
+    const SITE_OP_MIN_SEC = 85;
+    const SITE_OP_MAX_SEC = 95;
+    const SITE_ED_MAX_SEC = 240;
+    // После песни остаётся столько или меньше: это титры озвучки или короткое превью, эндинг идёт до конца файла.
+    // Если остаётся больше, там бывает сцена после титров. На замере хвост был либо до 17 с, либо от 32 с
+    const ED_TAIL_SEC = 20;
 
     /**
      * Метки из страницы плеера Kodik: parseSkipButton("03:15-04:46,22:42-24:12", "anime").
@@ -116,6 +145,23 @@
             if (end - start >= MIN_MARK_SEC && start < MAX_MARK_START_SEC) out.push({ start, end });
         }
         return out;
+    }
+
+    /** Метки в этой записи подставил сайт ([opening]...), а не сам Kodik */
+    function marksFromSite(text) {
+        return /parseSkipButton\(\s*["']\s*\[/.test(String(text || ''));
+    }
+
+    /** Похожа ли метка сайта на настоящую песню */
+    function siteMarkFits(part, mark) {
+        const len = mark.end - mark.start;
+        return part === 'op' ? len >= SITE_OP_MIN_SEC && len <= SITE_OP_MAX_SEC : len <= SITE_ED_MAX_SEC;
+    }
+
+    /** Эндинг до конца файла, если после песни почти ничего не осталось. Метка за концом файла тоже заканчивается на нём */
+    function extendEnding(timings, duration) {
+        if (!(duration > 0) || !(timings.end > 0) || timings.end === duration || duration - timings.end > ED_TAIL_SEC) return timings;
+        return { ...timings, end: duration };
     }
 
     /**
@@ -146,8 +192,10 @@
     }
 
     /** Итоговое время для части серии: чистая логика, проверяется тестами */
-    function chooseTimings({ native, shared, hit, mark, hasSong, listening, currentTime }) {
+    function chooseTimings({ native, site, siteFits = true, shared, hit, mark, hasSong, listening }) {
         if (native) return { ...native, source: native.source || 'kodik' };
+        // Метка сайта срабатывает сразу, без прослушивания. Если песню всё-таки успели узнать, звук точнее
+        if (site && siteFits && !hit) return { start: site.start, end: site.end, source: 'site' };
         if (shared) return { start: shared.start, end: shared.end, source: 'shared' };
         const m = mark || { start: 0, end: 0 };
         if (hit) {
@@ -157,11 +205,11 @@
             }
             return { start: hit.start, end, source: 'audio' };
         }
+        // Метка сайта не похожа на песню: автопрыжок съел бы серию, поэтому только кнопка
+        if (site) return { start: site.start, end: site.end, source: 'site', manual: true };
         if (m.end <= 0) return { start: 0, end: 0 };
-        if (hasSong && listening) {
-            if (currentTime < m.start + ANISKIP_GRACE_SEC) return { start: 0, end: 0 };
-            return { ...m, source: 'aniskip', manual: true };
-        }
+        // Метка могла съехать: пока песню не подтвердит звук, она видна на шкале и пропускается только кнопкой
+        if (hasSong && listening) return { ...m, source: 'aniskip', manual: true };
         return { ...m, source: 'aniskip' };
     }
 
@@ -188,13 +236,28 @@
         let loadTotal = 0;
         let lastChunkAt = 0;
         const foundAt = {};
+        // Для диагностики: доходит ли звук
+        const feed = { chunks: 0, peak: 0, rate: 0, hashes: 0 };
+        let ahead = null;
+        let aheadFor = null;
         const listeners = new WeakMap();
 
         const hasSongs = (type) => !!(songs && songs.some(s => s.type === type));
         const listening = (video) => !!(video && listeners.get(video));
-        // Метка самого сайта для этого видео и озвучки надёжна так же, как метка Kodik
-        const siteMark = (part) => (aniskip[part] && aniskip[part].trusted && aniskip[part].end > 0 ? { start: aniskip[part].start, end: aniskip[part].end, source: 'site' } : null);
-        const nativeFor = (part, video) => (native && splitNativeMarks(native.ranges, video && video.duration)[part]) || siteMark(part);
+        const passedMark = (part) => (aniskip[part] && aniskip[part].trusted && aniskip[part].end > 0 ? aniskip[part] : null);
+        const nativeMark = (part, video) => (native ? splitNativeMarks(native.ranges, video && video.duration)[part] : null);
+        // Метка самого Kodik этой серии и озвучки: своя или найденная для другого плеера
+        const nativeFor = (part, video) => {
+            const passed = passedMark(part);
+            if (native && !native.fromSite && nativeMark(part, video)) return nativeMark(part, video);
+            return passed && passed.kodik ? { start: passed.start, end: passed.end, source: 'kodik' } : null;
+        };
+        const siteFor = (part, video) => {
+            const passed = passedMark(part);
+            if (native && native.fromSite && nativeMark(part, video)) return nativeMark(part, video);
+            return passed && !passed.kodik ? passed : null;
+        };
+        // Метку сайта проверяем звуком, поэтому известной считаем только метку Kodik и подтверждённую общую базу
         const resolved = (part, video) => !!(nativeFor(part, video) || shared[part]);
         const seriesInfo = (video) => {
             const episode = options.getEpisode ? String(options.getEpisode() || '') : '';
@@ -202,15 +265,20 @@
             return title && episode && video && video.duration > MAIN_VIDEO_MIN_SEC ? { id: title, episode, voice: voice || '', duration: Math.round(video.duration) } : null;
         };
 
-        const timingsFor = (part, video) => chooseTimings({
-            native: nativeFor(part, video),
-            shared: shared[part],
-            hit: found[part],
-            mark: aniskip[part],
-            hasSong: hasSongs(part.toUpperCase()),
-            listening: listening(video),
-            currentTime: video ? video.currentTime : 0
-        });
+        const timingsFor = (part, video) => {
+            const site = siteFor(part, video);
+            const timings = chooseTimings({
+                native: nativeFor(part, video),
+                site,
+                siteFits: !site || siteMarkFits(part, site),
+                shared: shared[part],
+                hit: found[part],
+                mark: aniskip[part],
+                hasSong: hasSongs(part.toUpperCase()),
+                listening: listening(video)
+            });
+            return part === 'ed' ? extendEnding(timings, video ? video.duration : 0) : timings;
+        };
 
         const publish = (video) => {
             const timings = { op: timingsFor('op', video), ed: timingsFor('ed', video) };
@@ -221,6 +289,9 @@
                     title,
                     songs: songs ? songs.map(s => s.id) : null,
                     listening: listening(video),
+                    passive: !!(listeners.get(video) && listeners.get(video).passive),
+                    ahead: ahead ? ahead.state : null,
+                    feed,
                     blocked,
                     analysisOff,
                     found: { op: found.op && +found.op.start.toFixed(1), ed: found.ed && +found.ed.start.toFixed(1) },
@@ -232,9 +303,13 @@
 
         const onHash = (h, frame) => {
             if (!segment || !matcher) return;
+            feed.hashes++;
             const sec = segment.base + frame * FP.FRAME_SEC;
             const r = matcher.feed(h, sec);
-            if (!r) return;
+            if (r) acceptHit(r, sec);
+        };
+
+        const acceptHit = (r, sec) => {
             // Опенинг бывает и в конце серии: важно место, а не название песни
             const middle = bound && bound.duration ? bound.duration / 2 : 720;
             const place = r.start >= middle ? 'ed' : 'op';
@@ -247,6 +322,28 @@
             foundAt[place] = +sec.toFixed(1);
             publish(bound);
             shareFound(place);
+        };
+
+        // Анализ заранее: песня находится до того, как зазвучит. Нужен, только если места песни ещё никто не знает наверняка
+        const startAhead = async (video) => {
+            if (!globalThis.AgLookahead || aheadFor === video.currentSrc || !songs || !songs.length) return;
+            if (options.getSettings().audioSkip === false || !(video.duration > MAIN_VIDEO_MIN_SEC) || !window.innerWidth) return;
+            // Зритель просил экономить трафик: песню найдёт и обычное прослушивание
+            if (navigator.connection && navigator.connection.saveData) return;
+            aheadFor = video.currentSrc;
+            if (ahead) ahead.stop();
+            ahead = null;
+            const config = await chrome.runtime.sendMessage({ action: 'get_remote_config' }).catch(() => null);
+            if ((config && config.lookahead === false) || bound !== video) return;
+            ahead = globalThis.AgLookahead.create({
+                video,
+                fingerprint: FP,
+                songs,
+                wanted: (part) => !found[part] && !resolved(part, video),
+                onFound: (r) => acceptHit(r, video.currentTime),
+                onState: () => { if (options.getSettings().audioDebug) publish(video); }
+            });
+            ahead.start();
         };
 
         // Первый зритель находит тайминг, остальные получают его сразу и без прослушивания
@@ -293,7 +390,11 @@
                 const a = Math.abs(data[i]);
                 if (a > peak) peak = a;
             }
-            if (peak === 0 && !v.muted && v.volume > 0) {
+            const passive = listeners.get(v) && listeners.get(v).passive;
+            feed.chunks++;
+            feed.peak = +peak.toFixed(3);
+            feed.rate = rate;
+            if (peak === 0 && !passive && !v.muted && v.volume > 0) {
                 silentSec += chunkSec;
                 if (silentSec >= SILENCE_LIMIT_SEC && !blocked) rescueSound(v);
             } else {
@@ -335,6 +436,9 @@
             found = { op: null, ed: null };
             shared = {};
             sharedKey = null;
+            if (ahead) ahead.stop();
+            ahead = null;
+            aheadFor = null;
             delete foundAt.op;
             delete foundAt.ed;
             segment = null;
@@ -363,7 +467,7 @@
 
         const checkFeed = (video) => {
             const l = listeners.get(video);
-            if (!l || blocked || video.paused || video.seeking || video.readyState < 3) {
+            if (!l || l.passive || blocked || video.paused || video.seeking || video.readyState < 3) {
                 lastChunkAt = Date.now();
                 return;
             }
@@ -387,6 +491,7 @@
             const kick = async () => {
                 await loadShared(video);
                 tryListen(video);
+                if (!video.paused) startAhead(video);
             };
             ['play', 'playing', 'loadedmetadata'].forEach(ev => video.addEventListener(ev, kick));
             video.addEventListener('loadstart', () => {
@@ -395,8 +500,7 @@
             video.addEventListener('timeupdate', () => {
                 if (bound !== video) return;
                 checkFeed(video);
-                // Истекло время на узнавание: подключаем метку AniSkip
-                if (aniskip.op.end > 0 || aniskip.ed.end > 0) publish(video);
+                if (ahead) ahead.tail();
             });
             kick();
         };
@@ -410,8 +514,8 @@
         return {
             bind,
             /** Собственные метки плеера Kodik для текущей серии */
-            setNative(ranges) {
-                native = ranges && ranges.length ? { ranges, episode: options.getEpisode ? options.getEpisode() : '' } : null;
+            setNative(ranges, fromSite = false) {
+                native = ranges && ranges.length ? { ranges, fromSite, episode: options.getEpisode ? options.getEpisode() : '' } : null;
                 publish(bound);
             },
             /** Метка AniSkip и ID тайтла со страницы сайта */
@@ -433,6 +537,7 @@
                     if (bound) {
                         await loadShared(bound);
                         tryListen(bound);
+                        if (!bound.paused) startAhead(bound);
                     }
                 }
                 publish(bound);
@@ -440,5 +545,5 @@
         };
     }
 
-    globalThis.AgAudioSkip = { create, parseNativeMarks, splitNativeMarks, songInEpisode, chooseTimings };
+    globalThis.AgAudioSkip = { create, parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings };
 })();

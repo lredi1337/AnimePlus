@@ -10,6 +10,7 @@ const FILES = [
     'modules/shared/sites.js',
     'modules/shared/title-match.js',
     'modules/shared/native-fs.js',
+    'modules/shared/player-choice.js',
     'modules/ui-utils.js',
     'modules/site-selectors.js',
     'modules/progress-tracker.js',

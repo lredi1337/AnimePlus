@@ -1,5 +1,5 @@
 // features/player-bridge.js
-// Сторона страницы для протокола content-kodik.js (postMessage AG_*), общая для всех сайтов-провайдеров:
+// Сторона страницы для протокола content-player.js (postMessage AG_*), общая для всех сайтов-провайдеров:
 //   AG_GET_DATA / AG_PLAYER_READY → AG_DATA (название/серия), AG_FS_STATE, AS_DATA_UPDATE (опенинг/эндинг)
 //   AG_EPISODE_CHANGED            → обновить номер серии и таймкоды
 //   AG_PSEUDO_FS {action}         → псевдо-фуллскрин контейнера плеера
@@ -97,6 +97,12 @@
     }
 
     const MARATHON_KEY = 'ag_active_marathon_id';
+    const RELOAD_EVERY_MS = 5 * 60 * 1000;
+    // Смена плеера: столько новый плеер может загружаться, столько времени без отчёта значит, что видео стоит
+    const HANDOFF_TTL_MS = 60000;
+    const STILL_PLAYING_MS = 3500;
+    const MIN_EPISODE_SEC = 60;
+    const FRAME_CHECK_MS = 400;
     const NO_MARKS = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
 
     window.AgFeatures = window.AgFeatures || {};
@@ -107,6 +113,8 @@
         let savedScrollY = 0;
         let nativeFs = false;
         let skipCache = { key: null, data: null };
+        // Какой плеер сейчас смотрят: у другого плеера берём метки Kodik этой же серии и озвучки
+        let playerNow = null;
 
         const post = (win, msg) => { try { win && win.postMessage(msg, '*'); } catch (e) {} };
         const broadcast = (msg, extra) => {
@@ -114,6 +122,42 @@
             if (extra) wins.add(extra);
             wins.forEach(w => post(w, msg));
         };
+
+        // Смена плеера или озвучки: новый кадр продолжает с той же серии и того же места и запускается сам, даже если перед этим стояла пауза.
+        // Старый плеер при смене плеера сразу замолкает, чтобы не играть параллельно. При смене озвучки его кадр сайт заменит сам
+        let lastPlayed = null;
+        let handoff = null;
+        const rememberHandoff = () => {
+            if (!lastPlayed) return;
+            const now = Date.now();
+            const playing = now - lastPlayed.at < STILL_PLAYING_MS;
+            handoff = { episode: lastPlayed.episode, time: lastPlayed.time + (playing ? (now - lastPlayed.at) / 1000 : 0), volume: lastPlayed.volume, play: true, at: now };
+        };
+        const startHandoff = () => {
+            rememberHandoff();
+            broadcast({ type: 'AG_PAUSE' });
+        };
+        scope.listen(document, 'ag-player-switch', startHandoff);
+        scope.listen(document, 'ag-voice-switch', rememberHandoff);
+
+        // Кадр скрытой вкладки сам не узнает, что его снова показали: ширина уже открывавшегося кадра после скрытия не обнуляется
+        const shownFrames = new WeakMap();
+        const postDeep = (win, msg) => {
+            post(win, msg);
+            try {
+                for (let i = 0; i < win.length; i++) postDeep(win[i], msg);
+            } catch (e) {}
+        };
+        scope.interval(() => {
+            const wins = new Set(provider.getPlayerWindows());
+            document.querySelectorAll('iframe').forEach((frame) => {
+                if (!frame.contentWindow || !wins.has(frame.contentWindow)) return;
+                const shown = frame.offsetWidth > 0;
+                if (shownFrames.get(frame) === shown) return;
+                shownFrames.set(frame, shown);
+                postDeep(frame.contentWindow, { type: 'AG_FRAME_SHOWN', shown });
+            });
+        }, FRAME_CHECK_MS);
 
         const applyAncestors = (el) => {
             let cur = el && el.parentElement;
@@ -141,8 +185,10 @@
             const enable = action === 'enable' || (action === 'toggle' && !isActive);
             if (enable && !isActive && container) {
                 savedScrollY = window.scrollY;
-                nativeFs = await window.AgNativeFs.request(container);
-                applyFs(container);
+                // Настоящий полный экран живёт на блоке, который переживает смену плеера
+                const stable = (provider.getFullscreenContainer && provider.getFullscreenContainer()) || container;
+                nativeFs = await window.AgNativeFs.request(stable);
+                applyFs(nativeFs ? stable : container);
                 // Браузер не разрешил настоящий полный экран (автозапуск без нажатия): разворачиваем окно
                 if (!nativeFs) window.agSendMessage({ action: 'fullscreen_on' });
             } else if (!enable && isActive) {
@@ -172,11 +218,27 @@
             setPseudoFs('disable');
         });
 
+        // Метки этой серии и озвучки у Kodik точнее общих: они показываются сразу, ещё до начала песни
+        const kodikMarksFor = async (episode) => {
+            if (!playerNow || playerNow.player === 'kodik') return null;
+            const trust = (marks) => (marks ? {
+                op: marks.op ? { ...marks.op, trusted: true, kodik: true } : null,
+                ed: marks.ed ? { ...marks.ed, trusted: true, kodik: true } : null
+            } : null);
+            if (provider.getKodikMarks) return trust(await provider.getKodikMarks(episode, playerNow.voice));
+            const url = provider.getKodikUrl ? provider.getKodikUrl() : null;
+            if (!url) return null;
+            return trust(await window.agSendMessage({ action: 'get_kodik_marks', url, episode, voice: playerNow.voice, season: playerNow.season, duration: playerNow.duration }));
+        };
+
+        // Ответы сети приходят в любом порядке: метки считаются только для самого свежего запроса
+        let skipRequest = 0;
         const sendSkipData = async (target) => {
+            const request = ++skipRequest;
             const episode = provider.getEpisode();
             const info = await provider.getTitleInfo();
             if (!info) return;
-            const key = `${info.pageKey}#${episode}#${provider.getSkipKey ? provider.getSkipKey() : ''}`;
+            const key = `${info.pageKey}#${episode}#${provider.getSkipKey ? provider.getSkipKey() : ''}#${playerNow ? `${playerNow.player}|${playerNow.voice}|${playerNow.season}` : ''}`;
             if (skipCache.key !== key) {
                 let shikimoriId = info.shikimoriId;
                 if (!shikimoriId) {
@@ -184,17 +246,20 @@
                     shikimoriId = resolved && resolved.id;
                 }
                 const own = await provider.getSkipData(episode);
-                // Чего нет у сайта, ищем в AniSkip: своя часть сайта при этом остаётся
-                const other = own && own.op.end > 0 && own.ed.end > 0 ? null : await fetchAniSkip(shikimoriId, episode);
+                const kodik = await kodikMarksFor(episode);
+                const known = (part) => (kodik && kodik[part] ? kodik[part] : (own && own[part].end > 0 ? own[part] : null));
+                // Чего нет у Kodik и сайта, ищем в AniSkip: то, что нашлось, при этом остаётся
+                const other = known('op') && known('ed') ? null : await fetchAniSkip(shikimoriId, episode);
                 const data = {
-                    op: own && own.op.end > 0 ? own.op : (other || NO_MARKS).op,
-                    ed: own && own.ed.end > 0 ? own.ed : (other || NO_MARKS).ed
+                    op: known('op') || (other || NO_MARKS).op,
+                    ed: known('ed') || (other || NO_MARKS).ed
                 };
+                if (request !== skipRequest) return;
                 skipCache = { key, data, malId: shikimoriId };
             }
-            if (scope.disposed) return;
+            if (scope.disposed || request !== skipRequest) return;
             // ID Shikimori совпадает с MAL: по нему плеер находит отпечатки песен
-            broadcast({ type: 'AS_DATA_UPDATE', data: skipCache.data, malId: skipCache.malId }, target);
+            broadcast({ type: 'AS_DATA_UPDATE', data: skipCache.data, malId: skipCache.malId, episode }, target);
         };
 
         const fromPlayer = (e) => {
@@ -224,10 +289,41 @@
                     sendSkipData(e.source);
                     break;
                 }
+                case 'AG_GET_START': {
+                    const about = await provider.getTitleInfo();
+                    post(e.source, { type: 'AG_START', season: provider.getWantedSeason(about), last: window.agLastWatched ? window.agLastWatched() : null });
+                    break;
+                }
+                // Плеер потерял одноразовую ссылку на видео: новую выдаёт только страница сайта
+                case 'AG_RELOAD_PAGE': {
+                    const key = `ag_reload_${location.pathname}`;
+                    let last = 0;
+                    try { last = Number(sessionStorage.getItem(key)) || 0; } catch (err) {}
+                    if (Date.now() - last < RELOAD_EVERY_MS) break;
+                    try { sessionStorage.setItem(key, String(Date.now())); } catch (err) {}
+                    location.reload();
+                    break;
+                }
                 case 'AG_SHELL_GET':
                     if (provider.getShellSite) post(e.source, { type: 'AG_SHELL_SITE', site: await provider.getShellSite() });
                     break;
+                case 'AG_VIDEO_PROGRESS':
+                    if (data.isEnded) lastPlayed = null;
+                    else if (data.duration >= MIN_EPISODE_SEC) lastPlayed = { episode: data.episode, time: data.currentTime, volume: data.volume, at: Date.now() };
+                    break;
+                case 'AG_PLAYER_NOW':
+                    playerNow = { player: data.player, voice: data.voice, season: data.season, duration: data.duration };
+                    sendSkipData(e.source);
+                    break;
+                case 'AG_GET_HANDOFF':
+                    if (handoff && data.visible && Date.now() - handoff.at < HANDOFF_TTL_MS) {
+                        post(e.source, { type: 'AG_HANDOFF', episode: handoff.episode, time: handoff.time, volume: handoff.volume, play: handoff.play });
+                        handoff = null;
+                    }
+                    break;
                 case 'AG_SHELL_PICK':
+                    if (data.kind === 'players') startHandoff();
+                    if (data.kind === 'voices') rememberHandoff();
                     if (provider.shellPick) {
                         await provider.shellPick(data.kind, Number(data.index));
                         scope.timeout(async () => post(e.source, { type: 'AG_SHELL_SITE', site: await provider.getShellSite() }), 600);

@@ -15,8 +15,10 @@
 
     const slugFromPath = () => (location.pathname.match(/^\/catalog\/item\/([^/?#]+)/) || [])[1] || null;
 
-    const findKodikFrame = () => Array.from(document.querySelectorAll('iframe'))
-        .find(f => /kodik/i.test(f.src || '')) || null;
+    // Плеер сайт держит в одном кадре, рядом бывают кадры рекламы
+    const PLAYER_FRAME = /kodik|alloha|aksor|cdnvideohub|iframeCVH|aniboom/i;
+    const findPlayerFrame = () => Array.from(document.querySelectorAll('iframe'))
+        .find(f => PLAYER_FRAME.test(f.src || '')) || null;
 
     // Кнопки серий. ru.yummyani.me: [role="button"][data-selected] (обёртка div + кнопка «просмотрено»);
     // old.yummyani.me: контейнер, все дочерние элементы которого — числа
@@ -26,6 +28,17 @@
         const list = Array.from(document.querySelectorAll('div, ul'))
             .find(el => el.children.length >= 2 && Array.from(el.children).every(c => c.children.length === 0 && /^\d+$/.test(c.textContent.trim())));
         return list ? Array.from(list.children) : [];
+    };
+
+    // Классы обфусцированы и у просмотренных серий свои, поэтому активную кнопку узнаём по цвету: только она цветная, просмотренные серые
+    const ACTIVE_MIN_CHROMA = 40;
+    const chromaOf = (el) => {
+        const rgb = (getComputedStyle(el).backgroundColor.match(/\d+/g) || []).slice(0, 3).map(Number);
+        return rgb.length === 3 ? Math.max(...rgb) - Math.min(...rgb) : 0;
+    };
+    const markedEpisodeButton = () => {
+        const colored = findEpisodeButtons().filter(b => chromaOf(b) >= ACTIVE_MIN_CHROMA);
+        return colored.length === 1 ? colored[0] : null;
     };
 
     // ---------- Меню «Озвучка» и «Плеер» (react-select): пункты появляются только при открытии ----------
@@ -172,28 +185,31 @@
             // Активная серия в списке сайта — меняется сразу по клику, ещё до загрузки нового iframe
             const selected = document.querySelector('[role="button"][data-selected="1"]');
             if (selected && /^\d+$/.test(selected.textContent.trim())) return selected.textContent.trim();
-            const frame = findKodikFrame();
+            const frame = findPlayerFrame();
             if (frame) {
                 try {
                     const ep = new URL(frame.src).searchParams.get('episode');
                     if (ep) return ep;
                 } catch (e) {}
             }
+            // Адрес некоторых плееров номера не содержит (Aksor), а на старом сайте активная серия отличается только классом
+            const marked = markedEpisodeButton();
+            if (marked) return marked.textContent.trim();
             if (msgEpisode && msgEpisode !== '0') this.msgEpisode = String(msgEpisode);
             return this.msgEpisode || '1';
         }
 
         getPlayerContainer() {
-            const frame = findKodikFrame();
+            const frame = findPlayerFrame();
             return frame ? (frame.parentElement?.parentElement || frame.parentElement) : null;
         }
 
         getPlayerWindows() {
-            const frame = findKodikFrame();
+            const frame = findPlayerFrame();
             return frame && frame.contentWindow ? [frame.contentWindow] : [];
         }
 
-        /** Списки для панели плеера: Kodik открыт сайтом на одну серию и своих списков не имеет */
+        /** Списки для панели плеера: сайт открывает плеер на одну серию и озвучку */
         async getShellSite() {
             const heading = (document.querySelector('h1')?.innerText || '').trim();
             const current = this.getEpisode();
@@ -207,17 +223,18 @@
                 const voices = await readSelect('Озвучка');
                 const players = await readSelect('Плеер');
                 if (voices && voices.length) {
-                    this.shellMenus = { voices: await this.keepKodikVoices(voices), players: players || [] };
+                    this.shellMenus = { voices: await this.keepPlayerVoices(voices), players: players || [] };
                     this.shellMenusKey = key;
                 }
             }
             return { title: heading, episodes, ...(this.shellMenus || { voices: [], players: [] }) };
         }
 
-        // Панель работает только в Kodik: озвучка без него увела бы зрителя в чужой плеер
-        async keepKodikVoices(voices) {
+        // Только озвучки текущего плеера: другая увела бы зрителя в другой плеер
+        async keepPlayerVoices(voices) {
             const api = await this.loadApi();
-            const names = new Set((api?.videos || []).filter(v => /kodik/i.test(v.data?.player || '')).map(v => parseSelectText('Озвучка', v.data?.dubbing).title));
+            const current = parseSelectText('Плеер', selectValue('Плеер')).title;
+            const names = new Set((api?.videos || []).filter(v => window.AgPlayerChoice.same(parseSelectText('Плеер', v.data?.player).title, current)).map(v => parseSelectText('Озвучка', v.data?.dubbing).title));
             return names.size ? voices.filter(v => names.has(v.title)) : voices;
         }
 
@@ -228,17 +245,24 @@
                 return;
             }
             if (kind === 'players') {
-                await chooseSelect('Плеер', (_, i) => i === index);
+                await chooseSelect('Плеер', (option, i) => {
+                    if (i !== index) return false;
+                    window.AgPlayerChoice.set(this.site.id, option.title);
+                    return true;
+                });
                 return;
             }
             if (kind === 'voices') {
                 const before = selectValue('Озвучка');
                 const episode = String(this.getEpisode());
+                const playerBefore = parseSelectText('Плеер', selectValue('Плеер')).title;
                 if (!await chooseSelect('Озвучка', (_, i) => i === index)) return;
                 for (let i = 0; i < 14 && selectValue('Озвучка') === before; i++) await sleep(100);
-                // При смене озвучки сайт всегда ставит первый плеер, поэтому Kodik возвращаем сами
+                // При смене озвучки сайт всегда ставит первый плеер, поэтому плеер зрителя возвращаем сами
                 await sleep(100);
-                if (!/kodik/i.test(selectValue('Плеер'))) await chooseSelect('Плеер', parsed => /kodik/i.test(parsed.title));
+                if (!window.AgPlayerChoice.same(parseSelectText('Плеер', selectValue('Плеер')).title, playerBefore)) {
+                    await chooseSelect('Плеер', parsed => window.AgPlayerChoice.same(parsed.title, playerBefore));
+                }
                 // Новый сайт при этом открывает первую серию, а зритель хотел сменить только озвучку
                 await sleep(300);
                 if (String(this.getEpisode()) !== episode) findEpisodeButtons().find(b => b.textContent.trim() === episode)?.click();
@@ -246,15 +270,34 @@
         }
 
         // Плеер выбирает сам сайт (React-селект «Плеер Kodik»); вмешиваться не нужно
-        // Наши функции плеера работают только в Kodik, а сайт по умолчанию может открыть другой плеер.
+        // Плеер, выбранный зрителем, а без выбора Kodik: на нём есть всё аниме и работают все функции.
         // Меню появляется не сразу: runtime зовёт этот метод повторно, пока он не вернёт true
         selectPreferredPlayer() {
-            if (this.playerPicked || findKodikFrame()) return true;
+            if (this.playerPicked) return true;
+            if (this.playerChoice === undefined) {
+                if (!this.playerChoiceLoading) {
+                    this.playerChoiceLoading = true;
+                    window.AgPlayerChoice.get(this.site.id).then((name) => {
+                        this.playerChoice = name;
+                        this.playerChoiceLoading = false;
+                        this.selectPreferredPlayer();
+                    });
+                }
+                return false;
+            }
+            const want = this.playerChoice || 'Kodik';
+            if (!this.playerChoice && /kodik/i.test(findPlayerFrame()?.src || '')) return true;
             if (this.playerPicking || !findSelectControl('Плеер')) return false;
+            if (window.AgPlayerChoice.same(parseSelectText('Плеер', selectValue('Плеер')).title, want)) return true;
             this.playerPicking = true;
-            chooseSelect('Плеер', (option) => /kodik/i.test(option.title))
-                // null: меню сейчас открыл сам зритель, попробуем позже. false: Kodik у этого тайтла нет
-                .then((result) => { this.playerPicked = result !== null; })
+            chooseSelect('Плеер', (option) => window.AgPlayerChoice.same(option.title, want))
+                .then((result) => {
+                    // null: меню сейчас открыл сам зритель, попробуем позже
+                    if (result === null) return;
+                    // Выбранного плеера нет у этого тайтла: возвращаемся к Kodik
+                    if (result === false && this.playerChoice) this.playerChoice = null;
+                    else this.playerPicked = true;
+                })
                 .catch(() => {})
                 .finally(() => { this.playerPicking = false; });
             return false;
@@ -273,14 +316,25 @@
 
         /** Тайминги сайта зависят от озвучки, а она меняет адрес кадра */
         getSkipKey() {
-            return findKodikFrame()?.src || '';
+            return findPlayerFrame()?.src || '';
+        }
+
+        // Метки Kodik этой серии и озвучки лежат в API сайта вместе с другими плеерами
+        async getKodikMarks(episode, voice) {
+            const api = await this.loadApi();
+            const name = (voice || parseSelectText('Озвучка', selectValue('Озвучка')).title);
+            const video = (api?.videos || []).find(v => String(v.number) === String(episode) && v.skips && /kodik/i.test(v.data?.player || '')
+                && window.AgPlayerChoice.same(parseSelectText('Озвучка', v.data?.dubbing).title, name));
+            if (!video) return null;
+            const range = (s) => (s && s.length >= SITE_MARK_MIN_SEC ? { start: s.time, end: s.time + s.length } : null);
+            return { op: range(video.skips.opening), ed: range(video.skips.ending) };
         }
 
         // Таймкоды опенинга/эндинга есть прямо в API сайта — точнее, чем AniSkip
         async getSkipData(episode) {
             const api = await this.loadApi();
             const videos = (api?.videos || []).filter(v => String(v.number) === String(episode) && v.skips);
-            const src = findKodikFrame()?.src || '';
+            const src = findPlayerFrame()?.src || '';
             const exact = videos.find(v => v.iframe_url && src.includes(v.iframe_url.replace(/^https?:/, '').split('?')[0]));
             const video = exact || videos.find(v => v.skips.opening || v.skips.ending);
             if (!video) return null;
@@ -312,10 +366,24 @@
         mount(scope) {
             this.msgEpisode = null;
             this.playerPicked = false;
-            // ru.yummyani.me кладёт поверх Kodik свою кнопку полного экрана, и она дублирует кнопку новой оболочки.
+            this.playerChoice = undefined;
+            // Настоящее нажатие зрителя в меню сайта. Свои нажатия расширения сюда не попадают
+            scope.listen(document, 'click', (e) => {
+                if (!e.isTrusted || !e.target.closest) return;
+                const option = e.target.closest('[class*="-option"]');
+                const voiceControl = findSelectControl('Озвучка');
+                if (option && voiceControl && voiceControl.parentElement.contains(option)) document.dispatchEvent(new CustomEvent('ag-voice-switch'));
+                const control = findSelectControl('Плеер');
+                if (!option || !control || !control.parentElement.contains(option)) return;
+                const picked = parseSelectText('Плеер', option.textContent).title;
+                if (!window.AgPlayerChoice.same(picked, parseSelectText('Плеер', selectValue('Плеер')).title)) document.dispatchEvent(new CustomEvent('ag-player-switch'));
+                window.AgPlayerChoice.set(this.site.id, parseSelectText('Плеер', option.textContent).title);
+                this.playerPicked = true;
+            }, true);
+            // ru.yummyani.me кладёт поверх плеера свою кнопку полного экрана, и она дублирует кнопку новой оболочки.
             // Классы меняются при каждой сборке сайта, поэтому узнаём её по значку
             const style = document.createElement('style');
-            style.textContent = 'body:has(iframe[src*="kodik"]) button:has(> svg > path[d^="M2.75 2.5a.25"]) { display: none !important; }';
+            style.textContent = 'body:has(iframe) button:has(> svg > path[d^="M2.75 2.5a.25"]) { display: none !important; }';
             document.head.appendChild(style);
             scope.add(() => style.remove());
         }

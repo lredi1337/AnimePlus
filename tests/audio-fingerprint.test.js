@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const FP = require('../modules/audio/fingerprint.js');
 
 require('../modules/audio/audio-skip.js');
-const { parseNativeMarks, splitNativeMarks, songInEpisode, chooseTimings } = globalThis.AgAudioSkip;
+const { parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings } = globalThis.AgAudioSkip;
 
 const SR = FP.SAMPLE_RATE;
 
@@ -186,15 +186,9 @@ test('метка начинается там же: её конец точнее,
     assert.strictEqual(t.source, 'audio+aniskip');
 });
 
-test('образец есть, песня ещё не узнана: метку AniSkip не применяем', () => {
-    const t = chooseTimings({ mark, hasSong: true, listening: true, currentTime: 110 });
-    assert.deepStrictEqual(t, { start: 0, end: 0 });
-});
-
-test('песню так и не узнали: метка только кнопкой, без автопрыжка', () => {
-    const t = chooseTimings({ mark, hasSong: true, listening: true, currentTime: 135 });
-    assert.strictEqual(t.manual, true);
-    assert.strictEqual(t.end, 190);
+test('образец есть, песня ещё не узнана: метка видна сразу, но пропускается только кнопкой', () => {
+    const t = chooseTimings({ mark, hasSong: true, listening: true });
+    assert.deepStrictEqual(t, { start: 100, end: 190, source: 'aniskip', manual: true });
 });
 
 test('образца нет или слушать нельзя: метка AniSkip работает как раньше', () => {
@@ -207,4 +201,58 @@ test('общая база важнее поиска, но метка плеер�
     const shared = { start: 60, end: 150 };
     assert.strictEqual(chooseTimings({ shared, hit: { start: 100, song: sampleSong }, mark, hasSong: true, listening: true, currentTime: 0 }).source, 'shared');
     assert.strictEqual(chooseTimings({ native: { start: 50, end: 140 }, shared, hasSong: true, listening: false, currentTime: 0 }).source, 'kodik');
+});
+
+test('метки подставил сайт или они от самого Kodik', () => {
+    assert.strictEqual(marksFromSite('parseSkipButton("[opening]0-89,[ending]1335-1425", "anime")'), true);
+    assert.strictEqual(marksFromSite('parseSkipButton("00:13-01:43,22:53-24:23", "anime")'), false);
+    assert.strictEqual(marksFromSite('нет меток'), false);
+});
+
+test('метка сайта с необычной длиной не похожа на песню: случаи из замера', () => {
+    for (const [start, end] of [[0, 64], [0, 109], [0, 159], [15, 79], [0, 99]]) assert.strictEqual(siteMarkFits('op', { start, end }), false, `${start}-${end}`);
+    for (const [start, end] of [[73, 162], [0, 89], [281, 370]]) assert.strictEqual(siteMarkFits('op', { start, end }), true, `${start}-${end}`);
+    assert.strictEqual(siteMarkFits('ed', { start: 1335, end: 1439 }), true);
+    assert.strictEqual(siteMarkFits('ed', { start: 1105, end: 1409 }), false);
+});
+
+test('точная метка сайта срабатывает сразу, без прослушивания', () => {
+    const t = chooseTimings({ site: { start: 73, end: 162 }, siteFits: true, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 0 });
+    assert.deepStrictEqual(t, { start: 73, end: 162, source: 'site' });
+});
+
+test('метка сайта похожа на песню, но звук уже нашёл песню: важнее звук', () => {
+    const t = chooseTimings({ site: { start: 73, end: 162 }, siteFits: true, hit: { start: 76.8, song: { len: 93 } }, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 90 });
+    assert.strictEqual(t.source, 'audio');
+    assert.strictEqual(t.start, 76.8);
+});
+
+test('неверная метка сайта только кнопкой, а узнанная песня пропускается как обычно', () => {
+    const wrong = { start: 0, end: 159 };
+    const waiting = chooseTimings({ site: wrong, siteFits: false, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 10 });
+    assert.deepStrictEqual(waiting, { start: 0, end: 159, source: 'site', manual: true });
+    const heard = chooseTimings({ site: wrong, siteFits: false, hit: { start: 85.1, song: { len: 90 } }, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 92 });
+    assert.strictEqual(heard.source, 'audio');
+    assert.strictEqual(heard.manual, undefined);
+    assert.strictEqual(heard.start, 85.1);
+});
+
+test('неверная метка сайта уступает подтверждённой общей базе', () => {
+    const t = chooseTimings({ site: { start: 0, end: 159 }, siteFits: false, shared: { start: 86, end: 176 }, mark: { start: 0, end: 0 } });
+    assert.strictEqual(t.source, 'shared');
+});
+
+test('эндинг идёт до конца файла, только если после песни осталось не больше 20 с', () => {
+    const t = { start: 1330, end: 1419, source: 'audio' };
+    assert.strictEqual(extendEnding(t, 1435).end, 1435);
+    assert.strictEqual(extendEnding({ ...t, end: 1415 }, 1435).end, 1435);
+    // Осталось больше: там может быть сцена после титров
+    assert.strictEqual(extendEnding({ ...t, end: 1398 }, 1430).end, 1398);
+    // Метка за концом файла
+    assert.strictEqual(extendEnding({ ...t, end: 1800 }, 1372).end, 1372);
+    // Части нет или длина ещё неизвестна
+    assert.deepStrictEqual(extendEnding({ start: 0, end: 0 }, 1435), { start: 0, end: 0 });
+    assert.strictEqual(extendEnding(t, 0).end, 1419);
+    // Кнопочный режим сохраняется
+    assert.strictEqual(extendEnding({ ...t, manual: true }, 1435).manual, true);
 });

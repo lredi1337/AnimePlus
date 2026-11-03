@@ -7,7 +7,7 @@
 // Плеер: <div data-player-anime-id> → вкладки .tabs-block__select > (button|span)
 //        и слоты [data-player-slot][data-player-title="Плеер Kodik"] — индекс вкладки = индекс слота.
 // Kodik вложен в same-origin iframe /engine/ajax/controller.php?mod=xfp, номер серии знает только сам Kodik
-// (сообщения content-kodik.js → AG_EPISODE_CHANGED / AG_VIDEO_PROGRESS).
+// (сообщения content-player.js → AG_EPISODE_CHANGED / AG_VIDEO_PROGRESS).
 
 (function () {
     'use strict';
@@ -26,6 +26,7 @@
     };
 
     // Метка и год могут стоять в разных элементах («<span>Год:</span>\n<a>2026</a>») — допускаем переносы
+    const TAB_SWITCH_MS = 300;
     const YEAR_RE = /(?:Год(?:\s+выхода)?|Сезон|Статус|Выпуск|Дата выхода)[^\d]{0,40}?(19[6-9]\d|20[0-4]\d)/i;
 
     class DleProvider extends BaseProvider {
@@ -117,6 +118,25 @@
             return player.querySelector('.video-inside') || player;
         }
 
+        // Вкладки плееров лежат в разных блоках: полный экран держим на их общем родителе, иначе смена вкладки его закроет
+        getFullscreenContainer() {
+            return window.agQueryFirst(SEL.player);
+        }
+
+        // Адрес Kodik лежит в кадре-обёртке его вкладки. У других плееров берём метки с его страниц
+        getKodikUrl() {
+            const player = window.agQueryFirst(SEL.player);
+            if (!player) return null;
+            for (const frame of player.querySelectorAll('iframe')) {
+                if (/kodik/i.test(frame.src || '')) return frame.src;
+                try {
+                    const inner = frame.contentDocument && frame.contentDocument.querySelector('iframe[src*="kodik"]');
+                    if (inner) return inner.src;
+                } catch (e) {}
+            }
+            return null;
+        }
+
         getPlayerWindows() {
             const player = window.agQueryFirst(SEL.player);
             if (!player) return [];
@@ -145,21 +165,42 @@
             return true;
         }
 
-        // Kodik: слот с data-player-title*="Kodik" и вкладка с тем же индексом.
-        // Подписи вкладок у сайтов разные («Kodik», «Все озвучки»), а data-player-title стабилен
+        // Вкладки плееров без трейлера. Подписи у сайтов разные («Смотреть онлайн», «Все озвучки»), а data-player-title
+        // стабилен. Слоты идут первыми, вкладка трейлера может быть без слота (yummyanime.tv: 3 вкладки, 2 слота)
+        playerTabs() {
+            const player = window.agQueryFirst(SEL.player);
+            if (!player) return [];
+            const slots = Array.from(player.querySelectorAll('[data-player-slot]'));
+            const tabs = Array.from(player.querySelectorAll('.tabs-block__select > *'));
+            const bySlot = tabs.length >= slots.length;
+            return tabs
+                .map((el, i) => {
+                    const fromSlot = bySlot ? (slots[i]?.dataset.playerTitle || '').replace(/^Плеер\s*/i, '').trim() : '';
+                    return { el, title: fromSlot || el.textContent.trim() };
+                })
+                .filter(t => !/трейлер|trailer/i.test(t.title));
+        }
+
+        // Плеер, выбранный зрителем, а без выбора Kodik: на нём есть всё аниме и работают все функции
         selectPreferredPlayer() {
             const player = window.agQueryFirst(SEL.player);
             if (!player) return false;
-            const slots = Array.from(player.querySelectorAll('[data-player-slot]'));
-            const kodikIdx = slots.findIndex(s => /kodik/i.test(s.dataset.playerTitle || ''));
-            if (kodikIdx === -1) return true; // Kodik на этом тайтле нет
-
-            // 1) вкладка с подписью «Kodik»; 2) вкладка с тем же индексом, что и слот —
-            // слоты идут первыми, вкладка трейлера может быть без слота (yummyanime.tv: 3 вкладки, 2 слота)
-            const tabs = Array.from(player.querySelectorAll('.tabs-block__select > *'));
-            const tab = tabs.find(t => /kodik/i.test(t.textContent))
-                || (tabs.length >= slots.length ? tabs[kodikIdx] : null);
-            if (!tab) return true;
+            if (this.playerChoice === undefined) {
+                if (!this.playerChoiceLoading) {
+                    this.playerChoiceLoading = true;
+                    window.AgPlayerChoice.get(this.site.id).then((name) => {
+                        this.playerChoice = name;
+                        this.playerChoiceLoading = false;
+                        this.selectPreferredPlayer();
+                    });
+                }
+                return false;
+            }
+            const tabs = this.playerTabs();
+            const own = this.playerChoice ? tabs.find(t => window.AgPlayerChoice.same(t.title, this.playerChoice)) : null;
+            const target = own || tabs.find(t => window.AgPlayerChoice.isKodik(t.title) || /kodik/i.test(t.el.textContent));
+            if (!target) return true; // Kodik на этом тайтле нет
+            const tab = target.el;
             if (tab.classList.contains('is-active')) return true;
 
             const now = Date.now();
@@ -167,6 +208,32 @@
             tab.dataset.agClickTs = String(now);
             tab.click();
             return tab.classList.contains('is-active');
+        }
+
+        // Выбор плеера в меню оболочки: серии и озвучка здесь и так внутри плеера
+        async getShellSite() {
+            const tabs = this.playerTabs();
+            return {
+                title: (window.agQueryFirst(SEL.title)?.innerText || '').trim(),
+                episodes: [],
+                voices: [],
+                players: tabs.map((t, index) => ({ index, title: t.title, selected: t.el.classList.contains('is-active') }))
+            };
+        }
+
+        async shellPick(kind, index) {
+            if (kind !== 'players') return;
+            const tab = this.playerTabs()[index];
+            if (!tab) return;
+            window.AgPlayerChoice.set(this.site.id, tab.title);
+            this.playerChoice = tab.title;
+            tab.el.click();
+            window.AgNativeFs.retidy();
+            setTimeout(() => {
+                // Пока страница занята, сайт может пропустить нажатие
+                if (!tab.el.classList.contains('is-active')) tab.el.click();
+                window.AgNativeFs.retidy();
+            }, TAB_SWITCH_MS);
         }
 
         getTitleAnchor() {
@@ -220,6 +287,16 @@
             }
             this.episode = null;
             this.infoPromise = null;
+            this.playerChoice = undefined;
+            // Настоящее нажатие зрителя на вкладку плеера. Свои нажатия расширения сюда не попадают
+            scope.listen(document, 'click', (e) => {
+                if (!e.isTrusted || !e.target.closest) return;
+                const tab = this.playerTabs().find(t => t.el.contains(e.target));
+                if (!tab) return;
+                if (!tab.el.classList.contains('is-active')) document.dispatchEvent(new CustomEvent('ag-player-switch'));
+                window.AgPlayerChoice.set(this.site.id, tab.title);
+                this.playerChoice = tab.title;
+            }, true);
         }
     }
 

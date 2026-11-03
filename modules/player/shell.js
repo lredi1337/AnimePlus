@@ -1,6 +1,6 @@
-// modules/kodik/player-shell.js
-// Новая оболочка плеера Kodik, вариант «Кинотеатр». Живёт в Shadow DOM внутри iframe плеера, поэтому стили не пересекаются ни с Kodik, ни с сайтом.
-// Своей логики воспроизведения нет: управляет родным <video> и родными списками Kodik.
+// modules/player/shell.js
+// Оболочка плеера, вариант «Кинотеатр». Живёт в Shadow DOM внутри iframe плеера, поэтому стили не пересекаются ни с плеером, ни с сайтом.
+// Своей логики воспроизведения нет: управляет родным <video> и родными списками через адаптер плеера (modules/player/adapters.js).
 // Реклама не трогается: пока она идёт, виден родной интерфейс. При любой ошибке оболочка снимается и плеер остаётся обычным.
 
 (function (root) {
@@ -21,6 +21,10 @@
     const VOLUME_STEP = 0.01;
     // Ручной пропуск: обычная длина опенинга или эндинга
     const MANUAL_SKIP_SEC = 89;
+    // Столько плееру нужно, чтобы показать список качества в своём меню
+    const QUALITY_MENU_MS = 250;
+    // Плеер показывает ошибку и когда видео идёт. Настоящая ошибка: видео стоит столько времени
+    const FAULT_CONFIRM_MS = 3000;
 
     // ---------- Чистые функции ----------
 
@@ -62,62 +66,6 @@
         if (adPlaying) return 'ad';
         if (!active) return autoStarting ? 'loading' : 'start';
         return ready && hasVideo ? 'play' : 'loading';
-    }
-
-    // ---------- Родные элементы Kodik ----------
-
-    const q = (s) => document.querySelector(s);
-    const SELECTS = { seasons: '.serial-seasons-box select', episodes: '.serial-series-box select', voices: '.serial-translations-box select' };
-
-    function readOptions(selector) {
-        const sel = q(selector);
-        if (!sel) return [];
-        return [...sel.options].map((o, index) => ({
-            index,
-            selected: o.selected,
-            label: (o.dataset.title || o.textContent || '').trim().replace(/\s*(серия|сезон)$/i, ''),
-            title: (o.dataset.title || o.textContent || '').replace(/\s*\([^)]*\)\s*$/, '').trim(),
-            type: o.dataset.translationType || 'voice',
-            count: o.dataset.episodeCount || ''
-        }));
-    }
-
-    function chooseOption(selector, index) {
-        const sel = q(selector);
-        if (!sel || sel.selectedIndex === index) return;
-        sel.selectedIndex = index;
-        sel.dispatchEvent(new Event('input', { bubbles: true }));
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    // Блок рекламы лежит в кадре и без рекламы, иногда под самим видео, поэтому смотрим, что на самом деле сверху.
-    // Оболочка при этой проверке не считается
-    function adIsOnTop(box) {
-        if (!document.elementsFromPoint) return true;
-        const r = box.getBoundingClientRect();
-        const stack = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).filter(e => e.id !== 'ag-shell');
-        return !!stack[0] && box.contains(stack[0]);
-    }
-
-    /** Состояние рекламы: играет, блок сверху без видео (баннер) или её нет */
-    function adState(main) {
-        const box = q('.creative-player');
-        if (!box || box.getBoundingClientRect().width === 0) return 'none';
-        const style = getComputedStyle(box);
-        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return 'none';
-        const onTop = adIsOnTop(box);
-        const ad = box.querySelector('video');
-        const adRuns = !!ad && !ad.paused && !ad.ended && !!ad.currentSrc;
-        if (adRuns && (onTop || !main || main.paused)) return 'playing';
-        return onTop ? 'visible' : 'none';
-    }
-
-    /** Кнопка «Да» в окне Kodik «Вам есть 18 лет?», если окно сейчас на экране */
-    function ageGateButton() {
-        const button = q('.preview-confirmation .pc-confirm');
-        if (!button || button.getBoundingClientRect().width === 0) return null;
-        const style = getComputedStyle(button);
-        return style.display !== 'none' && style.visibility !== 'hidden' ? button : null;
     }
 
     /** Ответ зрителя: Kodik сохраняет его в этой вкладке, но всё равно показывает окно на каждой серии */
@@ -167,6 +115,7 @@
         .head { position: absolute; left: 24px; top: 18px; right: 90px; }
         .title { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
         .sub { margin-top: 3px; color: rgba(255,255,255,.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .player-name { margin-top: 2px; font-size: 12px; color: rgba(255,255,255,.55); white-space: nowrap; }
         .pip { position: absolute; right: 20px; top: 18px; pointer-events: auto; opacity: .9; }
         .center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 28px; }
         .center button { pointer-events: auto; opacity: .92; transition: transform .12s, opacity .12s; }
@@ -267,7 +216,7 @@
             <div class="chrome">
                 <div class="scrim-top"></div>
                 <div class="scrim-bottom"></div>
-                <div class="head"><div class="title"></div><div class="sub"></div></div>
+                <div class="head"><div class="title"></div><div class="sub"></div><div class="player-name"></div></div>
                 <button class="pip" data-act="pip" aria-label="Картинка в картинке">${icon('pip')}</button>
                 <div class="center">
                     <button data-act="prev" aria-label="Предыдущая серия">${icon('prev')}</button>
@@ -304,9 +253,7 @@
 
     // Родной интерфейс скрыт, но остаётся в разметке: его логика продолжает работать
     const NATIVE_CSS = `
-        body.ag-shell-on .fp-ui, body.ag-shell-on .serial-panel { opacity: 0 !important; pointer-events: none !important; }
         body.ag-shell-on { background: #000 !important; }
-        body.ag-shell-on .play_button, body.ag-shell-on .play_background { opacity: 0 !important; }
         body.ag-shell-panel #ag-smart-skip, body.ag-shell-panel #ag-skip-undo { right: calc(clamp(280px, 40%, 420px) + 24px) !important; }
     `;
 
@@ -315,7 +262,8 @@
      * Возвращает { destroy } или null, если подключиться нельзя.
      */
     function create(options) {
-        if (!document.body || q('#ag-shell')) return null;
+        if (!document.body || document.getElementById('ag-shell')) return null;
+        const player = options.player || root.AgPlayerAdapters.current();
         const host = document.createElement('div');
         host.id = 'ag-shell';
         host.style.cssText = 'position:fixed;inset:0;z-index:9999980;display:none;';
@@ -323,7 +271,7 @@
         shadow.innerHTML = `<style>${STYLE}</style>${TEMPLATE}`;
         const nativeStyle = document.createElement('style');
         nativeStyle.id = 'ag-shell-native';
-        nativeStyle.textContent = NATIVE_CSS;
+        nativeStyle.textContent = NATIVE_CSS + player.css;
         document.head.appendChild(nativeStyle);
         document.body.appendChild(host);
 
@@ -348,19 +296,21 @@
         let fullShown = false;
         let resumeAfterGate = false;
         let siteData = null;
-        const titleKey = () => (document.title || '').trim().toLowerCase();
+        const titleName = () => (siteData && siteData.title) || (player.id === 'kodik' ? document.title : '') || '';
+        const titleKey = () => titleName().trim().toLowerCase();
 
         const settings = () => options.getSettings() || {};
 
         // ---------- Просмотренные серии ----------
 
-        chrome.storage.local.get(SEEN_KEY).then((saved) => {
+        const loadSeen = () => chrome.storage.local.get(SEEN_KEY).then((saved) => {
             const entry = saved && saved[SEEN_KEY] && saved[SEEN_KEY][titleKey()];
             seen = new Set(entry ? entry.eps : []);
         }).catch(() => {});
+        loadSeen();
 
         const markSeen = (episode) => {
-            if (!episode || seen.has(episode)) return;
+            if (!episode || seen.has(episode) || !titleKey()) return;
             seen.add(episode);
             chrome.storage.local.get(SEEN_KEY).then((saved) => {
                 const all = (saved && saved[SEEN_KEY]) || {};
@@ -392,27 +342,25 @@
 
         // ---------- Данные на экране ----------
 
-        // Родные списки Kodik, а если плеер открыт на одну серию (AnimeGO), то списки со страницы сайта
-        const listOf = (kind) => {
-            const own = readOptions(SELECTS[kind]);
-            if (own.length > 1 || !siteData || !siteData[kind] || !siteData[kind].length) return own;
-            return siteData[kind];
-        };
-        const usesSite = (kind) => readOptions(SELECTS[kind]).length <= 1 && !!(siteData && siteData[kind] && siteData[kind].length);
+        // Родные списки плеера, а если плеер открыт на одну серию или сайт ведёт списки сам, то списки со страницы сайта
+        const usesSite = (kind) => !!(siteData && siteData[kind] && siteData[kind].length) && (player.siteFirst || player.read(kind).length <= 1);
+        const listOf = (kind) => (usesSite(kind) ? siteData[kind] : player.read(kind));
         const pickItem = (kind, index) => {
             if (usesSite(kind)) options.sitePick(kind, index);
-            else chooseOption(SELECTS[kind], index);
+            else player.choose(kind, index);
         };
         const currentEpisode = () => listOf('episodes').find(o => o.selected);
 
+        let headKey = '';
         function renderHead() {
-            $('.title').textContent = (siteData && siteData.title) || (document.title || '').trim();
-            const seasons = readOptions(SELECTS.seasons);
+            $('.title').textContent = titleName().trim();
+            const seasons = player.read('seasons');
             // Единственный первый сезон упоминать незачем
             const season = seasons.length > 1 || (seasons[0] && seasons[0].label !== '1') ? seasons.find(o => o.selected) : null;
             const ep = currentEpisode();
             const voice = listOf('voices').find(o => o.selected);
-            $('.sub').textContent = [season && `Сезон ${season.label}`, ep && `Серия ${ep.label}`, voice && voice.title].filter(Boolean).join(' · ');
+            $('.player-name').textContent = player.name ? `Плеер ${player.name}` : '';
+            headKey = $('.sub').textContent = [season && `Сезон ${season.label}`, ep && `Серия ${ep.label}`, voice && voice.title].filter(Boolean).join(' · ');
         }
 
         function renderNav() {
@@ -422,7 +370,7 @@
             $('[data-act="prev"]').style.display = hasList && i <= 0 ? 'none' : '';
             $('[data-act="next"]').style.display = hasList && i >= list.length - 1 ? 'none' : '';
             // На сайтах с одной серией в плеере список серий находится на самой странице
-            $('[data-act="episodes"]').style.display = list.length > 1 || readOptions(SELECTS.seasons).length > 1 ? '' : 'none';
+            $('[data-act="episodes"]').style.display = list.length > 1 || player.read('seasons').length > 1 ? '' : 'none';
             $('[data-act="voices"]').style.display = listOf('voices').length > 1 ? '' : 'none';
         }
 
@@ -502,9 +450,9 @@
 
         function renderEpisodes() {
             panel.replaceChildren(panelHead('Серии'));
-            const seasons = readOptions(SELECTS.seasons);
+            const seasons = player.read('seasons');
             if (seasons.length > 1) {
-                panel.appendChild(chips(seasons.map(s => ({ label: `Сезон ${s.label}`, on: s.selected, index: s.index })), it => chooseOption(SELECTS.seasons, it.index)));
+                panel.appendChild(chips(seasons.map(s => ({ label: `Сезон ${s.label}`, on: s.selected, index: s.index })), it => player.choose('seasons', it.index)));
             }
             const list = listOf('episodes');
             const groups = episodeGroups(list);
@@ -592,6 +540,8 @@
                 b.querySelector('.meta').textContent = v.count ? `${v.count} сер.` : '';
                 b.addEventListener('click', () => {
                     if (v.selected) return;
+                    if (options.guide) options.guide.mark('switch');
+                    if (guideOpen) closeGuide();
                     if (options.onVoicePicked && !usesSite('voices')) options.onVoicePicked(v.title);
                     pickItem('voices', v.index);
                 });
@@ -615,8 +565,6 @@
                 again.setSelectionRange(value.length, value.length);
             });
         }
-
-        const qualityItems = () => [...document.querySelectorAll('.fp-quality-dropdown [data-quality]')];
 
         function toggleRow(label, on, onChange) {
             const b = document.createElement('button');
@@ -644,24 +592,32 @@
                 cap('Плеер');
                 for (const p of players) {
                     const b = document.createElement('button');
-                    b.className = `row${p.selected ? ' on' : ''}`;
+                    b.className = `row player-row${p.selected ? ' on' : ''}`;
                     b.innerHTML = `<span class="mark">${p.selected ? icon('check') : ''}</span><span class="name"></span>`;
                     b.querySelector('.name').textContent = p.title;
-                    b.addEventListener('click', () => { if (!p.selected) options.sitePick('players', p.index); });
+                    b.addEventListener('click', () => {
+                        if (p.selected) return;
+                        if (options.guide) options.guide.mark('switch');
+                        if (guideOpen) closeGuide();
+                        // Новый плеер запустится сам: этот должен замолчать сразу, а не когда его кадр уберут
+                        if (video) video.pause();
+                        // Открытая панель осталась бы здесь до возвращения на этот плеер, уже с устаревшим выбором
+                        closePanel();
+                        options.sitePick('players', p.index);
+                    });
                     scroll.appendChild(b);
                 }
             }
-            const items = qualityItems();
+            const items = player.quality();
             if (items.length) {
                 cap('Качество');
                 for (const it of items) {
-                    const current = it.classList.contains('current');
                     const b = document.createElement('button');
-                    b.className = `row${current ? ' on' : ''}`;
-                    b.innerHTML = `<span class="mark">${current ? icon('check') : ''}</span><span class="name"></span>`;
-                    b.querySelector('.name').textContent = it.textContent.trim();
+                    b.className = `row${it.current ? ' on' : ''}`;
+                    b.innerHTML = `<span class="mark">${it.current ? icon('check') : ''}</span><span class="name"></span>`;
+                    b.querySelector('.name').textContent = it.label;
                     b.addEventListener('click', () => {
-                        it.click();
+                        it.pick();
                         setTimeout(renderSettings, 150);
                     });
                     scroll.appendChild(b);
@@ -699,18 +655,29 @@
             panel.appendChild(scroll);
         }
 
+        // Звук выключил сам зритель: плееры, которые глушат себя при запуске, отличаются от этого только такой отметкой
+        function rememberMute(muted) {
+            if (!!settings().playerMuted !== muted) options.patchSettings({ playerMuted: muted });
+        }
+
         const PANELS = { episodes: renderEpisodes, voices: () => renderVoices(), settings: renderSettings };
 
-        function togglePanel(name) {
+        function togglePanel(name, byGuide = false) {
             if (openPanel === name) return closePanel();
             openPanel = name;
             episodeGroup = null;
-            if (name !== 'settings' && options.guide) options.guide.mark('panel');
+            // Зритель мог сменить плеер на сайте: у каждой вкладки свой кадр, и список плееров в нём мог устареть
+            if (options.refreshSite) options.refreshSite();
+            if (name !== 'settings' && options.guide && !byGuide) options.guide.mark('panel');
             panel.classList.add('on');
             rootEl.classList.add('with-panel');
             document.body.classList.add('ag-shell-panel');
             PANELS[name]();
             wake();
+            if (name === 'settings' && player.openQuality) {
+                player.openQuality();
+                setTimeout(() => { if (openPanel === 'settings') renderSettings(); }, QUALITY_MENU_MS);
+            }
         }
 
         function closePanel() {
@@ -724,10 +691,7 @@
 
         // ---------- Действия ----------
 
-        const startNative = () => {
-            const b = q('.play_button') || q('.play_background a') || q('.play_background');
-            if (b) b.click();
-        };
+        const startNative = () => player.start(player.video());
 
         const toggle = () => {
             if (mode === 'start') return startNative();
@@ -762,7 +726,12 @@
                 note(`+${MANUAL_SKIP_SEC} с`);
                 if (options.guide) options.guide.mark('skip');
             },
-            mute: () => { if (video) { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 0.5; } },
+            mute: () => {
+                if (!video) return;
+                rememberMute(!video.muted);
+                video.muted = !video.muted;
+                if (!video.muted && video.volume === 0) video.volume = 0.5;
+            },
             pip: async () => {
                 try {
                     if (document.pictureInPictureElement) await document.exitPictureInPicture();
@@ -810,22 +779,15 @@
             return Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1)));
         };
 
-        // Миниатюры уже есть у Kodik: родная шкала считает нужный кадр, а мы показываем его в своей подсказке
+        // Миниатюры есть не у всех плееров: показываем, только если плеер отдал готовый кадр
         function nativePreview(ratio) {
-            const line = q('.fp-timeline');
             const pic = $('.tip .pic');
-            pic.style.display = 'none';
-            if (!line) return;
-            const r = line.getBoundingClientRect();
-            if (!r.width) return;
-            const clientX = r.left + r.width * ratio;
-            line.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX, clientY: r.top + r.height / 2 }));
-            const thumb = q('.fp-timestamp-thumbnail');
-            if (!thumb || !thumb.style.backgroundImage) return;
-            pic.style.display = 'block';
-            pic.style.backgroundImage = thumb.style.backgroundImage;
-            pic.style.backgroundSize = thumb.style.backgroundSize;
-            pic.style.backgroundPosition = thumb.style.backgroundPosition;
+            const frame = player.preview(ratio);
+            pic.style.display = frame ? 'block' : 'none';
+            if (!frame) return;
+            pic.style.backgroundImage = frame.image;
+            pic.style.backgroundSize = frame.size;
+            pic.style.backgroundPosition = frame.position;
         }
 
         function showTip(e) {
@@ -881,6 +843,7 @@
         const setVolume = (e) => {
             if (!video) return;
             video.volume = ratioAt(e, slider.firstElementChild);
+            rememberMute(video.volume === 0);
             video.muted = video.volume === 0;
         };
         slider.addEventListener('pointerdown', (e) => {
@@ -897,6 +860,7 @@
             if (!video) return;
             e.preventDefault();
             const step = VOLUME_STEP;
+            rememberMute(false);
             video.muted = false;
             video.volume = Math.max(0, Math.min(1, video.volume + (e.deltaY < 0 ? step : -step)));
             note(`Громкость ${Math.round(video.volume * 100)}%`);
@@ -934,7 +898,8 @@
             const show = next !== 'ad';
             host.style.display = show ? '' : 'none';
             document.body.classList.add('ag-shell-on');
-            if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
+            if (player.inject) player.inject(true);
+            if (globalThis.AgPlayerBoot) globalThis.AgPlayerBoot.release();
             rootEl.classList.toggle('start', next === 'start');
             rootEl.classList.toggle('loading', next === 'loading');
             if (next === 'play') startGuide();
@@ -948,15 +913,42 @@
             }
         }
 
+        // Настоящая ошибка: просим страницу перезагрузиться, место остановки вернётся. Страница делает это не чаще раза в несколько минут,
+        // поэтому если не помогло, остаётся родное окно: оболочка его не закрывает
+        let faultSince = 0;
+        let faultTime = 0;
+        let faultReported = false;
+        function faultShown(v) {
+            const failed = player.fault ? player.fault() : false;
+            if (!failed || (v && !v.paused && v.currentTime !== faultTime)) {
+                faultSince = 0;
+                faultTime = v ? v.currentTime : 0;
+                document.body.classList.remove('ag-shell-fault');
+                return false;
+            }
+            if (!faultSince) faultSince = Date.now();
+            if (Date.now() - faultSince < FAULT_CONFIRM_MS) return false;
+            if (!faultReported && options.reloadPage) {
+                faultReported = true;
+                options.reloadPage();
+            }
+            document.body.classList.add('ag-shell-fault');
+            return true;
+        }
+
         function sync() {
-            const b = document.body.classList;
-            const v = q('video.fp-engine');
+            const v = player.video();
             if (v) bindVideo(v);
-            const ad = adState(v);
+            if (player.tick) player.tick();
+            // Shadow DOM плеера появляется позже оболочки
+            if (player.inject && mode) player.inject(true);
+            // Другая вкладка плеера на сайте: кадр скрыт, а звук из него играть не должен
+            if (v && !v.paused && options.isShown && !options.isShown()) v.pause();
+            const ad = player.adState(v);
             if (ad === 'none') adSeenSince = 0;
             else if (!adSeenSince) adSeenSince = Date.now();
             // Ответить может только сам зритель: оболочка уходит с окна, а звук за окном не играет
-            let gate = ageGateButton();
+            let gate = player.ageGate();
             if (gate && ageConfirmed()) {
                 gate.click();
                 gate = null;
@@ -968,11 +960,16 @@
                 resumeAfterGate = false;
                 if (v) v.play().catch(() => {});
             }
-            const adPlaying = !!gate || ad === 'playing' || (ad === 'visible' && Date.now() - adSeenSince >= AD_CONFIRM_MS);
-            const autoStarting = !!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS;
-            setMode(playerMode({ active: b.contains('active-player'), ready: b.contains('player-is-ready'), adPlaying, hasVideo: !!v, autoStarting }));
+            const adPlaying = faultShown(v) || !!gate || ad === 'playing' || (ad === 'visible' && Date.now() - adSeenSince >= AD_CONFIRM_MS);
+            const autoStarting = (!!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS)
+                || !!(options.takingOver && options.takingOver());
+            setMode(playerMode({ active: player.started(v), ready: player.ready(v), adPlaying, hasVideo: !!v, autoStarting }));
             if (guideOpen) wake();
             if (mode !== 'ad') {
+                // Серия и сезон меняются и без смены режима: например, плеер открывает нужный сезон ещё до запуска
+                const before = headKey;
+                renderHead();
+                if (headKey !== before) renderNav();
                 renderZones();
                 const full = document.body.dataset.agFsState === 'true';
                 if (full !== fullShown) {
@@ -985,21 +982,53 @@
         }
 
         // Подсказки лисы: один раз, при первом запуске серии. Видео не останавливают и нажатий не перехватывают
+        const SITE_LISTS_WAIT_MS = 4000;
+        const otherPair = (kind) => {
+            const list = listOf(kind);
+            const on = list.find(o => o.selected);
+            const other = list.find(o => !o.selected);
+            return on && other ? [on.title, other.title] : null;
+        };
+        const sitePlayers = () => (siteData && siteData.players ? siteData.players : []);
+        const SWITCH_TIPS = [
+            { panel: 'voices', target: '.row:not(.on)', anchor: '[data-act="voices"]', pose: 'right', when: () => listOf('voices').length > 1, demo: () => otherPair('voices'), text: 'Озвучка меняется без перерыва: выберите другую, и видео само продолжится с этого же места. Ваш выбор запомнится для тайтла.' },
+            { panel: 'settings', target: '.player-row:not(.on)', anchor: '[data-act="settings"]', pose: 'right', when: () => sitePlayers().length > 1, demo: () => {
+                const on = sitePlayers().find(p => p.selected);
+                const other = sitePlayers().find(p => !p.selected);
+                return on && other ? [on.title, other.title] : null;
+            }, text: 'Плеер тормозит? Выберите другой. Он продолжит с того же места и запустится сам, а полный экран не свернётся.' }
+        ];
         const GUIDE_TIPS = [
             { target: '.rail', pose: 'down', text: 'Опенинг и эндинг отмечены на шкале. Если автопропуск включён, они пропускаются сами.' },
             { target: '.jump', pose: 'down', text: 'Меток нет или песня не пропустилась? Эта кнопка перематывает на 89 секунд.' },
             { target: '[data-act="episodes"]', pose: 'right', text: 'Серии меняются прямо здесь, даже в полном экране.' },
-            { target: '[data-act="voices"]', pose: 'right', text: 'А здесь озвучка. Ваш выбор запомнится для этого тайтла.' },
+            ...SWITCH_TIPS,
             { target: '[data-act="settings"]', pose: 'wink', text: 'Тут настройки просмотра. На этом всё, приятного просмотра!' }
         ];
         let guideOpen = false;
         let guideStarted = false;
         let guideSpot = null;
+        let guideTip = null;
+        let guidePanel = false;
+
+        function spotGuideTarget() {
+            if (guideSpot) guideSpot.classList.remove('guide-spot');
+            guideSpot = (guideTip.panel && panel.querySelector(guideTip.target)) || $(guideTip.anchor || guideTip.target);
+            guideSpot.classList.add('guide-spot');
+            if (guideTip.panel && guideSpot.scrollIntoView) guideSpot.scrollIntoView({ block: 'nearest' });
+        }
+
+        function closeGuidePanel() {
+            if (guidePanel) closePanel();
+            guidePanel = false;
+        }
 
         function closeGuide() {
             guideOpen = false;
             if (guideSpot) guideSpot.classList.remove('guide-spot');
             guideSpot = null;
+            guideTip = null;
+            closeGuidePanel();
             $('.guide').hidden = true;
             options.guide.tipsDone();
         }
@@ -1007,12 +1036,21 @@
         function showGuideTip(index, tips) {
             const tip = tips[index];
             const box = $('.guide');
-            if (guideSpot) guideSpot.classList.remove('guide-spot');
-            guideSpot = $(tip.target);
-            guideSpot.classList.add('guide-spot');
+            guideTip = tip;
+            closeGuidePanel();
+            // Смену показываем там, где она происходит: панель открыта, а нужная строка подсвечена
+            if (tip.panel && openPanel !== tip.panel) {
+                togglePanel(tip.panel, true);
+                guidePanel = true;
+            }
+            spotGuideTarget();
             const isLast = index === tips.length - 1;
             box.innerHTML = `<div class="fox">${options.guide.fox(tip.pose)}</div><div class="body"><p></p><div class="row"><span>${index + 1} из ${tips.length}</span><button type="button" class="skip">Хватит</button><button type="button" class="go">${isLast ? 'Понятно' : 'Дальше'}</button></div></div>`;
             box.querySelector('p').textContent = tip.text;
+            if (tip.demo && options.guide.demo) {
+                const pair = tip.demo();
+                if (pair) box.querySelector('.body').prepend(options.guide.demo(pair[0], pair[1], formatTime(video ? video.currentTime : 0)));
+            }
             box.querySelector('.skip').hidden = isLast;
             box.querySelector('.skip').addEventListener('click', closeGuide);
             box.querySelector('.go').addEventListener('click', () => (isLast ? closeGuide() : showGuideTip(index + 1, tips)));
@@ -1023,8 +1061,14 @@
             if (!options.guide || guideStarted) return;
             guideStarted = true;
             options.guide.mark('play');
-            if (await options.guide.tipsSeen()) return;
-            const tips = GUIDE_TIPS.filter(t => $(t.target) && getComputedStyle($(t.target)).display !== 'none');
+            let list = GUIDE_TIPS;
+            if (await options.guide.tipsSeen()) {
+                // Подсказки уже видели до появления бесшовной смены: показываем только её
+                if (!options.guide.switchTipSeen || await options.guide.switchTipSeen()) return;
+                await new Promise(r => setTimeout(r, SITE_LISTS_WAIT_MS));
+                list = SWITCH_TIPS;
+            }
+            const tips = list.filter(t => (t.when ? t.when() : true) && $(t.anchor || t.target) && getComputedStyle($(t.anchor || t.target)).display !== 'none');
             if (destroyed || mode !== 'play' || tips.length === 0) return;
             guideOpen = true;
             showGuideTip(0, tips);
@@ -1037,8 +1081,9 @@
             document.removeEventListener('mousemove', wake);
             document.removeEventListener('keydown', onKey, true);
             window.removeEventListener('keyup', onKeyUp, true);
-            document.body.classList.remove('ag-shell-on', 'ag-shell-panel');
-            if (globalThis.AgKodikShellBoot) globalThis.AgKodikShellBoot.release();
+            document.body.classList.remove('ag-shell-on', 'ag-shell-panel', 'ag-shell-fault');
+            if (player.inject) player.inject(false);
+            if (globalThis.AgPlayerBoot) globalThis.AgPlayerBoot.release();
             host.remove();
             nativeStyle.remove();
         }
@@ -1090,19 +1135,26 @@
 
         return {
             destroy,
+            /** Выбранный пункт списка, откуда бы он ни был: со страницы сайта или из самого плеера */
+            current: (kind) => listOf(kind).find(o => o.selected) || null,
             /** Списки со страницы сайта для плееров на одну серию */
             setSite(data) {
+                // Перерисовка панели заменяет её кнопки: если это случится под курсором, нажатие зрителя потеряется
+                if (JSON.stringify(data) === JSON.stringify(siteData)) return;
+                const before = titleKey();
                 siteData = data;
+                if (titleKey() !== before) loadSeen();
                 guarded(() => {
                     renderHead();
                     renderNav();
                     if (openPanel) PANELS[openPanel]();
+                    if (guideOpen) spotGuideTarget();
                 })();
             }
         };
     }
 
     const api = { create, formatTime, episodeGroups, sortVoices, playerMode };
-    root.AgKodikShell = api;
+    root.AgPlayerShell = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

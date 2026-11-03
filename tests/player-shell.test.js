@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 const { read } = require('./helpers');
-const { formatTime, episodeGroups, sortVoices, playerMode } = require('../modules/kodik/player-shell.js');
+const { formatTime, episodeGroups, sortVoices, playerMode } = require('../modules/player/shell.js');
 
 const eps = (n) => Array.from({ length: n }, (_, i) => ({ label: String(i + 1) }));
 
@@ -50,9 +50,10 @@ function mount(extra = {}) {
     const dom = new JSDOM(PLAYER, { url: 'https://kodikplayer.com/serial/1/a/720p', runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window;
     w.chrome = { storage: { local: { get: async () => ({}), set: async () => {} } } };
-    w.eval(read('modules/kodik/player-shell.js'));
+    w.eval(read('modules/player/adapters.js'));
+    w.eval(read('modules/player/shell.js'));
     const calls = [];
-    const shell = w.AgKodikShell.create({
+    const shell = w.AgPlayerShell.create({
         getSettings: () => ({ voice_priority_list: ['AniDUB'], ...extra }),
         patchSettings: async () => {},
         getTimings: () => ({ op: { start: 60, end: 150 }, ed: { start: 0, end: 0 } }),
@@ -69,6 +70,7 @@ test('оболочка подключается, скрывает родной �
     assert.ok(w.document.body.classList.contains('ag-shell-on'));
     assert.equal(sh.querySelector('.title').textContent, 'Чёрный клевер [ТВ-2]');
     assert.equal(sh.querySelector('.sub').textContent, 'Сезон 2 · Серия 2 · JAM');
+    assert.equal(sh.querySelector('.player-name').textContent, 'Плеер Kodik');
     shell.destroy();
 });
 
