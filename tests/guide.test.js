@@ -156,16 +156,13 @@ test('бесшовная смена: новичок видит её в подс�
     assert.match(box.querySelector('p').textContent, /без перерыва/);
     assert.ok(sh.querySelector('.panel').classList.contains('on'));
     assert.ok(!marks.includes('panel'));
-    assert.ok(!marks.includes('switch'));
     box.querySelector('.go').click();
     assert.ok(!sh.querySelector('.panel').classList.contains('on'));
     shell.destroy();
 });
 
-test('смена плеера не отодвигает просьбу об оценке', async () => {
+test('о смене плеера лиса рассказывает только в плеере: в заданиях её нет', async () => {
     const { AgGuide } = loadGuide({});
-    const now = 100 * 864e5;
-    const state = AgGuide.normalize({ tourDone: true, firstSeen: now, tasks: { play: true, skip: true, panel: true, settings: true } });
-    assert.equal(AgGuide.ratingDue(state, now), true);
+    assert.deepEqual([...AgGuide.TASKS.map(t => t.id)], ['play', 'skip', 'panel', 'shiki', 'settings']);
     assert.equal(AgGuide.normalize({ switchTipDone: true }).switchTipDone, true);
 });

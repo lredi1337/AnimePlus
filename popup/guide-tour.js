@@ -17,8 +17,7 @@
         { target: '.bottom-tabs', pose: 'down', text: '«Серии» покажут новые выпуски, «Музыка» найдёт опенинги и эндинги, а «Плеер» запустит кнопки вручную, если они не появились.' },
         { target: '#btnSettings', pose: 'up', text: 'За шестерёнкой озвучка, горячие клавиши и случайное аниме.' },
         { target: '#btn-support', pose: 'wink', text: 'Что-то не работает или есть идея? Напишите сюда, это прямо в расширении. Я всё передам.' },
-        { pose: 'wow', demo: true, text: 'А это главное: плеер и озвучка меняются без перерыва. Видео продолжится с того же места и сразу запустится, даже в полном экране.' },
-        { pose: 'party', text: 'Вот и всё! Дальше шесть заданий: выполняйте их как удобно, а отмечаться они будут сами.', last: true }
+        { pose: 'party', text: 'Вот и всё! Дальше пять заданий: выполняйте их как удобно, а отмечаться они будут сами.', last: true }
     ];
 
     $('supportFox').innerHTML = AgGuideFox.svg('wink');
@@ -136,7 +135,6 @@
         const step = steps[index];
         $('tourFox').innerHTML = AgGuideFox.svg(step.pose);
         $('tourText').textContent = step.text;
-        $('tourDemo').replaceChildren(...(step.demo ? [AgGuide.switchDemo('Kodik', 'Alloha', '12:34')] : []));
         $('tourCount').textContent = `${index + 1} из ${steps.length}`;
         $('tourBack').hidden = index === 0;
         $('tourNext').textContent = step.last ? 'Показать задания' : 'Дальше';

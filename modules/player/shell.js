@@ -540,7 +540,6 @@
                 b.querySelector('.meta').textContent = v.count ? `${v.count} сер.` : '';
                 b.addEventListener('click', () => {
                     if (v.selected) return;
-                    if (options.guide) options.guide.mark('switch');
                     if (guideOpen) closeGuide();
                     if (options.onVoicePicked && !usesSite('voices')) options.onVoicePicked(v.title);
                     pickItem('voices', v.index);
@@ -597,7 +596,6 @@
                     b.querySelector('.name').textContent = p.title;
                     b.addEventListener('click', () => {
                         if (p.selected) return;
-                        if (options.guide) options.guide.mark('switch');
                         if (guideOpen) closeGuide();
                         // Новый плеер запустится сам: этот должен замолчать сразу, а не когда его кадр уберут
                         if (video) video.pause();

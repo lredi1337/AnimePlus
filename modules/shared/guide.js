@@ -11,15 +11,14 @@
         { id: 'play', title: 'Запустите серию', hint: 'На любом поддерживаемом сайте' },
         { id: 'skip', title: 'Пропустите песню', hint: 'Кнопкой +89 в плеере или автопропуском' },
         { id: 'panel', title: 'Откройте серии или озвучку', hint: 'Кнопки внизу плеера' },
-        { id: 'switch', title: 'Смените плеер или озвучку', hint: 'Видео продолжится с того же места' },
         { id: 'shiki', title: 'Подключите Shikimori', hint: 'Серии будут отмечаться сами' },
         { id: 'settings', title: 'Загляните в настройки', hint: 'Шестерёнка вверху этого окна' }
     ];
 
     const TASK_IDS = TASKS.map(t => t.id);
 
-    // Просьба об оценке не зависит от Shikimori: аккаунт есть не у всех. Смена плеера появилась позже, и тем, кто уже прошёл задания, просьбу она не отодвигает
-    const RATING_TASKS = TASK_IDS.filter(id => id !== 'shiki' && id !== 'switch');
+    // Просьба об оценке не зависит от Shikimori: аккаунт есть не у всех
+    const RATING_TASKS = TASK_IDS.filter(id => id !== 'shiki');
     const DAY_MS = 24 * 60 * 60 * 1000;
     const RATING_AFTER_MS = 3 * DAY_MS;
     const RATING_LATER_MS = 14 * DAY_MS;
