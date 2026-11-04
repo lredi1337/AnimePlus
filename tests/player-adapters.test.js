@@ -164,3 +164,21 @@ test('плеер без своих списков не ждёт их появл�
     assert.strictEqual(has('player.cdnvideohub.com'), false);
     assert.strictEqual(has('absciss.thealloha.club'), true);
 });
+
+test('спящая обработка звука плеера просыпается при нажатии зрителя', async () => {
+    const vm = require('node:vm');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const handlers = {};
+    class FakeContext {
+        constructor() { this.state = 'suspended'; }
+        async resume() { this.state = 'running'; }
+    }
+    const window = { AudioContext: FakeContext, addEventListener: (type, fn) => { handlers[type] = fn; } };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../modules/player/audio-unlock.js'), 'utf8'), { window });
+    const context = new window.AudioContext();
+    assert.ok(context instanceof FakeContext);
+    assert.equal(context.state, 'suspended');
+    handlers.pointerdown();
+    assert.equal(context.state, 'running');
+});

@@ -101,6 +101,7 @@
     // Смена плеера: столько новый плеер может загружаться, столько времени без отчёта значит, что видео стоит
     const HANDOFF_TTL_MS = 60000;
     const STILL_PLAYING_MS = 3500;
+    const HANDOFF_UNCLAIMED_MS = 8000;
     const MIN_EPISODE_SEC = 60;
     const FRAME_CHECK_MS = 400;
     const NO_MARKS = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
@@ -123,6 +124,13 @@
             wins.forEach(w => post(w, msg));
         };
 
+        const postDeep = (win, msg) => {
+            post(win, msg);
+            try {
+                for (let i = 0; i < win.length; i++) postDeep(win[i], msg);
+            } catch (e) {}
+        };
+
         // Смена плеера или озвучки: новый кадр продолжает с той же серии и того же места и запускается сам, даже если перед этим стояла пауза.
         // Старый плеер при смене плеера сразу замолкает, чтобы не играть параллельно. При смене озвучки его кадр сайт заменит сам
         let lastPlayed = null;
@@ -133,21 +141,28 @@
             const playing = now - lastPlayed.at < STILL_PLAYING_MS;
             handoff = { episode: lastPlayed.episode, time: lastPlayed.time + (playing ? (now - lastPlayed.at) / 1000 : 0), volume: lastPlayed.volume, play: true, at: now };
         };
+        // Сайт мог и не сменить плеер: тогда старый так и стоял бы на паузе, а новый не появился бы. Продолжает тот, что сейчас виден
+        const resumeIfUnclaimed = (claim) => {
+            scope.timeout(() => {
+                if (handoff !== claim || !handoff) return;
+                const msg = { type: 'AG_HANDOFF', episode: handoff.episode, time: handoff.time, volume: handoff.volume, play: handoff.play };
+                handoff = null;
+                const wins = new Set(provider.getPlayerWindows());
+                document.querySelectorAll('iframe').forEach((frame) => {
+                    if (frame.offsetWidth > 0 && wins.has(frame.contentWindow)) postDeep(frame.contentWindow, msg);
+                });
+            }, HANDOFF_UNCLAIMED_MS);
+        };
         const startHandoff = () => {
             rememberHandoff();
             broadcast({ type: 'AG_PAUSE' });
+            resumeIfUnclaimed(handoff);
         };
         scope.listen(document, 'ag-player-switch', startHandoff);
         scope.listen(document, 'ag-voice-switch', rememberHandoff);
 
         // Кадр скрытой вкладки сам не узнает, что его снова показали: ширина уже открывавшегося кадра после скрытия не обнуляется
         const shownFrames = new WeakMap();
-        const postDeep = (win, msg) => {
-            post(win, msg);
-            try {
-                for (let i = 0; i < win.length; i++) postDeep(win[i], msg);
-            } catch (e) {}
-        };
         scope.interval(() => {
             const wins = new Set(provider.getPlayerWindows());
             document.querySelectorAll('iframe').forEach((frame) => {

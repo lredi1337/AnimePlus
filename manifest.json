@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "11.0.0",
+  "version": "11.0.1",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
@@ -84,6 +84,13 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": ["https://player.aksor.tv/*", "https://alloha.yani.tv/*", "https://*.thealloha.club/*"],
+      "js": ["modules/player/audio-unlock.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://animego.me/*",

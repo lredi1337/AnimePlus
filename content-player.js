@@ -1246,13 +1246,22 @@
         if (e.name !== 'NotAllowedError' || v.muted) return;
         muteUntilAction(v);
     });
+    // Озвучка сменилась внутри плеера: кадр тот же, плеер перезагружает поток и может вернуться назад или встать.
+    // Сначала даём ему подключить поток: нажатия и перемотка в этот момент его ломают
+    const keepPlaceOnVoice = () => {
+        const v = player.video();
+        if (!v || !(v.duration >= MIN_EPISODE_SEC)) return;
+        handoff = { episode: null, time: v.currentTime, play: true };
+        takeoverUntil = Date.now() + TAKEOVER_WAIT_MS;
+        setTimeout(() => { if (handoff) takeOver(); }, STEP_SETTLE_MS);
+    };
     // Новый плеер после смены: та же серия, то же место, запуск, если видео шло
     const takeOver = async () => {
         const { episode, time, play } = handoff;
         handoff = null;
         window.focus();
         const list = player.read('episodes');
-        const target = list.find(o => o.label === String(episode));
+        const target = episode === null ? null : list.find(o => o.label === String(episode));
         if (target && !target.selected) {
             player.choose('episodes', target.index);
             await settle();
@@ -1383,6 +1392,7 @@
             openSettings: () => chrome.runtime.sendMessage({ action: 'open_settings' }).catch(() => {}),
             onVoicePicked: (voice) => rememberChoice(voice),
             takingOver: () => Date.now() < takeoverUntil,
+            onOwnVoiceChange: keepPlaceOnVoice,
             isShown,
             guide: globalThis.AgGuide && globalThis.AgGuideFox ? {
                 mark: globalThis.AgGuide.mark,

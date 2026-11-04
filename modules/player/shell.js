@@ -85,6 +85,7 @@
         vol: '<path d="M4 9v6h4l5 4V5L8 9zM17 9a4 4 0 0 1 0 6"/>',
         mute: '<path d="M4 9v6h4l5 4V5L8 9zM17 9l4 6M21 9l-4 6"/>',
         list: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+        screen: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M10.5 8v5l4-2.5z"/>',
         mic: '<path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/>',
         gear: '<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/>',
         full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
@@ -201,6 +202,7 @@
         .guide button[hidden] { display: none; }
         .guide button.go { color: #fff; font-weight: 600; background: #ef4444; }
         .guide-spot { outline: 2px solid #ef4444 !important; outline-offset: 3px; border-radius: 6px; }
+        .panel .guide-spot { outline-offset: -2px; }
         .spinner { display: none; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; animation: ag-spin .8s linear infinite; }
         @keyframes ag-spin { to { transform: rotate(360deg); } }
         .loading { background: #000; }
@@ -240,6 +242,7 @@
                         </div>
                         <button data-act="episodes">${icon('list')}<span class="label">Серии</span></button>
                         <button data-act="voices">${icon('mic')}<span class="label">Озвучка</span></button>
+                        <button data-act="players">${icon('screen')}<span class="label">Плеер</span></button>
                         <button data-act="settings" aria-label="Настройки">${icon('gear')}</button>
                         <button data-act="full" aria-label="На весь экран">${icon('full')}</button>
                     </div>
@@ -346,10 +349,15 @@
         const usesSite = (kind) => !!(siteData && siteData[kind] && siteData[kind].length) && (player.siteFirst || player.read(kind).length <= 1);
         const listOf = (kind) => (usesSite(kind) ? siteData[kind] : player.read(kind));
         const pickItem = (kind, index) => {
-            if (usesSite(kind)) options.sitePick(kind, index);
-            else player.choose(kind, index);
+            if (usesSite(kind)) {
+                options.sitePick(kind, index);
+                return;
+            }
+            if (kind === 'voices' && options.onOwnVoiceChange) options.onOwnVoiceChange();
+            player.choose(kind, index);
         };
         const currentEpisode = () => listOf('episodes').find(o => o.selected);
+        const sitePlayers = () => (siteData && siteData.players ? siteData.players : []);
 
         let headKey = '';
         function renderHead() {
@@ -372,6 +380,7 @@
             // На сайтах с одной серией в плеере список серий находится на самой странице
             $('[data-act="episodes"]').style.display = list.length > 1 || player.read('seasons').length > 1 ? '' : 'none';
             $('[data-act="voices"]').style.display = listOf('voices').length > 1 ? '' : 'none';
+            $('[data-act="players"]').style.display = sitePlayers().length > 1 ? '' : 'none';
         }
 
         function renderState() {
@@ -576,6 +585,29 @@
             return b;
         }
 
+        function renderPlayers() {
+            panel.replaceChildren(panelHead('Плеер'));
+            const scroll = document.createElement('div');
+            scroll.className = 'scroll';
+            for (const p of sitePlayers()) {
+                const b = document.createElement('button');
+                b.className = `row player-row${p.selected ? ' on' : ''}`;
+                b.innerHTML = `<span class="mark">${p.selected ? icon('check') : ''}</span><span class="name"></span>`;
+                b.querySelector('.name').textContent = p.title;
+                b.addEventListener('click', () => {
+                    if (p.selected) return;
+                    if (guideOpen) closeGuide();
+                    // Новый плеер запустится сам: этот должен замолчать сразу, а не когда его кадр уберут
+                    if (video) video.pause();
+                    // Открытая панель осталась бы здесь до возвращения на этот плеер, уже с устаревшим выбором
+                    closePanel();
+                    options.sitePick('players', p.index);
+                });
+                scroll.appendChild(b);
+            }
+            panel.appendChild(scroll);
+        }
+
         function renderSettings() {
             panel.replaceChildren(panelHead('Настройки'));
             const scroll = document.createElement('div');
@@ -586,26 +618,6 @@
                 c.textContent = text;
                 scroll.appendChild(c);
             };
-            const players = siteData && siteData.players ? siteData.players : [];
-            if (players.length > 1) {
-                cap('Плеер');
-                for (const p of players) {
-                    const b = document.createElement('button');
-                    b.className = `row player-row${p.selected ? ' on' : ''}`;
-                    b.innerHTML = `<span class="mark">${p.selected ? icon('check') : ''}</span><span class="name"></span>`;
-                    b.querySelector('.name').textContent = p.title;
-                    b.addEventListener('click', () => {
-                        if (p.selected) return;
-                        if (guideOpen) closeGuide();
-                        // Новый плеер запустится сам: этот должен замолчать сразу, а не когда его кадр уберут
-                        if (video) video.pause();
-                        // Открытая панель осталась бы здесь до возвращения на этот плеер, уже с устаревшим выбором
-                        closePanel();
-                        options.sitePick('players', p.index);
-                    });
-                    scroll.appendChild(b);
-                }
-            }
             const items = player.quality();
             if (items.length) {
                 cap('Качество');
@@ -658,7 +670,7 @@
             if (!!settings().playerMuted !== muted) options.patchSettings({ playerMuted: muted });
         }
 
-        const PANELS = { episodes: renderEpisodes, voices: () => renderVoices(), settings: renderSettings };
+        const PANELS = { episodes: renderEpisodes, voices: () => renderVoices(), players: renderPlayers, settings: renderSettings };
 
         function togglePanel(name, byGuide = false) {
             if (openPanel === name) return closePanel();
@@ -666,7 +678,7 @@
             episodeGroup = null;
             // Зритель мог сменить плеер на сайте: у каждой вкладки свой кадр, и список плееров в нём мог устареть
             if (options.refreshSite) options.refreshSite();
-            if (name !== 'settings' && options.guide && !byGuide) options.guide.mark('panel');
+            if (name !== 'settings' && name !== 'players' && options.guide && !byGuide) options.guide.mark('panel');
             panel.classList.add('on');
             rootEl.classList.add('with-panel');
             document.body.classList.add('ag-shell-panel');
@@ -716,6 +728,7 @@
             next: () => options.nav('next'),
             episodes: () => togglePanel('episodes'),
             voices: () => togglePanel('voices'),
+            players: () => togglePanel('players'),
             settings: () => togglePanel('settings'),
             full: () => options.toggleFs(),
             skip: () => {
@@ -987,21 +1000,20 @@
             const other = list.find(o => !o.selected);
             return on && other ? [on.title, other.title] : null;
         };
-        const sitePlayers = () => (siteData && siteData.players ? siteData.players : []);
         const SWITCH_TIPS = [
             { panel: 'voices', target: '.row:not(.on)', anchor: '[data-act="voices"]', pose: 'right', when: () => listOf('voices').length > 1, demo: () => otherPair('voices'), text: 'Озвучка меняется без перерыва: выберите другую, и видео само продолжится с этого же места. Ваш выбор запомнится для тайтла.' },
-            { panel: 'settings', target: '.player-row:not(.on)', anchor: '[data-act="settings"]', pose: 'right', when: () => sitePlayers().length > 1, demo: () => {
+            { panel: 'players', target: '.player-row:not(.on)', anchor: '[data-act="players"]', pose: 'right', when: () => sitePlayers().length > 1, demo: () => {
                 const on = sitePlayers().find(p => p.selected);
                 const other = sitePlayers().find(p => !p.selected);
                 return on && other ? [on.title, other.title] : null;
-            }, text: 'Плеер тормозит? Выберите другой. Он продолжит с того же места и запустится сам, а полный экран не свернётся.' }
+            }, text: 'Плеер тормозит? Здесь можно выбрать другой. Он продолжит с того же места и запустится сам, а полный экран не свернётся.' }
         ];
         const GUIDE_TIPS = [
             { target: '.rail', pose: 'down', text: 'Опенинг и эндинг отмечены на шкале. Если автопропуск включён, они пропускаются сами.' },
             { target: '.jump', pose: 'down', text: 'Меток нет или песня не пропустилась? Эта кнопка перематывает на 89 секунд.' },
             { target: '[data-act="episodes"]', pose: 'right', text: 'Серии меняются прямо здесь, даже в полном экране.' },
             ...SWITCH_TIPS,
-            { target: '[data-act="settings"]', pose: 'wink', text: 'Тут настройки просмотра. На этом всё, приятного просмотра!' }
+            { target: '[data-act="settings"]', pose: 'wink', text: 'А тут настройки просмотра: качество, скорость и автопропуск. На этом всё, приятного просмотра!' }
         ];
         let guideOpen = false;
         let guideStarted = false;
@@ -1031,8 +1043,12 @@
             options.guide.tipsDone();
         }
 
-        function showGuideTip(index, tips) {
-            const tip = tips[index];
+        // Список плееров приходит от сайта позже подсказок, поэтому подходящие считаем на каждом шаге
+        const guideTipFits = (t) => !t.when || t.when();
+
+        function showGuideTip(tip, tips) {
+            const live = tips.filter(guideTipFits);
+            const index = live.indexOf(tip);
             const box = $('.guide');
             guideTip = tip;
             closeGuidePanel();
@@ -1042,8 +1058,8 @@
                 guidePanel = true;
             }
             spotGuideTarget();
-            const isLast = index === tips.length - 1;
-            box.innerHTML = `<div class="fox">${options.guide.fox(tip.pose)}</div><div class="body"><p></p><div class="row"><span>${index + 1} из ${tips.length}</span><button type="button" class="skip">Хватит</button><button type="button" class="go">${isLast ? 'Понятно' : 'Дальше'}</button></div></div>`;
+            const isLast = index === live.length - 1;
+            box.innerHTML = `<div class="fox">${options.guide.fox(tip.pose)}</div><div class="body"><p></p><div class="row"><span>${index + 1} из ${live.length}</span><button type="button" class="skip">Хватит</button><button type="button" class="go">${isLast ? 'Понятно' : 'Дальше'}</button></div></div>`;
             box.querySelector('p').textContent = tip.text;
             if (tip.demo && options.guide.demo) {
                 const pair = tip.demo();
@@ -1051,7 +1067,7 @@
             }
             box.querySelector('.skip').hidden = isLast;
             box.querySelector('.skip').addEventListener('click', closeGuide);
-            box.querySelector('.go').addEventListener('click', () => (isLast ? closeGuide() : showGuideTip(index + 1, tips)));
+            box.querySelector('.go').addEventListener('click', () => (isLast ? closeGuide() : showGuideTip(live[index + 1], tips)));
             box.hidden = false;
         }
 
@@ -1066,10 +1082,12 @@
                 await new Promise(r => setTimeout(r, SITE_LISTS_WAIT_MS));
                 list = SWITCH_TIPS;
             }
-            const tips = list.filter(t => (t.when ? t.when() : true) && $(t.anchor || t.target) && getComputedStyle($(t.anchor || t.target)).display !== 'none');
-            if (destroyed || mode !== 'play' || tips.length === 0) return;
+            // Кнопка панели может быть ещё скрыта, пока сайт не прислал списки: такие подсказки проверяются перед показом
+            const tips = list.filter(t => t.when || ($(t.target) && getComputedStyle($(t.target)).display !== 'none'));
+            const first = tips.find(guideTipFits);
+            if (destroyed || mode !== 'play' || !first) return;
             guideOpen = true;
-            showGuideTip(0, tips);
+            showGuideTip(first, tips);
         }
 
         function destroy() {

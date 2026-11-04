@@ -27,6 +27,7 @@
 
     // Метка и год могут стоять в разных элементах («<span>Год:</span>\n<a>2026</a>») — допускаем переносы
     const TAB_SWITCH_MS = 300;
+    const TAB_SWITCH_TRIES = 20;
     const YEAR_RE = /(?:Год(?:\s+выхода)?|Сезон|Статус|Выпуск|Дата выхода)[^\d]{0,40}?(19[6-9]\d|20[0-4]\d)/i;
 
     class DleProvider extends BaseProvider {
@@ -229,11 +230,14 @@
             this.playerChoice = tab.title;
             tab.el.click();
             window.AgNativeFs.retidy();
-            setTimeout(() => {
-                // Пока страница занята, сайт может пропустить нажатие
+            // Пока страница занята, сайт может пропустить нажатие, а старый плеер уже стоит на паузе
+            let tries = 0;
+            const retry = () => {
                 if (!tab.el.classList.contains('is-active')) tab.el.click();
                 window.AgNativeFs.retidy();
-            }, TAB_SWITCH_MS);
+                if (!tab.el.classList.contains('is-active') && ++tries < TAB_SWITCH_TRIES) setTimeout(retry, TAB_SWITCH_MS);
+            };
+            setTimeout(retry, TAB_SWITCH_MS);
         }
 
         getTitleAnchor() {

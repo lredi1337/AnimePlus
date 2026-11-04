@@ -166,3 +166,32 @@ test('о смене плеера лиса рассказывает только 
     assert.deepEqual([...AgGuide.TASKS.map(t => t.id)], ['play', 'skip', 'panel', 'shiki', 'settings']);
     assert.equal(AgGuide.normalize({ switchTipDone: true }).switchTipDone, true);
 });
+
+test('плеер выбирается своей кнопкой, а лиса рассказывает о нём перед настройками', async () => {
+    const { sh, shell, marks } = await mountShell();
+    const button = sh.querySelector('[data-act="players"]');
+    assert.equal(button.style.display, 'none');
+    shell.setSite({ title: 'Тайтл', episodes: [], voices: [], players: [{ index: 0, title: 'Kodik', selected: true }, { index: 1, title: 'Alloha', selected: false }] });
+    assert.notEqual(button.style.display, 'none');
+
+    const box = sh.querySelector('.guide');
+    const texts = [];
+    while (!box.hidden && texts.length < 10) {
+        texts.push(box.querySelector('p').textContent);
+        if (/Плеер тормозит/.test(texts[texts.length - 1])) {
+            assert.ok(sh.querySelector('.panel').classList.contains('on'));
+            assert.equal(sh.querySelector('.player-row.guide-spot .name').textContent, 'Alloha');
+        }
+        box.querySelector('.go').click();
+    }
+    const player = texts.findIndex(t => /Плеер тормозит/.test(t));
+    const settings = texts.findIndex(t => /настройки просмотра/.test(t));
+    assert.ok(player >= 0 && player < settings, 'сначала плеер, потом настройки');
+    assert.ok(!marks.includes('panel'));
+
+    sh.querySelector('[data-act="settings"]').click();
+    assert.equal(sh.querySelectorAll('.player-row').length, 0, 'в настройках плеера больше нет');
+    sh.querySelector('[data-act="players"]').click();
+    assert.equal(sh.querySelectorAll('.player-row').length, 2);
+    shell.destroy();
+});
