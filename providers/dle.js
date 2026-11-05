@@ -168,7 +168,7 @@
 
         // Вкладки плееров без трейлера. Подписи у сайтов разные («Смотреть онлайн», «Все озвучки»), а data-player-title
         // стабилен. Слоты идут первыми, вкладка трейлера может быть без слота (yummyanime.tv: 3 вкладки, 2 слота)
-        playerTabs() {
+        allPlayerTabs() {
             const player = window.agQueryFirst(SEL.player);
             if (!player) return [];
             const slots = Array.from(player.querySelectorAll('[data-player-slot]'));
@@ -180,6 +180,18 @@
                     return { el, title: fromSlot || el.textContent.trim() };
                 })
                 .filter(t => !/трейлер|trailer/i.test(t.title));
+        }
+
+        // Собственный плеер сайта не показываем: modules/player/agp-to-kodik.js сразу заменяет его на Kodik.
+        // Если своей вкладки Kodik у тайтла нет, Kodik окажется в этой вкладке, поэтому так её и называем
+        playerTabs() {
+            const tabs = this.allPlayerTabs();
+            const known = (t) => window.AgPlayerChoice.isKodik(t.title) || /^cvh$/i.test(t.title) || /aksor|alloha|aniboom|parlorate/i.test(t.title);
+            const hasKodik = tabs.some(t => window.AgPlayerChoice.isKodik(t.title));
+            return tabs.flatMap((t) => {
+                if (known(t)) return [t];
+                return hasKodik ? [] : [{ ...t, title: 'Kodik' }];
+            });
         }
 
         // Плеер, выбранный зрителем, а без выбора Kodik: на нём есть всё аниме и работают все функции
@@ -292,15 +304,22 @@
             this.episode = null;
             this.infoPromise = null;
             this.playerChoice = undefined;
-            // Настоящее нажатие зрителя на вкладку плеера. Свои нажатия расширения сюда не попадают
-            scope.listen(document, 'click', (e) => {
-                if (!e.isTrusted || !e.target.closest) return;
-                const tab = this.playerTabs().find(t => t.el.contains(e.target));
-                if (!tab) return;
-                if (!tab.el.classList.contains('is-active')) document.dispatchEvent(new CustomEvent('ag-player-switch'));
-                window.AgPlayerChoice.set(this.site.id, tab.title);
-                this.playerChoice = tab.title;
-            }, true);
+            scope.listen(document, 'click', (e) => this.onTabClick(e), true);
+        }
+
+        // Настоящее нажатие зрителя на вкладку плеера. Свои нажатия расширения сюда не попадают
+        onTabClick(e) {
+            if (!e.isTrusted || !e.target.closest) return;
+            const raw = this.allPlayerTabs().find(t => t.el.contains(e.target));
+            if (!raw) return;
+            const tab = this.playerTabs().find(t => t.el === raw.el);
+            // Вкладка плеера сайта при своей вкладке Kodik: открываем Kodik, когда сайт обработает нажатие
+            const target = tab || this.playerTabs().find(t => window.AgPlayerChoice.isKodik(t.title));
+            if (!target) return;
+            if (!target.el.classList.contains('is-active')) document.dispatchEvent(new CustomEvent('ag-player-switch'));
+            window.AgPlayerChoice.set(this.site.id, target.title);
+            this.playerChoice = target.title;
+            if (!tab) setTimeout(() => target.el.click(), 0);
         }
     }
 

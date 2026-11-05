@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "11.0.3",
+  "version": "11.0.4",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
@@ -64,6 +64,10 @@
     "https://player.cdnvideohub.com/*",
     "https://ceramet.net/*",
     "https://*.ceramet.net/*",
+    "https://ani5.top/*",
+    "https://ani6.top/*",
+    "https://*.ani7.top/*",
+    "https://ani7.top/*",
     "https://api.aniskip.com/*",
     "https://shikimori.one/*",
     "https://shikimori.io/*",
@@ -84,8 +88,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://player.aksor.tv/*", "https://alloha.yani.tv/*", "https://*.thealloha.club/*"],
-      "js": ["modules/player/audio-unlock.js"],
+      "matches": [
+        "https://player.aksor.tv/*",
+        "https://alloha.yani.tv/*",
+        "https://*.thealloha.club/*"
+      ],
+      "js": [
+        "modules/player/audio-unlock.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
@@ -164,6 +174,20 @@
       "css": [
         "modules/shared/tokens.css"
       ]
+    },
+    {
+      "matches": [
+        "https://ani5.top/*",
+        "https://ani6.top/*",
+        "https://*.ani7.top/*",
+        "https://ani7.top/*"
+      ],
+      "js": [
+        "modules/shared/sites.js",
+        "modules/player/agp-to-kodik.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
       "matches": [
