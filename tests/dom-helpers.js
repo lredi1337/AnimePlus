@@ -4,6 +4,7 @@ const { read } = require('./helpers');
 
 const CONTENT_FILES = [
     'modules/shared/sites.js',
+    'modules/shared/ui-kit.js',
     'modules/shared/title-match.js',
     'modules/shared/native-fs.js',
     'modules/shared/player-choice.js',

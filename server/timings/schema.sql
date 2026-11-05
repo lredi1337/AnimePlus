@@ -17,3 +17,9 @@ CREATE TABLE IF NOT EXISTS feedback_log (
     ts INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS feedback_by_time ON feedback_log (ts);
+CREATE TABLE IF NOT EXISTS report_daily (
+    net TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (net, day)
+);

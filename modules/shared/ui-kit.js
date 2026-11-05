@@ -35,6 +35,17 @@
     };
 
     const AgUI = {
+        /** Текст для вставки в разметку и значения атрибутов */
+        escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        },
+
         /** SVG-строка иконки; цвет наследуется от текста */
         icon(name, size = 16) {
             const paths = PATHS[name];
@@ -63,4 +74,5 @@
     };
 
     root.AgUI = AgUI;
+    root.agEscapeHtml = AgUI.escapeHtml;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

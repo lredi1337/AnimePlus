@@ -13,6 +13,9 @@ const AUDIO_CONFIG_TTL = 6 * 3600 * 1000;
 const TIMINGS_API = 'https://animeplus-timings.ruscadred.workers.dev';
 const TIMINGS_TTL = 7 * 24 * 3600 * 1000;
 const TIMINGS_MISS_TTL = 3600 * 1000;
+const AUDIO_CACHE_KEEP = 90 * 24 * 3600 * 1000;
+const AUDIO_CACHE_PRUNE_ALARM = 'audio_cache_prune';
+const AUDIO_CACHE_PRUNE_MINUTES = 7 * 24 * 60;
 
 const audioKey = (name) => `https://anime-plus.invalid/fingerprints/${name}`;
 
@@ -91,6 +94,32 @@ async function reportAudioTiming(info) {
         body: JSON.stringify({ id, episode, voice, duration, part, start, end }),
         signal: AbortSignal.timeout(8000)
     });
-    if (r.ok) await cache.put(key, new Response('1'));
+    if (r.ok) await cache.put(key, new Response(JSON.stringify({ at: Date.now() })));
     return null;
 }
+
+// ---------- Чистка кэша ----------
+// Устаревшая запись нужна как запас на случай сбоя сети, но тайтлы и серии, которые давно не открывали, копились бы вечно
+
+async function pruneAudioCache(now = Date.now()) {
+    const cache = await caches.open(AUDIO_FP_CACHE);
+    const configKey = audioKey('config');
+    for (const request of await cache.keys()) {
+        if (request.url === configKey) continue;
+        const hit = await cache.match(request.url);
+        let at = 0;
+        try {
+            at = (await hit.json()).at || 0;
+        } catch (e) {}
+        if (now - at > AUDIO_CACHE_KEEP) await cache.delete(request.url);
+    }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === AUDIO_CACHE_PRUNE_ALARM) pruneAudioCache().catch(() => {});
+});
+// Повторное создание сдвигало бы срок, а service worker запускается часто
+chrome.alarms.get(AUDIO_CACHE_PRUNE_ALARM).then((existing) => {
+    if (!existing) return chrome.alarms.create(AUDIO_CACHE_PRUNE_ALARM, { periodInMinutes: AUDIO_CACHE_PRUNE_MINUTES });
+    return undefined;
+}).catch(() => {});

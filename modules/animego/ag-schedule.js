@@ -330,15 +330,7 @@
         document.head.appendChild(style);
     };
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
+    const escapeHtml = window.agEscapeHtml;
 
     function isDuplicateAnime(jutsuAnime, animeGoTitles) {
         if (!jutsuAnime || !animeGoTitles || animeGoTitles.length === 0) return false;
@@ -766,7 +758,7 @@
                 card.innerHTML = `
                     <div class="aw-cover">
                         <div class="image__picture aspect-ratio-5-7">
-                            <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${posterUrl}" alt="${titleStr}" data-ag-poster-id="${item.id || ''}" data-ag-poster-ru="${titleStr}" data-ag-poster-en="${window.agEscapeHtml(item.name || '')}">
+                            <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${escapeHtml(posterUrl)}" alt="${titleStr}" data-ag-poster-id="${item.id || ''}" data-ag-poster-ru="${titleStr}" data-ag-poster-en="${window.agEscapeHtml(item.name || '')}">
                         </div>
                     </div>
                     <div class="aw-info gap-1 mw-0 justify-content-start">
@@ -787,7 +779,7 @@
 
                 card.innerHTML = `
                     <div style="width: 48px; height: 68px; flex-shrink: 0; margin-right: 12px; overflow: hidden; border-radius: 6px; position: relative;">
-                        <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${posterUrl}" alt="${titleStr}" style="width: 100%; height: 100%; object-fit: cover;" data-ag-poster-id="${item.id || ''}" data-ag-poster-ru="${titleStr}" data-ag-poster-en="${window.agEscapeHtml(item.name || '')}">
+                        <img referrerpolicy="no-referrer" class="image__img img-fluid rounded ag-lazy-poster-img" src="${escapeHtml(posterUrl)}" alt="${titleStr}" style="width: 100%; height: 100%; object-fit: cover;" data-ag-poster-id="${item.id || ''}" data-ag-poster-ru="${titleStr}" data-ag-poster-en="${window.agEscapeHtml(item.name || '')}">
                     </div>
                     <div style="flex-grow: 1; min-width: 0;">
                         <div class="text-truncate" style="font-weight: 600; font-size: 0.9rem; color: #fff; margin-bottom: 2px;">${titleStr}</div>

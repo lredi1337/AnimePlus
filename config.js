@@ -84,7 +84,6 @@
 
     window.AG_CONSTANTS = {
         CACHE_TTL_MS: 7 * 24 * 60 * 60 * 1000,
-        DEFAULT_SHIKI_CLIENT_ID: "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
         EPISODE_SWITCH_DEBOUNCE_MS: 800
     };
 })();

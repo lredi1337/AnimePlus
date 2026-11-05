@@ -3,6 +3,7 @@
 
 const SHIKI_APP_USER_AGENT = `AnimePlus/${chrome.runtime.getManifest().version} (Browser Extension)`;
 const SHIKI_REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
+const SHIKI_CLIENT_ID = (globalThis.SHIKI_CREDENTIALS && globalThis.SHIKI_CREDENTIALS.client_id) || '';
 
 // shikimori.one и shikimori.me теперь отвечают редиректом на shikimori.io.
 // При редиректе на другой origin браузер удаляет заголовок Authorization,
@@ -54,7 +55,7 @@ async function getShikiPosters(ids) {
     for (let i = 0; i < toFetch.length; i += 50) {
         const chunk = toFetch.slice(i, i + 50);
         try {
-            const res = await fetch(`${SHIKI_API_BASE}/api/graphql`, {
+            const res = await shikiRateFetch(`${SHIKI_API_BASE}/api/graphql`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({ query: `{ animes(ids: "${chunk.join(',')}", limit: ${chunk.length}) { id poster { mainUrl originalUrl } } }` })
@@ -93,23 +94,58 @@ async function fillShikiPosters(items, { getId = (i) => i.id, getRaw = (i) => i.
     return items;
 }
 
+// У API Shikimori лимит: 5 запросов в секунду и 90 в минуту на всё расширение. Запросы встают в одну очередь
+const SHIKI_MIN_GAP_MS = 220;
+const SHIKI_MINUTE_LIMIT = 85;
+const SHIKI_RETRY_WAIT_MS = 1500;
+const shikiRecentRequests = [];
+let shikiRequestQueue = Promise.resolve();
+
+const shikiSleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function shikiSlot() {
+    const turn = shikiRequestQueue.then(async () => {
+        const now = Date.now();
+        while (shikiRecentRequests.length && now - shikiRecentRequests[0] >= 60000) shikiRecentRequests.shift();
+        const last = shikiRecentRequests[shikiRecentRequests.length - 1];
+        let wait = last ? last + SHIKI_MIN_GAP_MS - now : 0;
+        if (shikiRecentRequests.length >= SHIKI_MINUTE_LIMIT) wait = Math.max(wait, shikiRecentRequests[0] + 60000 - now);
+        if (wait > 0) await shikiSleep(wait);
+        shikiRecentRequests.push(Date.now());
+    });
+    shikiRequestQueue = turn;
+    return turn;
+}
+
+async function shikiRateFetch(url, options) {
+    await shikiSlot();
+    return fetch(url, options);
+}
+
 async function fetchShikimoriApi(endpoint) {
     const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json'
     };
-    const domains = SHIKI_API_DOMAINS;
-    
-    for (const domain of domains) {
+    let retried = false;
+    for (let i = 0; i < SHIKI_API_DOMAINS.length; i++) {
         try {
+            await shikiSlot();
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3000);
-            const resp = await fetch(`${domain}${endpoint}`, { headers, signal: controller.signal });
+            const resp = await fetch(`${SHIKI_API_DOMAINS[i]}${endpoint}`, { headers, signal: controller.signal });
             clearTimeout(timeoutId);
             if (resp.ok) {
                 return await resp.json();
             }
             if (resp.status === 404) return null;
+            // Зеркала ведут на один сервер: на другом адресе лимит тот же
+            if (resp.status === 429) {
+                if (retried) return null;
+                retried = true;
+                await shikiSleep(SHIKI_RETRY_WAIT_MS);
+                i--;
+            }
         } catch (e) {}
     }
     return null;
@@ -125,7 +161,7 @@ async function getShikiTokens() {
         'shiki_user'
     ]);
     if (!data.shiki_client_id || typeof data.shiki_client_id !== 'string' || !data.shiki_client_id.trim()) {
-        data.shiki_client_id = (globalThis.AG_CONSTANTS && globalThis.AG_CONSTANTS.DEFAULT_SHIKI_CLIENT_ID) || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
+        data.shiki_client_id = SHIKI_CLIENT_ID;
     }
     return data;
 }
@@ -150,7 +186,7 @@ async function shikiFetch(url, options = {}, isRetry = false) {
         headers['Authorization'] = `Bearer ${tokens.shiki_access_token}`;
     }
 
-    let res = await fetch(url, { ...options, headers });
+    let res = await shikiRateFetch(url, { ...options, headers });
 
     if ((res.status === 429 || res.status === 503) && !isRetry) {
         console.warn(`[Anime+] HTTP ${res.status} rate-limited. Waiting 1.5s before retry...`);
@@ -162,7 +198,7 @@ async function shikiFetch(url, options = {}, isRetry = false) {
         tokens = await refreshShikiToken(tokens);
         if (tokens.shiki_access_token) {
             headers['Authorization'] = `Bearer ${tokens.shiki_access_token}`;
-            res = await fetch(url, { ...options, headers });
+            res = await shikiRateFetch(url, { ...options, headers });
         }
     }
 
@@ -241,14 +277,24 @@ async function postShikiOAuthToken(bodyObj, isRetry = false) {
     return lastRes || new Response('Не удалось связаться с серверами Shikimori', { status: 500 });
 }
 
-async function refreshShikiToken(tokens) {
+// Refresh-токен одноразовый: второй параллельный запрос получил бы отказ и показал ошибку входа при рабочих токенах
+let shikiRefreshInFlight = null;
+
+function refreshShikiToken(tokens) {
+    if (!shikiRefreshInFlight) {
+        shikiRefreshInFlight = requestShikiTokenRefresh(tokens).finally(() => { shikiRefreshInFlight = null; });
+    }
+    return shikiRefreshInFlight;
+}
+
+async function requestShikiTokenRefresh(tokens) {
     if (!tokens.shiki_refresh_token) {
         return tokens;
     }
     try {
         const payload = {
             grant_type: 'refresh_token',
-            client_id: tokens.shiki_client_id || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI",
+            client_id: tokens.shiki_client_id || SHIKI_CLIENT_ID,
             refresh_token: tokens.shiki_refresh_token
         };
         if (tokens.shiki_client_secret) payload.client_secret = tokens.shiki_client_secret;
@@ -292,7 +338,7 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
 
     const promise = (async () => {
         const tokens = await getShikiTokens();
-        const cleanClientId = (clientId || tokens.shiki_client_id || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI").trim();
+        const cleanClientId = (clientId || tokens.shiki_client_id || SHIKI_CLIENT_ID).trim();
         const cleanClientSecret = (clientSecret || tokens.shiki_client_secret || "").trim();
 
         const payload = {
@@ -332,14 +378,14 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
 
         let userRes;
         try {
-            userRes = await fetch('https://shikimori.io/api/users/whoami', {
+            userRes = await shikiRateFetch('https://shikimori.io/api/users/whoami', {
                 headers: {
                     'User-Agent': SHIKI_APP_USER_AGENT,
                     'Authorization': `Bearer ${tokenData.access_token}`
                 }
             });
             if (!userRes.ok) {
-                userRes = await fetch('https://shikimori.io/api/users/whoami', {
+                userRes = await shikiRateFetch('https://shikimori.io/api/users/whoami', {
                     headers: {
                         'User-Agent': SHIKI_APP_USER_AGENT,
                         'Authorization': `Bearer ${tokenData.access_token}`
@@ -361,6 +407,133 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
     return promise;
 }
 
+// ---------- Привязка аккаунта ----------
+// Код с адреса принимается только во вкладке, которую открыла кнопка «Войти». Иначе чужая ссылка с кодом
+// незаметно привязала бы расширение к чужому аккаунту. Код, вставленный в окне расширения вручную, идёт через exchangeShikiCode.
+
+const SHIKI_AUTH_PENDING_KEY = 'shiki_auth_pending';
+const SHIKI_AUTH_PENDING_TTL = 15 * 60 * 1000;
+const SHIKI_AUTH_HOST = /^(?:www\.)?shikimori\.(?:io|one|me|org)$/;
+let shikiAuthOpening = null;
+
+function shikiAuthCodeFromUrl(urlStr) {
+    try {
+        const url = new URL(urlStr);
+        if (url.protocol !== 'https:' || !SHIKI_AUTH_HOST.test(url.hostname)) return null;
+        const match = url.pathname.match(/^\/oauth\/authorize\/([\w-]{20,80})\/?$/);
+        return match ? match[1] : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function beginShikiAuth(clientId) {
+    const id = clientId || SHIKI_CLIENT_ID;
+    const url = `${SHIKI_API_BASE}/oauth/authorize?client_id=${encodeURIComponent(id)}&redirect_uri=${encodeURIComponent(SHIKI_REDIRECT_URI)}&response_type=code&scope=user_rates`;
+    // Страница может спросить о себе раньше, чем вкладка будет записана: isShikiAuthExpected дожидается этой записи
+    shikiAuthOpening = chrome.tabs.create({ url, active: true }).then(async (tab) => {
+        await chrome.storage.session.set({ [SHIKI_AUTH_PENDING_KEY]: { tabId: tab.id, at: Date.now() } });
+        return tab.id;
+    });
+    return shikiAuthOpening;
+}
+
+async function isShikiAuthExpected(tabId) {
+    if (shikiAuthOpening) await shikiAuthOpening.catch(() => {});
+    if (tabId === undefined || tabId === null) return false;
+    const { [SHIKI_AUTH_PENDING_KEY]: pending } = await chrome.storage.session.get([SHIKI_AUTH_PENDING_KEY]);
+    return !!pending && pending.tabId === tabId && Date.now() - pending.at < SHIKI_AUTH_PENDING_TTL;
+}
+
+/** Код уже принят или обменивается: страница и фон видят его независимо друг от друга */
+function isShikiCodeInProgress(code) {
+    return globalThis.activeOAuthPromises.has(String(code || '').trim());
+}
+
+async function completeShikiAuth(code, tabId) {
+    const cleanCode = String(code || '').trim();
+    try {
+        if (!isShikiCodeInProgress(cleanCode) && !(await isShikiAuthExpected(tabId))) {
+            return { success: false, reason: 'not_expected', error: 'Вход не запрашивался. Откройте окно расширения и нажмите «Войти».' };
+        }
+        const res = await exchangeShikiCode(cleanCode);
+        await chrome.storage.session.remove([SHIKI_AUTH_PENDING_KEY]);
+        return res;
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+async function getShikiStatus() {
+    const tokens = await getShikiTokens();
+    if (tokens.shiki_access_token && !tokens.shiki_user) {
+        try {
+            const userRes = await shikiFetch(`${SHIKI_API_BASE}/api/users/whoami`);
+            if (userRes.ok) {
+                tokens.shiki_user = await userRes.json();
+                await chrome.storage.local.set({ shiki_user: tokens.shiki_user });
+            }
+        } catch (e) {
+            console.warn('[Anime+] Failed to auto-fetch whoami:', e);
+        }
+    }
+
+    const stored = await chrome.storage.local.get([
+        'shiki_last_sync_time',
+        'shiki_last_sync_status',
+        'shiki_auth_error',
+        'shiki_today_date',
+        'shiki_today_episodes'
+    ]);
+
+    let todayCount = 0;
+    if (stored.shiki_today_date !== localDateKey() || !Array.isArray(stored.shiki_today_episodes)) {
+        await resetTodayCount();
+    } else {
+        todayCount = stored.shiki_today_episodes.length;
+    }
+
+    return {
+        isLoggedIn: !!(tokens.shiki_access_token && tokens.shiki_user),
+        user: tokens.shiki_user || null,
+        clientId: tokens.shiki_client_id || '',
+        lastSyncTime: stored.shiki_last_sync_time || null,
+        lastSyncStatus: stored.shiki_last_sync_status || null,
+        authError: stored.shiki_auth_error === true,
+        todayCount
+    };
+}
+
+async function resetTodayCount() {
+    await chrome.storage.local.set({
+        shiki_today_date: localDateKey(),
+        shiki_today_count: 0,
+        shiki_today_episodes: []
+    });
+    return { success: true, todayCount: 0 };
+}
+
+async function getShikiRelated(id) {
+    const list = await fetchShikimoriApi(`/api/animes/${id}/related`);
+    if (!Array.isArray(list)) return { related: [] };
+    const related = list.map((item) => {
+        const rel = item.anime || item.manga;
+        if (!rel) return null;
+        const poster = rel.image ? (rel.image.original || rel.image.preview || '') : '';
+        return {
+            id: rel.id,
+            name: rel.name,
+            russian: rel.russian || rel.name,
+            relation: item.relation_russian || item.relation || 'Связанное',
+            kind: rel.kind ? rel.kind.toUpperCase() : '',
+            year: rel.aired_on ? rel.aired_on.split('-')[0] : '',
+            poster: poster && !poster.startsWith('http') ? `${SHIKI_API_BASE}${poster}` : poster
+        };
+    }).filter(Boolean);
+    await fillShikiPosters(related.filter(r => r.id));
+    return { related };
+}
+
 async function logoutShiki() {
     await chrome.storage.local.remove([
         'shiki_access_token',
@@ -374,6 +547,10 @@ async function logoutShiki() {
     ]);
     return { success: true };
 }
+
+const SHIKI_LIST_LIMIT = 300;
+// Больше за один запрос /api/animes не отдаёт
+const SHIKI_ANIMES_PAGE = 50;
 
 async function getShikiWatchingList(targetStatus = 'watching') {
     const tokens = await getShikiTokens();
@@ -393,7 +570,7 @@ async function getShikiWatchingList(targetStatus = 'watching') {
     } catch (e) {}
 
     try {
-        const res = await shikiFetch(`https://shikimori.io/api/v2/user_rates?user_id=${userId}&target_type=Anime&status=${cleanStatus}&limit=30`);
+        const res = await shikiFetch(`https://shikimori.io/api/v2/user_rates?user_id=${userId}&target_type=Anime&status=${cleanStatus}&limit=${SHIKI_LIST_LIMIT}`);
         if (res.ok) {
             const rates = await res.json();
             if (Array.isArray(rates) && rates.length === 0) {
@@ -403,20 +580,20 @@ async function getShikiWatchingList(targetStatus = 'watching') {
             if (Array.isArray(rates) && rates.length > 0) {
                 const animeIds = rates.map(r => r.target_id).filter(Boolean);
                 if (animeIds.length > 0) {
-                    const animeRes = await shikiFetch(`https://shikimori.io/api/animes?ids=${animeIds.join(',')}&limit=30`);
-                    let animeMap = new Map();
-                    if (animeRes.ok) {
+                    const animeMap = new Map();
+                    for (let i = 0; i < animeIds.length; i += SHIKI_ANIMES_PAGE) {
+                        const chunk = animeIds.slice(i, i + SHIKI_ANIMES_PAGE);
+                        const animeRes = await shikiFetch(`https://shikimori.io/api/animes?ids=${chunk.join(',')}&limit=${chunk.length}`);
+                        if (!animeRes.ok) continue;
                         const animeList = await animeRes.json();
-                        if (Array.isArray(animeList)) {
-                            animeList.forEach(a => animeMap.set(a.id, a));
-                        }
+                        if (Array.isArray(animeList)) animeList.forEach(a => animeMap.set(a.id, a));
                     }
 
                     const items = rates.map(rate => {
                         const anime = animeMap.get(rate.target_id) || {};
                         let poster = anime.image ? (anime.image.original || anime.image.preview || '') : '';
                         if (poster && !poster.startsWith('http')) {
-                            poster = 'https://shikimori.one' + (poster.startsWith('/') ? '' : '/') + poster;
+                            poster = 'https://shikimori.io' + (poster.startsWith('/') ? '' : '/') + poster;
                         }
                         return {
                             rateId: rate.id,
@@ -425,6 +602,8 @@ async function getShikiWatchingList(targetStatus = 'watching') {
                             name: anime.name || '',
                             episodesWatched: rate.episodes || 0,
                             episodesTotal: anime.episodes || 0,
+                            episodesAired: anime.episodes_aired || 0,
+                            status: anime.status || '',
                             poster: poster,
                             kind: (anime.kind || '').toUpperCase(),
                             score: anime.score || null
@@ -563,13 +742,12 @@ async function updateShikiUserRate({ shikimoriId, episode, status }) {
     if (!targetId) return { success: false, reason: 'invalid_id' };
 
     const getRes = await shikiFetch(`https://shikimori.io/api/v2/user_rates?user_id=${userId}&target_id=${targetId}&target_type=Anime`);
-    let existingRate = null;
-    if (getRes.ok) {
-        const rates = await getRes.json();
-        if (Array.isArray(rates) && rates.length > 0) {
-            existingRate = rates[0];
-        }
+    if (!getRes.ok) {
+        // Без записи из списка новая запись создалась бы поверх существующей
+        return { success: false, status: getRes.status, retryable: isRetryableStatus(getRes.status), error: `HTTP ${getRes.status}` };
     }
+    const rates = await getRes.json();
+    const existingRate = Array.isArray(rates) && rates.length > 0 ? rates[0] : null;
 
     const epNumber = parseInt(episode) || 1;
     // Сайты называют числом серий то, что уже вышло. У онгоинга без объявленного числа серий (episodes: 0) конца нет
@@ -630,7 +808,78 @@ async function updateShikiUserRate({ shikimoriId, episode, status }) {
             shiki_last_sync_time: Date.now(),
             shiki_last_sync_status: 'error'
         });
-        return { success: false, error: errText };
+        return { success: false, status: saveRes.status, retryable: isRetryableStatus(saveRes.status), error: errText };
+    }
+}
+
+// ---------- Очередь отправки прогресса ----------
+// Серия досмотрена, а сеть или Shikimori недоступны: запись ждёт следующей проверки, даже если вкладку закрыли
+
+const SHIKI_SYNC_QUEUE_KEY = 'shiki_sync_queue';
+const SHIKI_SYNC_KEEP_MS = 14 * 24 * 60 * 60 * 1000;
+let shikiSyncFlushing = null;
+
+function isRetryableStatus(status) {
+    return status === 429 || status >= 500;
+}
+
+function queueShikiSync({ shikimoriId, episode, status }) {
+    return updateStorageObject(SHIKI_SYNC_QUEUE_KEY, (queue) => {
+        const known = queue[shikimoriId];
+        if (!known || episode >= known.episode) queue[shikimoriId] = { shikimoriId, episode, status, at: Date.now() };
+    }, { maxEntries: 200 });
+}
+
+function forgetShikiSync(shikimoriId, episode) {
+    return updateStorageObject(SHIKI_SYNC_QUEUE_KEY, (queue) => {
+        const known = queue[shikimoriId];
+        if (known && known.episode <= episode) delete queue[shikimoriId];
+    });
+}
+
+async function syncShikiProgress({ shikimoriId, episode, status }) {
+    let res;
+    try {
+        res = await updateShikiUserRate({ shikimoriId, episode, status });
+    } catch (err) {
+        res = { success: false, retryable: true, error: err.message };
+    }
+    if (res.retryable) {
+        await queueShikiSync({ shikimoriId, episode, status });
+        return { ...res, queued: true };
+    }
+    if (res.success) {
+        await forgetShikiSync(shikimoriId, episode);
+        flushShikiSyncQueue().catch(() => {});
+    }
+    return res;
+}
+
+function flushShikiSyncQueue() {
+    if (!shikiSyncFlushing) {
+        shikiSyncFlushing = sendQueuedShikiSync().finally(() => { shikiSyncFlushing = null; });
+    }
+    return shikiSyncFlushing;
+}
+
+async function sendQueuedShikiSync() {
+    const { [SHIKI_SYNC_QUEUE_KEY]: queue = {} } = await chrome.storage.local.get([SHIKI_SYNC_QUEUE_KEY]);
+    const entries = Object.values(queue).sort((a, b) => a.at - b.at);
+    for (const entry of entries) {
+        const expired = Date.now() - entry.at > SHIKI_SYNC_KEEP_MS;
+        if (!expired) {
+            let res;
+            try {
+                res = await updateShikiUserRate(entry);
+            } catch (e) {
+                return; // Сети нет: остальные записи ждут следующей проверки
+            }
+            if (res.retryable) return;
+        }
+        await updateStorageObject(SHIKI_SYNC_QUEUE_KEY, (current) => {
+            const known = current[entry.shikimoriId];
+            if (known && known.episode <= entry.episode) delete current[entry.shikimoriId];
+        });
     }
 }
 
@@ -660,56 +909,6 @@ async function addToWatchHistory(item) {
     }
 }
 
-async function checkKodikEpisodeAvailability(shikimoriId, targetEpisode) {
-    try {
-        if (!shikimoriId || !targetEpisode) return { available: false };
-        const res = await fetch(`https://kodikapi.com/search?shikimori_id=${shikimoriId}&with_material_data=true`);
-        if (!res.ok) return { available: false };
-        const data = await res.json();
-        if (!data || !Array.isArray(data.results) || data.results.length === 0) {
-            return { available: false };
-        }
-
-        const translations = new Set();
-        let isFound = false;
-        let posterUrl = null;
-
-        for (const item of data.results) {
-            if (!posterUrl && item.material_data) {
-                posterUrl = item.material_data.poster_url || item.material_data.shikimori_poster_url || null;
-            }
-            let epCount = item.last_episode || item.episodes_count || 0;
-            if (!epCount && item.seasons) {
-                for (const sKey in item.seasons) {
-                    const season = item.seasons[sKey];
-                    if (season && season.episodes) {
-                        for (const epKey in season.episodes) {
-                            const epNum = parseInt(epKey);
-                            if (epNum > epCount) epCount = epNum;
-                        }
-                    }
-                }
-            }
-
-            if (epCount >= targetEpisode) {
-                isFound = true;
-                if (item.translation && item.translation.title) {
-                    translations.add(item.translation.title);
-                }
-            }
-        }
-
-        return {
-            available: isFound,
-            translations: Array.from(translations),
-            posterUrl: posterUrl
-        };
-    } catch (e) {
-        console.warn('[Anime+] Error checking Kodik availability:', e);
-        return { available: false };
-    }
-}
-
 async function cleanupOldNotifications() {
     try {
         const storage = await chrome.storage.local.get(['notified_episodes_history', 'active_notifications_map']);
@@ -735,43 +934,12 @@ async function cleanupOldNotifications() {
     }
 }
 
-async function checkEpisodeAvailabilityOnPortals(animeTitle, origTitle, animeId, targetEpisode) {
-    const res = {
-        available: false,
-        animegoUrl: null,
-        jutsuUrl: null,
-        voiceovers: [],
-        poster: null
-    };
-
-    let kodikHasEp = false;
-    try {
-        const kodikCheck = await checkKodikEpisodeAvailability(animeId, targetEpisode);
-        if (kodikCheck.available) {
-            kodikHasEp = true;
-            res.voiceovers = kodikCheck.translations || [];
-            res.poster = kodikCheck.posterUrl || null;
-        }
-    } catch (e) {}
-
-    try {
-        if (typeof findAnimeGoDirectUrl === 'function') {
-            res.animegoUrl = await findAnimeGoDirectUrl(animeTitle, origTitle);
-        }
-    } catch (e) {}
-
-    try {
-        if (typeof findJutsuDirectUrl === 'function') {
-            res.jutsuUrl = await findJutsuDirectUrl(animeTitle, origTitle);
-        }
-    } catch (e) {}
-
-    if (kodikHasEp && !res.animegoUrl) {
-        res.animegoUrl = `https://animego.me/search/anime?q=${encodeURIComponent(animeTitle || origTitle)}`;
-    }
-
-    res.available = Boolean(res.animegoUrl || res.jutsuUrl || kodikHasEp);
-    return res;
+async function findEpisodeLinks(animeTitle, origTitle) {
+    const [animegoUrl, jutsuUrl] = await Promise.all([
+        findAnimeGoDirectUrl(animeTitle, origTitle).catch(() => null),
+        findJutsuDirectUrl(animeTitle, origTitle).catch(() => null)
+    ]);
+    return { animegoUrl: animegoUrl || null, jutsuUrl: jutsuUrl || null };
 }
 
 async function openNotificationTarget(notifId, buttonIndex = null) {
@@ -829,13 +997,90 @@ async function ensureEpisodesAlarm({ force = false } = {}) {
 
 try {
     chrome.alarms.onAlarm.addListener((alarm) => {
-        if (alarm.name === EPISODES_ALARM) checkNewEpisodeNotifications();
+        if (alarm.name !== EPISODES_ALARM) return;
+            checkNewEpisodeNotifications();
+            flushShikiSyncQueue().catch(() => {});
     });
     chrome.runtime.onInstalled.addListener(() => ensureEpisodesAlarm({ force: true }));
-    chrome.runtime.onStartup.addListener(() => ensureEpisodesAlarm());
+    chrome.runtime.onStartup.addListener(() => {
+        ensureEpisodesAlarm();
+        flushShikiSyncQueue().catch(() => {});
+    });
     // Страховка: alarm мог потеряться (например, при обновлении браузера) — создаём, только если его нет
     ensureEpisodesAlarm();
 } catch (e) {}
+
+/** Последняя вышедшая серия. В календаре next_episode ещё не вышла, пока не наступило её время */
+function latestAiredEpisode(item, calendarItem, now = Date.now()) {
+    // У вышедших тайтлов Shikimori часто отдаёт episodes_aired: 0
+    let aired = item.status === 'released' ? (item.episodesTotal || item.episodesAired || 0) : (item.episodesAired || 0);
+    const next = calendarItem ? parseInt(calendarItem.next_episode, 10) : 0;
+    if (next > 0) {
+        const airsAt = Date.parse(calendarItem.next_episode_at);
+        aired = Math.max(aired, airsAt <= now ? next : next - 1);
+    }
+    return aired;
+}
+
+async function fetchCalendarById() {
+    const byId = new Map();
+    try {
+        const res = await shikiRateFetch(`${SHIKI_API_BASE}/api/calendar`);
+        if (!res.ok) return byId;
+        const calendar = await res.json();
+        if (Array.isArray(calendar)) calendar.forEach(c => { if (c && c.anime) byId.set(c.anime.id, c); });
+    } catch (e) {}
+    return byId;
+}
+
+function showEpisodeSystemNotification(item) {
+    chrome.notifications.create(item.notifId, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title: `Вышла ${item.episode} серия`,
+        message: item.notifMessage,
+        buttons: item.toastButtons,
+        priority: 2
+    });
+}
+
+// Окно не забирает фокус: зритель может смотреть серию. В полном экране его не будет видно, поэтому там системное уведомление
+async function showEpisodeWindow(item) {
+    try {
+        const current = await chrome.windows.getLastFocused();
+        if (current.state === 'fullscreen') return showEpisodeSystemNotification(item);
+        const width = 370;
+        const height = 155;
+        await chrome.windows.create({
+            url: chrome.runtime.getURL(`notification.html?id=${encodeURIComponent(item.notifId)}`),
+            type: 'popup',
+            width,
+            height,
+            left: Math.max(0, (current.left || 0) + (current.width || 1300) - width - 30),
+            top: Math.max(0, (current.top || 0) + (current.height || 800) - height - 50),
+            focused: false
+        });
+    } catch (e) {
+        showEpisodeSystemNotification(item);
+    }
+    return undefined;
+}
+
+async function announceEpisodes(queue) {
+    for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        await showEpisodeWindow(item);
+        const tabs = await chrome.tabs.query({}).catch(() => []);
+        tabs.forEach((tab) => {
+            if (!tab.id) return;
+            chrome.tabs.sendMessage(tab.id, {
+                action: 'SHOW_EPISODE_NOTIFICATION',
+                data: { title: item.title, episode: item.episode, poster: item.poster, voiceovers: '', animegoUrl: item.animegoUrl, jutsuUrl: item.jutsuUrl }
+            }).catch(() => {});
+        });
+        if (i < queue.length - 1) await shikiSleep(7500);
+    }
+}
 
 async function checkNewEpisodeNotifications(isManual = false) {
     try {
@@ -846,195 +1091,71 @@ async function checkNewEpisodeNotifications(isManual = false) {
         await cleanupOldNotifications();
 
         const watchingRes = await getShikiWatchingList('watching');
-        if (!watchingRes || !watchingRes.success || !Array.isArray(watchingRes.items)) return;
+        // Список из кэша устарел: по нему новые серии не определить
+        if (!watchingRes || !watchingRes.success || watchingRes.fromCache || !Array.isArray(watchingRes.items)) return;
 
-        const calendarRes = await fetch('https://shikimori.io/api/calendar');
-        if (!calendarRes.ok) return;
-        const calendar = await calendarRes.json();
-        if (!Array.isArray(calendar)) return;
+        const calendar = await fetchCalendarById();
+        const stored = await chrome.storage.local.get(['shiki_aired_seen', 'notified_episodes_history', 'active_notifications_map']);
+        const seen = stored.shiki_aired_seen || {};
+        const nextSeen = {};
+        let history = Array.isArray(stored.notified_episodes_history) ? stored.notified_episodes_history : [];
+        const notifMap = stored.active_notifications_map || {};
+        const queue = [];
 
-        const storageData = await chrome.storage.local.get(['notified_episodes', 'notified_episodes_history', 'active_notifications_map']);
-        const notifiedSet = new Set(Array.isArray(storageData.notified_episodes) ? storageData.notified_episodes : []);
-        let history = Array.isArray(storageData.notified_episodes_history) ? storageData.notified_episodes_history : [];
-        let notifMap = storageData.active_notifications_map || {};
-        const newNotifQueue = [];
-
-        const watchingMap = new Map();
-        watchingRes.items.forEach(item => watchingMap.set(item.animeId, item));
-
-        for (const calItem of calendar) {
-            if (!calItem || !calItem.anime || !calItem.next_episode) continue;
-            const animeId = calItem.anime.id;
-
-            if (watchingMap.has(animeId)) {
-                const userAnime = watchingMap.get(animeId);
-                const nextEp = calItem.next_episode;
-                const notifKey = `ep_${animeId}_${nextEp}`;
-
-                if (!notifiedSet.has(notifKey)) {
-                    const title = userAnime.russian || calItem.anime.russian || calItem.anime.name;
-                    const origTitle = userAnime.name || calItem.anime.name || '';
-
-                    // Dual check availability on AnimeGO and JUT-SU
-                    const portalCheck = await checkEpisodeAvailabilityOnPortals(title, origTitle, animeId, nextEp);
-                    if (!portalCheck.available) {
-                        continue;
-                    }
-
-                    notifiedSet.add(notifKey);
-
-                    let rawPoster = portalCheck.poster || (userAnime && userAnime.poster) || (calItem.anime && calItem.anime.image && (calItem.anime.image.original || calItem.anime.image.preview)) || '';
-                    if (isMissingShikiPoster(rawPoster)) {
-                        rawPoster = (await getShikiPosters([animeId]))[animeId] || chrome.runtime.getURL('icons/icon128.png');
-                    } else if (!/^https?:\/\//.test(rawPoster)) {
-                        rawPoster = absoluteShikiUrl(rawPoster);
-                    }
-                    const poster = rawPoster;
-                    const notifId = `animeplus_notif_${animeId}_${nextEp}_${Date.now()}`;
-
-                    const voiceList = portalCheck.voiceovers || [];
-                    const voiceStr = voiceList.length > 0 ? voiceList.slice(0, 3).join(', ') : '';
-
-                    let notifMessage = title;
-                    if (voiceStr) {
-                        notifMessage += `\nОзвучки: ${voiceStr}`;
-                    }
-
-                    const toastButtons = [];
-                    const buttonsMap = [];
-
-                    if (portalCheck.animegoUrl) {
-                        toastButtons.push({ title: '▶ AnimeGO' });
-                        buttonsMap.push(portalCheck.animegoUrl);
-                    }
-                    if (portalCheck.jutsuUrl) {
-                        toastButtons.push({ title: '▶ JUT-SU' });
-                        buttonsMap.push(portalCheck.jutsuUrl);
-                    }
-                    if (toastButtons.length === 0) {
-                        const fallbackUrl = `https://animego.me/search/anime?q=${encodeURIComponent(title)}`;
-                        toastButtons.push({ title: '▶ Смотреть' });
-                        buttonsMap.push(fallbackUrl);
-                    }
-
-                    const notifItem = {
-                        id: notifId,
-                        animeId: animeId,
-                        episode: nextEp,
-                        title: title,
-                        origTitle: origTitle,
-                        poster: poster,
-                        voiceovers: voiceStr,
-                        animegoUrl: portalCheck.animegoUrl,
-                        jutsuUrl: portalCheck.jutsuUrl,
-                        timestamp: Date.now()
-                    };
-
-                    history.unshift(notifItem);
-                    history = history.slice(0, 20);
-
-                    notifMap[notifId] = {
-                        russianName: title,
-                        origName: origTitle,
-                        animeId: animeId,
-                        episode: nextEp,
-                        animegoUrl: portalCheck.animegoUrl,
-                        jutsuUrl: portalCheck.jutsuUrl,
-                        buttonsMap: buttonsMap,
-                        poster: poster,
-                        voiceovers: voiceStr,
-                        timestamp: Date.now()
-                    };
-
-                    newNotifQueue.push({
-                        notifId,
-                        animeId,
-                        nextEp,
-                        title,
-                        poster,
-                        voiceStr,
-                        notifMessage,
-                        toastButtons,
-                        animegoUrl: portalCheck.animegoUrl,
-                        jutsuUrl: portalCheck.jutsuUrl
-                    });
-                }
+        for (const item of watchingRes.items) {
+            const animeId = item.animeId;
+            const known = seen[animeId];
+            const aired = latestAiredEpisode(item, calendar.get(animeId));
+            // Данные тайтла не пришли: уже известное не теряем
+            if (!(aired > 0)) {
+                if (known !== undefined) nextSeen[animeId] = known;
+                continue;
             }
-        }
+            nextSeen[animeId] = Math.max(aired, known || 0);
+            // Первая встреча с тайтлом только запоминает, что уже вышло: иначе при обновлении расширения открылись бы десятки окон
+            if (known === undefined || aired <= known || aired <= (item.episodesWatched || 0)) continue;
 
-        // Save updated data to storage immediately
+            const title = item.russian || item.name;
+            const origTitle = item.name || '';
+            const { animegoUrl, jutsuUrl } = await findEpisodeLinks(title, origTitle);
+            const poster = isMissingShikiPoster(item.poster)
+                ? ((await getShikiPosters([animeId]))[animeId] || chrome.runtime.getURL('icons/icon128.png'))
+                : absoluteShikiUrl(item.poster);
+            const notifId = `animeplus_notif_${animeId}_${aired}_${Date.now()}`;
+
+            const toastButtons = [];
+            const buttonsMap = [];
+            if (animegoUrl) {
+                toastButtons.push({ title: '▶ AnimeGO' });
+                buttonsMap.push(animegoUrl);
+            }
+            if (jutsuUrl) {
+                toastButtons.push({ title: '▶ JUT-SU' });
+                buttonsMap.push(jutsuUrl);
+            }
+            if (toastButtons.length === 0) {
+                toastButtons.push({ title: '▶ Смотреть' });
+                buttonsMap.push(`https://animego.me/search/anime?q=${encodeURIComponent(title)}`);
+            }
+
+            const timestamp = Date.now();
+            history.unshift({ id: notifId, animeId, episode: aired, title, origTitle, poster, voiceovers: '', animegoUrl, jutsuUrl, timestamp });
+            notifMap[notifId] = { russianName: title, origName: origTitle, animeId, episode: aired, animegoUrl, jutsuUrl, buttonsMap, poster, voiceovers: '', timestamp };
+            queue.push({ notifId, title, episode: aired, poster, notifMessage: title, toastButtons, animegoUrl, jutsuUrl });
+        }
+        history = history.slice(0, 20);
+
         await chrome.storage.local.set({
-            notified_episodes: Array.from(notifiedSet),
+            shiki_aired_seen: nextSeen,
             notified_episodes_history: history,
             active_notifications_map: notifMap
         });
+        // Прежний список хранил серии, о которых сообщали заранее
+        await chrome.storage.local.remove(['notified_episodes']);
 
-        // Launch sequential desktop windows in background ONLY if check was NOT triggered manually from popup menu
-        if (!isManual && newNotifQueue.length > 0) {
-            setTimeout(async () => {
-                for (let i = 0; i < newNotifQueue.length; i++) {
-                    const item = newNotifQueue[i];
-
-                    try {
-                        const winWidth = 370;
-                        const winHeight = 155;
-                        chrome.windows.getCurrent((currWin) => {
-                            let left = 1000;
-                            let top = 600;
-                            if (currWin && currWin.width) {
-                                left = (currWin.left || 0) + currWin.width - winWidth - 30;
-                                top = (currWin.top || 0) + currWin.height - winHeight - 50;
-                            }
-                            chrome.windows.create({
-                                url: chrome.runtime.getURL(`notification.html?id=${encodeURIComponent(item.notifId)}`),
-                                type: 'popup',
-                                width: winWidth,
-                                height: winHeight,
-                                left: Math.max(0, left),
-                                top: Math.max(0, top),
-                                focused: true
-                            });
-                        });
-                    } catch (winErr) {
-                        chrome.notifications.create(item.notifId, {
-                            type: 'basic',
-                            iconUrl: item.poster,
-                            title: `Вышла ${item.nextEp} серия`,
-                            message: item.notifMessage,
-                            buttons: item.toastButtons,
-                            priority: 2
-                        });
-                    }
-
-                    try {
-                        chrome.tabs.query({}, (tabs) => {
-                            tabs.forEach(tab => {
-                                if (tab.id) {
-                                    chrome.tabs.sendMessage(tab.id, {
-                                        action: 'SHOW_EPISODE_NOTIFICATION',
-                                        data: {
-                                            title: item.title,
-                                            episode: item.nextEp,
-                                            poster: item.poster,
-                                            voiceovers: item.voiceStr,
-                                            animegoUrl: item.animegoUrl,
-                                            jutsuUrl: item.jutsuUrl
-                                        }
-                                    }).catch(() => {});
-                                }
-                            });
-                        });
-                    } catch (e) {}
-
-                    if (i < newNotifQueue.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 7500));
-                    }
-                }
-            }, 0);
-        }
+        // Ручная проверка из окна расширения показывает результат там же
+        if (!isManual) await announceEpisodes(queue);
     } catch (e) {
         console.error('[Anime+] Error checking new episode notifications:', e);
     }
 }
-
-

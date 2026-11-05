@@ -155,9 +155,9 @@ test('сервер принимает сообщения по адресу /v1/f
     const worker = (await import('../server/timings/src/index.js')).default;
     const { env } = makeEnv();
     await withMail(200, async (mails) => {
-        const res = await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'POST', body: JSON.stringify(good) }), env, {});
+        const res = await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'POST', headers: { Origin: 'chrome-extension://mgcaideibpbdddnbedoefmabladoaajg' }, body: JSON.stringify(good) }), env, {});
         assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.headers.get('Access-Control-Allow-Origin'), '*');
+        assert.strictEqual(res.headers.get('Access-Control-Allow-Origin'), 'chrome-extension://mgcaideibpbdddnbedoefmabladoaajg');
         assert.strictEqual(mails.length, 1);
     });
 });

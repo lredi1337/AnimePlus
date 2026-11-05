@@ -5,7 +5,22 @@
 
     // 1. Инъекция стилей спиннера (без agFadeIn для предотвращения любой полупрозрачности при появлении)
     const style = document.createElement('style');
+    style.setAttribute('data-ag-auth-style', '');
     style.textContent = `
+        /* Страница Shikimori скрыта, пока не выяснится, что это вход в Anime+ */
+        html, body {
+            background: #0f1218 !important;
+            color: #f1f3f7 !important;
+            min-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        body > *:not(#animeplus-autoauth-backdrop) {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
         @keyframes agSpin { to { transform: rotate(360deg); } }
         .ag-auth-btn-primary {
             background: #ef4444 !important;
@@ -242,14 +257,6 @@
         });
     }
 
-    // Мгновенный показ подходящего окна при запуске скрипта
-    const path = window.location.pathname;
-    if (path.includes('/oauth/authorize/')) {
-        createAuthModal('loading');
-    } else if (path.includes('/oauth/authorize')) {
-        createAuthModal('consent');
-    }
-
     function tryExtractCode() {
         if (window.agAuthProcessed) return;
 
@@ -308,29 +315,48 @@
         }
     }
 
-    tryExtractCode();
-
-    // Наблюдатель и страховочный опрос живут, пока код не получен, но не дольше 2 минут:
-    // раньше при закрытом/отменённом диалоге они работали вечно (опрос каждые 50 мс)
-    const AUTH_WATCH_LIMIT_MS = 2 * 60 * 1000;
-    let stopped = false;
-    const stopWatching = () => {
-        if (stopped) return;
-        stopped = true;
-        observer.disconnect();
-        clearInterval(interval);
-        clearTimeout(limitTimer);
-    };
-    const check = () => {
-        if (window.agAuthProcessed) return stopWatching();
+    function watchForCode() {
         tryExtractCode();
-        if (window.agAuthProcessed) stopWatching();
-    };
 
-    const observer = new MutationObserver(check);
-    if (document.documentElement) {
-        observer.observe(document.documentElement, { childList: true, subtree: true });
+        // Наблюдатель и страховочный опрос живут, пока код не получен, но не дольше 2 минут:
+        // раньше при закрытом/отменённом диалоге они работали вечно (опрос каждые 50 мс)
+        const AUTH_WATCH_LIMIT_MS = 2 * 60 * 1000;
+        let stopped = false;
+        const stopWatching = () => {
+            if (stopped) return;
+            stopped = true;
+            observer.disconnect();
+            clearInterval(interval);
+            clearTimeout(limitTimer);
+        };
+        const check = () => {
+            if (window.agAuthProcessed) return stopWatching();
+            tryExtractCode();
+            if (window.agAuthProcessed) stopWatching();
+        };
+
+        const observer = new MutationObserver(check);
+        if (document.documentElement) {
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        }
+        const interval = setInterval(check, 250);
+        const limitTimer = setTimeout(stopWatching, AUTH_WATCH_LIMIT_MS);
     }
-    const interval = setInterval(check, 250);
-    const limitTimer = setTimeout(stopWatching, AUTH_WATCH_LIMIT_MS);
+
+    // Страница видна сразу, а вход в Anime+ ли это, знает только фон: другие приложения и чужие ссылки получают обычную страницу
+    function standDown() {
+        const backdrop = document.getElementById('animeplus-autoauth-backdrop');
+        if (backdrop) backdrop.remove();
+        style.remove();
+    }
+
+    createAuthModal('loading');
+    chrome.runtime.sendMessage({ action: 'shiki_auth_expected' }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.expected) {
+            standDown();
+            return;
+        }
+        if (!window.location.pathname.includes('/oauth/authorize/')) createAuthModal('consent');
+        watchForCode();
+    });
 })();

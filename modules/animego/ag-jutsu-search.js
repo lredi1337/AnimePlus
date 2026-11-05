@@ -6,12 +6,7 @@
 
     let isRenderingJutsuSearch = false;
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/[&<>"']/g, function(m) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-        });
-    }
+    const escapeHtml = window.agEscapeHtml;
 
     function cleanTitleForCompare(str) {
         if (!str) return '';
@@ -181,7 +176,7 @@
                         a.className = 'ajax-search__item d-flex list-group-item list-group-item-action ag-jutsu-item';
                         a.href = item.jutsuUrl;
                         a.target = '_blank';
-                        a.title = `Смотреть ${titleStr} на Jut.su`;
+                        a.title = `Смотреть ${item.russian || item.name} на Jut.su`;
                         a.setAttribute('aria-selected', 'false');
                         a.setAttribute('role', 'button');
                         a.dataset.agJutsu = '1';
@@ -231,7 +226,7 @@
 
                         a.innerHTML = `
                             <div class="flex-shrink-0 me-3 position-relative">
-                                <img class="rounded" src="${posterUrl}" alt="${titleStr}" style="width: 48px; height: 68px; object-fit: cover;" data-ag-poster-ru="${titleStr}">
+                                <img class="rounded" src="${escapeHtml(posterUrl)}" alt="${titleStr}" style="width: 48px; height: 68px; object-fit: cover;" data-ag-poster-ru="${titleStr}">
                             </div>
                             <div class="flex-grow-1 min-w-0 d-flex flex-column justify-content-center me-2">
                                 <div class="ajax-search__item-title text-truncate fw-bold color-main">${titleStr}</div>

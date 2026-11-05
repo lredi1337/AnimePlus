@@ -6,16 +6,6 @@
 
     window.AG_RED = "#ef4444";
 
-    window.agEscapeHtml = function (str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    };
-
     // Санитайзер для стороннего HTML (описания Shikimori — пользовательский контент).
     // Разбор в инертном документе DOMParser: ни скрипты, ни onerror там не выполняются.
     // Оставляем только безопасные теги; атрибуты — только href (http/https) у ссылок.
@@ -296,7 +286,7 @@
             overflow: hidden;
         `;
 
-        const posterUrl = data.poster || 'https://shikimori.one/favicons/favicon-192x192.png';
+        const posterUrl = data.poster || 'https://shikimori.io/favicons/favicon-192x192.png';
         const title = window.agEscapeHtml(data.title || '');
         const episode = window.agEscapeHtml(String(data.episode || ''));
         const voiceovers = data.voiceovers ? window.agEscapeHtml(data.voiceovers) : '';
@@ -304,7 +294,7 @@
         const siteLink = (url, siteId) => {
             const site = window.AgSites.byId(siteId);
             const onColor = window.AgUI ? window.AgUI.onAccent(site.color) : '#fff';
-            return `<a href="${url}" target="_blank" rel="noopener" style="height: 26px; line-height: 26px; padding: 0 10px; font-size: var(--ap-fs-sm); font-weight: 600; color: ${onColor}; background: ${site.color}; border-radius: var(--ap-radius-sm); text-decoration: none;">${site.name}</a>`;
+            return `<a href="${window.agEscapeHtml(url)}" target="_blank" rel="noopener" style="height: 26px; line-height: 26px; padding: 0 10px; font-size: var(--ap-fs-sm); font-weight: 600; color: ${onColor}; background: ${site.color}; border-radius: var(--ap-radius-sm); text-decoration: none;">${site.name}</a>`;
         };
 
         let btnsHtml = '';
@@ -316,7 +306,7 @@
         }
 
         card.innerHTML = `
-            <img src="${posterUrl}" alt="" style="width: 46px; height: 64px; object-fit: cover; background: var(--ap-raised); border-radius: var(--ap-radius-sm); flex-shrink: 0;">
+            <img src="${window.agEscapeHtml(posterUrl)}" alt="" style="width: 46px; height: 64px; object-fit: cover; background: var(--ap-raised); border-radius: var(--ap-radius-sm); flex-shrink: 0;">
             <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;">
                 <div style="font-size: var(--ap-fs-sm); font-weight: 600; color: var(--ap-accent);">Вышла ${episode} серия</div>
                 <div style="font-size: var(--ap-fs-md); font-weight: 600; color: var(--ap-text); padding-right: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${title}">${title}</div>

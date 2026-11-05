@@ -4,15 +4,7 @@
 (function () {
     'use strict';
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
+    const escapeHtml = window.agEscapeHtml;
 
     const ensureAgLogoPlus = window.ensureAgLogoPlus || function () {};
 
@@ -465,7 +457,7 @@
                             <div class="g-col-7 g-col-sm-12 g-col-md-8 g-col-lg-9 g-col-xl-9 text-break">${data.status === 'released' ? 'Вышел' : 'Онгоинг'}</div>
 
                             <div class="g-col-5 g-col-sm-4 g-col-md-4 g-col-lg-3 g-col-xl-3 text-body-tertiary text-opacity-75">Выпуск</div>
-                            <div class="g-col-7 g-col-sm-12 g-col-md-8 g-col-lg-9 g-col-xl-9 text-break">${data.airedOn || '—'}</div>
+                            <div class="g-col-7 g-col-sm-12 g-col-md-8 g-col-lg-9 g-col-xl-9 text-break">${escapeHtml(data.airedOn || '—')}</div>
 
                             <div class="g-col-5 g-col-sm-4 g-col-md-4 g-col-lg-3 g-col-xl-3 text-body-tertiary text-opacity-75">Студия</div>
                             <div class="g-col-7 g-col-sm-12 g-col-md-8 g-col-lg-9 g-col-xl-9 text-break">${escapeHtml(studioStr)}</div>

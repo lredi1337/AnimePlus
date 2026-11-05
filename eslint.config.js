@@ -9,12 +9,14 @@ const backgroundShared = Object.fromEntries([
     'CACHE_TTL_MS', 'EPISODES_ALARM', 'SHIKI_API_BASE', 'SHIKI_API_DOMAINS', 'SHIKI_APP_USER_AGENT',
     'SHIKI_ID_CACHE_TTL', 'SHIKI_POSTER_MISS_TTL', 'SHIKI_POSTER_TTL', 'SHIKI_REDIRECT_URI',
     'absoluteShikiUrl', 'addToWatchHistory', 'bumpTodayCounter', 'cachedScheduleData', 'cachedScheduleTime',
-    'checkEpisodeAvailabilityOnPortals', 'checkKodikEpisodeAvailability', 'checkNewEpisodeNotifications',
+    'checkNewEpisodeNotifications', 'shikiRateFetch', 'syncShikiProgress',
     'cleanupOldNotifications', 'ensureEpisodesAlarm', 'exchangeShikiCode', 'fetchShikimoriApi', 'fillShikiPosters',
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
     'openNotificationTarget', 'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'searchShikimoriAnime', 'setDirectUrlInCache',
-    'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming',
+    'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming', 'pruneAudioCache',
+    'SHIKI_CLIENT_ID', 'beginShikiAuth', 'completeShikiAuth', 'isShikiAuthExpected', 'isShikiCodeInProgress', 'shikiAuthCodeFromUrl',
+    'getShikiStatus', 'resetTodayCount', 'getShikiRelated', 'getOngoingSchedule', 'resolveJutsuCover', 'getRandomShikimoriAnime',
     'shikiFetch', 'shikiPosterMemo', 'storageWriteQueues', 'toShikiApiUrl', 'updateShikiUserRate', 'updateStorageObject'
 ].map(name => [name, 'writable']));
 

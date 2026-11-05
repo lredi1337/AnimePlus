@@ -1,6 +1,7 @@
 // Реестр сайтов (modules/shared/sites.js подключён в popup.html до этого файла)
 const AgSites = window.AgSites;
 const AgUI = window.AgUI;
+const escapeHtml = window.agEscapeHtml;
 
 // Фолбэк постеров в popup. Inline onerror="" в страницах расширения запрещён CSP Manifest V3,
 // поэтому обработчик вешается через addEventListener. Заглушку Shikimori («лису» /assets/globals/missing_*)
@@ -308,7 +309,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnShiki) {
         btnShiki.onclick = () => {
             showToast(trackerToast, "Открывается профиль на Shikimori");
-            window.open('https://shikimori.one/animes', '_blank');
+            window.open('https://shikimori.io/animes', '_blank');
         };
     }
 
@@ -345,7 +346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.runtime.sendMessage({ action: "shiki_get_status" }, (res) => {
             if (chrome.runtime.lastError || !res) return;
 
-            activeClientId = res.clientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
+            activeClientId = res.clientId || '';
 
             if (todayCountEl) {
                 todayCountEl.textContent = res.todayCount || 0;
@@ -379,9 +380,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 document.getElementById('shiki-user-name').textContent = res.user.nickname || res.user.name || 'Пользователь';
 
-                let avatarUrl = res.user.avatar || res.user.image?.x64 || 'https://shikimori.one/favicons/favicon-64x64.png';
+                let avatarUrl = res.user.avatar || res.user.image?.x64 || 'https://shikimori.io/favicons/favicon-64x64.png';
                 if (avatarUrl && !avatarUrl.startsWith('http')) {
-                    avatarUrl = 'https://shikimori.one' + avatarUrl;
+                    avatarUrl = 'https://shikimori.io' + avatarUrl;
                 }
                 const avatarEl = document.getElementById('shiki-user-avatar');
                 if (avatarEl) avatarEl.src = avatarUrl;
@@ -474,15 +475,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentLoadedStatus = null;
     let activeKindFilter = 'all';
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
 
     function showSkeletonLoader(container, count = 6) {
         if (!container) return;
@@ -569,7 +561,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             card.innerHTML = `
                 <div class="poster-cover">
-                    <img class="poster-img" src="${escapeHtml(posterSrc)}" alt="">
+                    <img class="poster-img" loading="lazy" src="${escapeHtml(posterSrc)}" alt="">
                     <span class="poster-eps">${escapeHtml(eps)}</span>
                     <div class="progress"><i style="width:${percent}%"></i></div>
                     <button class="poster-play" title="${hint}" aria-label="Смотреть: ${hint}">${AgUI.icon('play', 18)}</button>
@@ -708,19 +700,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (shikiCodeWrapper) shikiCodeWrapper.style.display = 'block';
             shikiErrorMsg.style.display = 'none';
 
-            const targetClientId = activeClientId || "SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI";
-
-            const authUrl = `https://shikimori.io/oauth/authorize?client_id=${encodeURIComponent(targetClientId)}&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&scope=user_rates`;
-
-            try {
-                if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
-                    chrome.tabs.create({ url: authUrl, active: true });
-                } else {
-                    window.open(authUrl, '_blank');
-                }
-            } catch (e) {
-                window.open(authUrl, '_blank');
-            }
+            // Вкладку открывает фон: окно расширения закроется вместе с переходом на неё, а номер вкладки нужно запомнить
+            chrome.runtime.sendMessage({ action: 'shiki_auth_begin', clientId: activeClientId });
         };
     }
 
@@ -889,7 +870,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         div.innerHTML = `
             <div class="track-body">
                 <div class="track-label">${displayType} (поиск)</div>
-                <div class="track-name">${displayName}</div>
+                <div class="track-name">${escapeHtml(displayName)}</div>
             </div>
             <button class="btn-youtube" title="Искать на YouTube" aria-label="Искать на YouTube">${AgUI.icon('play', 13)}</button>
         `;
@@ -951,7 +932,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             div.innerHTML = `
                 <div class="track-body">
                     <div class="track-label">${label}</div>
-                    <div class="track-name" title="${cleanedName}">${cleanedName}</div>
+                    <div class="track-name" title="${escapeHtml(cleanedName)}">${escapeHtml(cleanedName)}</div>
                 </div>
                 <button class="btn-youtube" title="Слушать на YouTube" aria-label="Слушать на YouTube">${AgUI.icon('play', 13)}</button>
             `;
@@ -1038,10 +1019,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const safeTitle = escapeHtml(item.title || '');
 
                 row.innerHTML = `
-                    <img src="${posterSrc}" class="anime-thumb" alt="poster">
+                    <img src="${escapeHtml(posterSrc)}" class="anime-thumb" alt="poster">
                     <div class="anime-row-body">
-                        <div class="anime-title" title="${safeTitle}">${safeTitle} ${epLabel ? `<small>${epLabel}</small>` : ''}</div>
-                        <div class="anime-progress">${metaText}</div>
+                        <div class="anime-title" title="${safeTitle}">${safeTitle} ${epLabel ? `<small>${escapeHtml(epLabel)}</small>` : ''}</div>
+                        <div class="anime-progress">${escapeHtml(metaText)}</div>
                     </div>
                     <button class="play-btn" data-title="${safeTitle}" aria-label="Смотреть">${AgUI.icon('play', 14)}</button>
                 `;
@@ -1070,7 +1051,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             window.open(item.jutsuUrl, '_blank');
                         };
                     } else {
-                        const targetUrl = item.animegoUrl || item.jutsuUrl || `https://animego.me/search/anime?q=${encodeURIComponent(safeTitle)}`;
+                        const targetUrl = item.animegoUrl || item.jutsuUrl || `https://animego.me/search/anime?q=${encodeURIComponent(item.title || '')}`;
                         window.open(targetUrl, '_blank');
                     }
                 };

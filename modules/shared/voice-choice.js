@@ -68,7 +68,7 @@
                 resolve(value);
             };
             const onMessage = (e) => {
-                if (e.data && e.data.type === 'AG_VOICE_CHOICE') done(e.data.voice || null);
+                if (e.source === window.top && e.data && e.data.type === 'AG_VOICE_CHOICE') done(e.data.voice || null);
             };
             const timer = setTimeout(() => done(null), ASK_TIMEOUT_MS);
             window.addEventListener('message', onMessage);
@@ -86,6 +86,7 @@
         window.addEventListener('message', async (e) => {
             const data = e.data;
             if (!data || typeof data.type !== 'string') return;
+            if (root.isValidOrigin && !root.isValidOrigin(e.origin)) return;
             if (data.type === 'AG_GET_VOICE_CHOICE') {
                 const voice = await get(pageKey());
                 try { e.source.postMessage({ type: 'AG_VOICE_CHOICE', voice }, '*'); } catch (err) {}

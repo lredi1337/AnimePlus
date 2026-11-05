@@ -1,14 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "11.0.1",
+  "version": "11.0.2",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
     "storage",
     "scripting",
-    "tabs",
-    "windows",
     "notifications",
     "alarms"
   ],
@@ -70,6 +68,7 @@
     "https://shikimori.one/*",
     "https://shikimori.io/*",
     "https://shikimori.me/*",
+    "https://shikimori.org/*",
     "https://api.animethemes.moe/*",
     "https://kitsu.io/*",
     "https://jut-su.net/*",
@@ -271,6 +270,7 @@
         "https://shikimori.io/anime/*",
         "https://shikimori.org/animes/*",
         "https://shikimori.org/anime/*",
+        "https://shikimori.me/animes/*",
         "https://shikimori.me/anime/*"
       ],
       "js": [
@@ -290,9 +290,6 @@
         "https://shikimori.io/oauth/authorize*",
         "https://shikimori.me/oauth/authorize*",
         "https://shikimori.org/oauth/authorize*"
-      ],
-      "css": [
-        "shiki-auth.css"
       ],
       "js": [
         "content-shiki-auth.js"
