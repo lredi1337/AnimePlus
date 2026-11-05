@@ -30,7 +30,12 @@
     function pressWhenReady() {
         const startedAt = Date.now();
         const timer = setInterval(() => {
-            if (Date.now() - startedAt > WAIT_MS) return clearInterval(timer);
+            if (Date.now() - startedAt > WAIT_MS) {
+                // Сайт мог сменить текст кнопки: тогда зритель снова увидит плеер сайта
+                clearInterval(timer);
+                if (globalThis.AgDiag) globalThis.AgDiag.note('agp_no_button');
+                return undefined;
+            }
             const button = [...document.querySelectorAll('button')].find(b => TO_KODIK.test(b.textContent));
             if (!button) return undefined;
             clearInterval(timer);

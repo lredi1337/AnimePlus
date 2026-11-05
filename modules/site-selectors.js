@@ -93,6 +93,7 @@
             const { ag_selector_health: health = {} } = await chrome.storage.local.get(['ag_selector_health']);
             const prev = health[site];
             if (!prev || prev.missing.join(',') !== missing.join(',')) {
+                if (missing.length && globalThis.AgDiag) globalThis.AgDiag.note('selectors_missing', `${site}: ${missing.join(', ')}`);
                 health[site] = { missing, url: location.href, ts: Date.now() };
                 await chrome.storage.local.set({ ag_selector_health: health });
             }

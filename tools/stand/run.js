@@ -131,6 +131,21 @@ async function smoke(opts) {
 
         r.check('Shikimori отвечает через очередь', (await b.ev(worker, "fetchShikimoriApi('/api/animes/5114').then(a => a && a.id)")) === 5114);
 
+        // База песен и журнал сбоев. Письмо не отправляется: форма проверяется только до кнопки
+        r.check('база песен отвечает', !!(await b.ev(worker, 'getAudioFingerprints(5114)')));
+        const page = await b.openPage(`chrome-extension://${extId}/options/options.html`);
+        await wait(1500);
+        await b.ev(page.session, "chrome.runtime.sendMessage({ action: 'diag_note', where: 'stand_probe', detail: 'проверка https://example.test/secret?access_token=SECRET' })");
+        await wait(500);
+        const shown = await b.ev(page.session, "chrome.runtime.sendMessage({ action: 'diag_summary' }).then(x => x.text)");
+        r.check('сбой попал в журнал без адреса и токена', shown.includes('stand_probe') && shown.includes('example.test') && !shown.includes('SECRET') && !shown.includes('/secret'), shown);
+        await b.ev(page.session, "document.querySelector('.feedback-diag-text').open = true");
+        await wait(500);
+        const preview = await b.ev(page.session, "document.getElementById('feedbackDiagText').textContent");
+        r.check('форма показывает, что будет отправлено', preview.includes('stand_probe') && /Chrome \d+/.test(preview), preview.split('\n')[0]);
+        r.check('отметка стоит по умолчанию', await b.ev(page.session, "document.getElementById('feedbackDiag').checked"));
+        await b.closePage(page);
+
         const site = await b.openPage('https://animego.me/');
         await wait(7000);
         r.check('на сайте есть пункт Топа', await b.ev(site.session, "[...document.querySelectorAll('a,button,li,div')].some(e => e.children.length < 3 && /Топ Shikimori/i.test(e.textContent || ''))"));

@@ -1,10 +1,11 @@
 // modules/bg-audio.js
-// База отпечатков песен для пропуска по звуку: файлы лежат в репозитории и отдаются бесплатными CDN. Сначала jsDelivr, резерв GitHub.
+// База отпечатков песен для пропуска по звуку: файлы лежат в репозитории и отдаются бесплатно. Сначала GitHub, резерв jsDelivr:
+// база больше его лимита на пакет в 50 МБ, поэтому файлы не из его кэша он отклоняет (замер 2026-11-05: 3 из 15).
 // Там же настройки с аварийным выключателем: функцию можно отключить у всех без обновления расширения.
 
 const AUDIO_FP_SOURCES = [
-    (file) => `https://cdn.jsdelivr.net/gh/lredi1337/AnimePlus@fingerprints/v1/${file}`,
-    (file) => `https://raw.githubusercontent.com/lredi1337/AnimePlus/fingerprints/v1/${file}`
+    (file) => `https://raw.githubusercontent.com/lredi1337/AnimePlus/fingerprints/v1/${file}`,
+    (file) => `https://cdn.jsdelivr.net/gh/lredi1337/AnimePlus@fingerprints/v1/${file}`
 ];
 const AUDIO_FP_CACHE = 'ap-audio-fingerprints-v1';
 const AUDIO_FP_TTL = 30 * 24 * 3600 * 1000;
@@ -30,7 +31,9 @@ async function fetchAudioFile(file) {
             return { found: true, data: await r.json() };
         } catch (e) {}
     }
-    return missing ? { found: false, data: null } : null;
+    if (missing) return { found: false, data: null };
+    if (globalThis.noteDiag) noteDiag('songs_unreachable', file);
+    return null;
 }
 
 async function cachedAudioFile(name, file, ttl, missTtl) {

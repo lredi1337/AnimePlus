@@ -1134,6 +1134,7 @@
                 return fn(...args);
             } catch (e) {
                 console.error('[Anime+] Оболочка плеера отключена:', e);
+                if (globalThis.AgDiag) globalThis.AgDiag.note('shell_off', e);
                 destroy();
                 return undefined;
             }

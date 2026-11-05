@@ -36,13 +36,21 @@ function load({ reply, caches = fakeCaches() }) {
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status });
 const isConfig = (url) => url.endsWith('config.json');
 
+test('файл берётся с GitHub, jsDelivr не нужен', async () => {
+    const { ctx, seen } = load({ reply: (url) => (isConfig(url) ? json({}) : json({ songs: [1] })) });
+    assert.deepEqual(JSON.parse(JSON.stringify(await ctx.getAudioFingerprints(5))), { songs: [1] });
+    const file = seen.filter(s => s.url.endsWith('/5.json'));
+    assert.equal(file.length, 1);
+    assert.ok(file[0].url.includes('raw.githubusercontent.com'));
+});
+
 test('отказ первого источника: файл берётся из резервного', async () => {
     const { ctx, seen } = load({ reply: (url) => {
         if (isConfig(url)) return json({});
-        return url.includes('jsdelivr') ? new Response('', { status: 403 }) : json({ songs: [1] });
+        return url.includes('raw.githubusercontent') ? new Response('', { status: 403 }) : json({ songs: [1] });
     } });
     assert.deepEqual(JSON.parse(JSON.stringify(await ctx.getAudioFingerprints(5))), { songs: [1] });
-    assert.ok(seen.some(s => s.url.includes('raw.githubusercontent.com') && s.url.endsWith('/5.json')));
+    assert.ok(seen.some(s => s.url.includes('jsdelivr') && s.url.endsWith('/5.json')));
 });
 
 test('сбой сети не считается отсутствием файла: остаётся прошлая версия', async () => {

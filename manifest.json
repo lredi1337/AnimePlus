@@ -106,6 +106,7 @@
       ],
       "js": [
         "config.js",
+        "modules/shared/diag.js",
         "modules/shared/native-fs.js",
         "modules/shared/voice-choice.js",
         "modules/shared/sites.js",
@@ -147,6 +148,7 @@
       ],
       "js": [
         "config.js",
+        "modules/shared/diag.js",
         "modules/shared/native-fs.js",
         "modules/shared/voice-choice.js",
         "modules/shared/sites.js",
@@ -183,6 +185,7 @@
       ],
       "js": [
         "modules/shared/sites.js",
+        "modules/shared/diag.js",
         "modules/player/agp-to-kodik.js"
       ],
       "run_at": "document_idle",
@@ -266,6 +269,7 @@
       ],
       "js": [
         "config.js",
+        "modules/shared/diag.js",
         "modules/shared/voice-choice.js",
         "modules/shared/sites.js",
         "modules/shared/ui-kit.js",

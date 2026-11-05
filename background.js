@@ -1,5 +1,5 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
-importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js', './modules/bg-schedule.js', './modules/bg-random.js');
+importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/bg-diag.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js', './modules/bg-schedule.js', './modules/bg-random.js');
 
 // Хосты, к которым content-скрипты могут обращаться через fetch_shikimori.
 // Без белого списка обработчик был открытым прокси с правами расширения на любой URL
@@ -113,6 +113,9 @@ async function getNativePageTemplate(origin) {
 
 const isExtensionPage = (sender) => String(sender.url || '').startsWith(chrome.runtime.getURL(''));
 const FORBIDDEN = { success: false, reason: 'forbidden' };
+const hostOfUrl = (url) => { try { return new URL(url).hostname; } catch (e) { return ''; } };
+// Сайт вкладки и кадр, из которого пришло сообщение
+const senderHosts = (sender) => [...new Set([hostOfUrl(sender.tab && sender.tab.url), hostOfUrl(sender.url)].filter(Boolean))].join(' > ');
 const failure = (err) => ({ success: false, error: err.message });
 
 // Действие: [обработчик, ответ при сбое]. Обработчик возвращает ответ, а ошибку ловит маршрутизатор: отправитель не остаётся без ответа
@@ -122,6 +125,10 @@ const MESSAGE_HANDLERS = {
         if (sender.tab && sender.tab.id) chrome.tabs.remove(sender.tab.id).catch(() => {});
         return { success: true };
     }, failure],
+
+    // Журнал сбоев (modules/bg-diag.js)
+    diag_note: [(m, sender) => noteDiag(m.where, m.detail, senderHosts(sender)), () => null],
+    diag_summary: [async () => ({ text: await diagSummary() }), () => ({ text: '' })],
 
     // Сайты из реестра (modules/bg-sites.js)
     resolve_site_url: [async (m) => ({ url: await resolveSiteUrl(m.siteId, m) }), () => ({ url: null })],

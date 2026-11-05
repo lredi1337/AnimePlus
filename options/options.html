@@ -103,7 +103,12 @@
                 <div class="feedback-trap" aria-hidden="true">
                     <input type="text" id="feedbackWebsite" tabindex="-1" autocomplete="off">
                 </div>
-                <small class="hint">Разработчик получит текст, контакт и версию расширения. Больше ничего не отправляется.</small>
+                <label class="feedback-diag"><input type="checkbox" id="feedbackDiag" checked> Приложить сведения о работе расширения</label>
+                <details class="feedback-diag-text">
+                    <summary>Что будет отправлено</summary>
+                    <pre id="feedbackDiagText"></pre>
+                </details>
+                <small class="hint">Разработчик получит текст, контакт, версию расширения и, если отмечено выше, сведения о работе: браузер и список недавних сбоев, без адресов страниц и названий тайтлов. Больше ничего не передаётся.</small>
                 <div class="actions">
                     <button type="submit" class="btn" id="feedbackSend">Отправить</button>
                     <p class="feedback-result" id="feedbackResult" role="status"></p>

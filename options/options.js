@@ -160,6 +160,23 @@
         'bad message': 'Сообщение слишком короткое или слишком длинное.'
     };
 
+    const DIAG_MAX = 3500;
+    const browserLine = () => {
+        const match = navigator.userAgent.match(/(YaBrowser|Edg|OPR|Chrome)\/(\d+)/);
+        return `${match ? `${match[1]} ${match[2]}` : 'Браузер не определён'}, ${navigator.platform}`;
+    };
+    const diagText = async () => {
+        let log = '';
+        try {
+            const res = await chrome.runtime.sendMessage({ action: 'diag_summary' });
+            log = (res && res.text) || '';
+        } catch (err) {}
+        return `${browserLine()}\n${log || 'Сбоев не записано'}`.slice(0, DIAG_MAX);
+    };
+    const showDiag = async () => { $('feedbackDiagText').textContent = await diagText(); };
+    document.querySelector('.feedback-diag-text').addEventListener('toggle', showDiag);
+    showDiag();
+
     $('feedbackForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const result = $('feedbackResult');
@@ -168,6 +185,7 @@
         $('feedbackSend').disabled = true;
         let error = 'Не удалось отправить. Попробуйте ещё раз чуть позже.';
         let sent = false;
+        const diag = $('feedbackDiag').checked ? await diagText() : '';
         try {
             const response = await fetch(FEEDBACK_URL, {
                 method: 'POST',
@@ -177,7 +195,8 @@
                     message: $('feedbackMessage').value,
                     contact: $('feedbackContact').value,
                     website: $('feedbackWebsite').value,
-                    version
+                    version,
+                    diag
                 }),
                 signal: AbortSignal.timeout(15000)
             });

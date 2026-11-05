@@ -9,7 +9,7 @@ const backgroundShared = Object.fromEntries([
     'CACHE_TTL_MS', 'SHIKI_API_BASE', 'SHIKI_API_DOMAINS', 'SHIKI_APP_USER_AGENT',
     'SHIKI_ID_CACHE_TTL', 'SHIKI_POSTER_MISS_TTL', 'SHIKI_POSTER_TTL', 'SHIKI_REDIRECT_URI',
     'absoluteShikiUrl', 'addToWatchHistory', 'bumpTodayCounter', 'cachedScheduleData', 'cachedScheduleTime',
-    'shikiRateFetch', 'syncShikiProgress',
+    'shikiRateFetch', 'syncShikiProgress', 'noteDiag', 'diagSummary', 'cleanDiagText',
     'ensureRetryAlarm', 'exchangeShikiCode', 'fetchShikimoriApi', 'fillShikiPosters',
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',

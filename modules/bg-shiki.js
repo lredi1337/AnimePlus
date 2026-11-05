@@ -313,6 +313,7 @@ async function requestShikiTokenRefresh(tokens) {
             tokens.shiki_refresh_token = data.refresh_token;
             tokens.shiki_token_expires_at = expiresAt;
         } else if (res.status === 400 || res.status === 401) {
+            if (globalThis.noteDiag) noteDiag('shiki_refresh_rejected', `HTTP ${res.status}`);
             await chrome.storage.local.set({
                 shiki_auth_error: true,
                 shiki_auth_error_time: Date.now()
@@ -843,6 +844,7 @@ async function syncShikiProgress({ shikimoriId, episode, status }) {
         res = { success: false, retryable: true, error: err.message };
     }
     if (res.retryable) {
+        if (globalThis.noteDiag) noteDiag('shiki_sync_queued', res.status ? `HTTP ${res.status}` : res.error);
         await queueShikiSync({ shikimoriId, episode, status });
         return { ...res, queued: true };
     }

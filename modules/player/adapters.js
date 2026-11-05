@@ -264,7 +264,10 @@
             const root = cvhShadow();
             if (!alive() || !root) return resolve(null);
             if (cvhLevelEls(root).length) return resolve(root);
-            if (++steps > CVH_QUALITY_STEPS) return resolve(null);
+            if (++steps > CVH_QUALITY_STEPS) {
+                if (root.host && globalThis.AgDiag) globalThis.AgDiag.note('cvh_menu_timeout');
+                return resolve(null);
+            }
             const next = root.querySelector('[data-testid="quality-other-settings"]') || root.querySelector('[data-testid="quality-settings"]');
             if (next) {
                 press(next);

@@ -6,6 +6,7 @@ const MAIL_FROM = 'Anime+ <onboarding@resend.dev>';
 const MIN_LEN = 10;
 const MAX_LEN = 2000;
 const MAX_CONTACT = 120;
+const MAX_DIAG = 4000;
 const MAX_BODY = 10000;
 const HOUR_MS = 3600 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -30,7 +31,8 @@ export function validateFeedback(body) {
     const contact = typeof body.contact === 'string' ? body.contact.replace(/\s+/g, ' ').replace(CONTROL_CHARS, '').trim() : '';
     if (contact.length > MAX_CONTACT) return null;
     const version = /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(body.version) ? body.version : '';
-    return { kind, message, contact, version };
+    const diag = typeof body.diag === 'string' ? body.diag.replace(/\r\n?/g, '\n').replace(CONTROL_CHARS, '').trim().slice(0, MAX_DIAG) : '';
+    return { kind, message, contact, version, diag };
 }
 
 /** Что мешает отправке: same — повтор, limit — лимит человека, busy — общий лимит, null — можно */
@@ -43,13 +45,13 @@ export function checkLimits(rows, reporter, digest, now = Date.now()) {
 }
 
 /** Письмо только обычным текстом: присланное не может стать разметкой или ссылкой-ловушкой */
-export function buildEmail({ kind, message, contact, version }, to) {
+export function buildEmail({ kind, message, contact, version, diag }, to) {
     const firstLine = message.split('\n')[0].slice(0, 60);
     const mail = {
         from: MAIL_FROM,
         to: [to],
         subject: `Anime+, ${KIND_TITLES[kind]}: ${firstLine}`,
-        text: `${message}\n\n---\nВерсия Anime+: ${version || 'неизвестна'}\nКонтакт: ${contact || 'не указан'}\n`
+        text: `${message}\n\n---\nВерсия Anime+: ${version || 'неизвестна'}\nКонтакт: ${contact || 'не указан'}\n${diag ? `\nСведения о работе:\n${diag}\n` : ''}`
     };
     if (EMAIL.test(contact)) mail.reply_to = contact;
     return mail;

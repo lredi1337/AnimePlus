@@ -167,6 +167,23 @@ test('форма поддержки: отправляет сообщение, в
     w.close();
 });
 
+test('форма поддержки: сведения о работе отправляются, только если отметка стоит', async () => {
+    const send = async (checked) => {
+        const { w, doc } = await openPage({});
+        w.chrome.runtime.sendMessage = async () => ({ text: 'shell_off kodikplayer.com' });
+        const calls = [];
+        w.fetch = async (url, options) => { calls.push(JSON.parse(options.body)); return reply(200, { ok: true })(); };
+        doc.getElementById('feedbackDiag').checked = checked;
+        doc.getElementById('feedbackMessage').value = 'Хочу тёмную тему для расписания';
+        doc.getElementById('feedbackForm').dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
+        await tick();
+        w.close();
+        return calls[0];
+    };
+    assert.match((await send(true)).diag, /shell_off kodikplayer\.com/);
+    assert.equal((await send(false)).diag, '');
+});
+
 test('форма поддержки: при ошибке текст остаётся и причина понятна', async () => {
     const limit = await submitFeedback(reply(429, { error: 'limit' }));
     assert.equal(limit.doc.getElementById('feedbackMessage').value, 'Хочу тёмную тему для расписания');

@@ -375,6 +375,7 @@
         // Наш обработчик сломал звук: запоминаем это в браузере и перезагружаем плеер, там звук уже без нас
         const rescueSound = (video) => {
             blocked = true;
+            if (globalThis.AgDiag) globalThis.AgDiag.note('audio_rescue');
             try { sessionStorage.setItem(RESUME_KEY, String(video.currentTime)); } catch (e) {}
             chrome.storage.local.set({ [BLOCK_KEY]: Date.now() }).finally(() => location.reload());
         };
@@ -421,6 +422,7 @@
             if (loadTotal >= LOAD_MIN_SAMPLE_SEC) {
                 if (loadSpent / loadTotal > MAX_LOAD) {
                     analysisOff = true;
+                    if (globalThis.AgDiag) globalThis.AgDiag.note('audio_analysis_off');
                     publish(v);
                 }
                 loadSpent = 0;
