@@ -354,6 +354,7 @@
                 return;
             }
             if (kind === 'voices' && options.onOwnVoiceChange) options.onOwnVoiceChange();
+            if (kind === 'episodes' && options.onOwnEpisodePick) options.onOwnEpisodePick();
             player.choose(kind, index);
         };
         const currentEpisode = () => listOf('episodes').find(o => o.selected);
@@ -456,6 +457,13 @@
             }
             return box;
         }
+
+        // Плеер без родных списков на странице сам сообщает о смене серии: открытая панель не должна отставать
+        const onPlayerLists = () => {
+            renderNav();
+            if (openPanel === 'episodes') renderEpisodes();
+        };
+        document.addEventListener('ag-player-lists', onPlayerLists);
 
         function renderEpisodes() {
             panel.replaceChildren(panelHead('Серии'));
@@ -628,7 +636,15 @@
                     b.querySelector('.name').textContent = it.label;
                     b.addEventListener('click', () => {
                         it.pick();
-                        setTimeout(renderSettings, 150);
+                        if (!player.refreshQuality) {
+                            setTimeout(renderSettings, 150);
+                            return;
+                        }
+                        // Плеер с запомненным списком отвечает сразу: перерисовка не должна сбивать прокрутку и мигать
+                        const position = scroll.scrollTop;
+                        renderSettings();
+                        const fresh = panel.querySelector('.scroll');
+                        if (fresh) fresh.scrollTop = position;
                     });
                     scroll.appendChild(b);
                 }
@@ -684,7 +700,12 @@
             document.body.classList.add('ag-shell-panel');
             PANELS[name]();
             wake();
-            if (name === 'settings' && player.openQuality) {
+            if (name === 'settings' && player.openQuality && !player.quality().length) {
+                const show = () => { if (openPanel === 'settings') renderSettings(); };
+                const opening = player.openQuality();
+                if (opening && opening.then) opening.then(show);
+                else setTimeout(show, QUALITY_MENU_MS);
+            } else if (name === 'settings' && player.openQuality && !player.refreshQuality) {
                 player.openQuality();
                 setTimeout(() => { if (openPanel === 'settings') renderSettings(); }, QUALITY_MENU_MS);
             }
@@ -975,6 +996,8 @@
             const autoStarting = (!!(options.expectsAutoStart && options.expectsAutoStart()) && Date.now() - bornAt < AUTOSTART_WAIT_MS)
                 || !!(options.takingOver && options.takingOver());
             setMode(playerMode({ active: player.started(v), ready: player.ready(v), adPlaying, hasVideo: !!v, autoStarting }));
+            // Только после запуска: до него идёт реклама, и родное меню трогать незачем
+            if (mode === 'play' && player.refreshQuality) player.refreshQuality(v);
             if (guideOpen) wake();
             if (mode !== 'ad') {
                 // Серия и сезон меняются и без смены режима: например, плеер открывает нужный сезон ещё до запуска
@@ -1094,6 +1117,7 @@
             if (destroyed) return;
             destroyed = true;
             clearInterval(syncTimer);
+            document.removeEventListener('ag-player-lists', onPlayerLists);
             document.removeEventListener('mousemove', wake);
             document.removeEventListener('keydown', onKey, true);
             window.removeEventListener('keyup', onKeyUp, true);

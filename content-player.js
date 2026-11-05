@@ -124,9 +124,19 @@
     const OWN_START_EVERY_MS = 1500;
     let ownStartTries = 0;
     let ownStartAt = 0;
+    // Серию выбрал сам зритель: она ждёт его нажатия. Сама запускается только следующая серия в конце просмотра.
+    // Пока только на сайтах DLE: на остальных смену серии ведёт страница, и там поведение прежнее
+    let viewerPickedEpisode = false;
+    const holdsAutoStart = () => viewerPickedEpisode && isDleNavSite();
+    let releaseHold = null;
+    const onViewerPickedEpisode = () => {
+        viewerPickedEpisode = true;
+        if (releaseHold) releaseHold();
+        releaseHold = player.startsPickedEpisode && isDleNavSite() ? globalThis.AgPlayerAdapters.holdPickedEpisode(player) : null;
+    };
     const checkAndClickPlayButton = () => {
         // Скрытая вкладка плеера на сайте запускаться не должна
-        if (!settings.autoPlay || !canAutoPlay || !isShown()) return false;
+        if (!settings.autoPlay || !canAutoPlay || !isShown() || holdsAutoStart()) return false;
 
         if (!isKodik) {
             if (!ownListsReady) return false;
@@ -207,6 +217,16 @@
         const now = Date.now();
         if (!force && (now - lastSwitchTime < debounceMs)) return false;
         lastSwitchTime = now;
+        // С force переключает сам плеер в конце серии, без него зритель
+        if (force) {
+            viewerPickedEpisode = false;
+            if (releaseHold) releaseHold();
+            releaseHold = null;
+            ownStartTries = 0;
+            ownStartAt = 0;
+        } else {
+            onViewerPickedEpisode();
+        }
 
         if (!isKodik) {
             const list = player.read('episodes');
@@ -405,6 +425,9 @@
         const data = getLocalEpisodeData();
         window.top.postMessage({ type: 'AG_EPISODE_CHANGED', episode: data.current }, '*');
     };
+
+    // Плеер сообщил новые списки: серию могли сменить его собственные кнопки или автопереход
+    document.addEventListener('ag-player-lists', reportActiveEpisode);
 
     // Свои клавиши Kodik перематывает сам: без перехвата нажатие срабатывало дважды, а стрелки уводили на 10-20 секунд.
     // Поэтому слушаем раньше плеера и не отдаём ему ни нажатие, ни отпускание, ни повтор при удержании
@@ -869,7 +892,7 @@
         if (settings.autoPlay) {
             const playBtn = document.querySelector('.play_button');
             if (playBtn && !playBtn.dataset.agAutoclicked) {
-                if (canAutoPlay) {
+                if (canAutoPlay && !holdsAutoStart()) {
                     playBtn.dataset.agAutoclicked = '1';
                     setTimeout(() => { if (playBtn) playBtn.click(); }, 600);
                 } else {
@@ -1181,9 +1204,10 @@
     const STABLE_STEPS = 8;
     const STABLE_WAIT_MS = 30000;
     const waitStable = async () => {
-        if (player.hasLists && !player.hasLists()) return false;
         let calm = 0;
         for (let waited = 0; waited < STABLE_WAIT_MS; waited += START_STEP_MS) {
+            // Плеер может рассказать о своих списках позже: узнав, что их нет, сразу перестаём ждать
+            if (player.hasLists && !player.hasLists()) return false;
             calm = player.listsStable(player.video()) && player.read('episodes').length > 0 ? calm + 1 : 0;
             if (calm >= STABLE_STEPS) return true;
             await new Promise(r => setTimeout(r, START_STEP_MS));
@@ -1382,7 +1406,8 @@
         if (config && config.kodikShell === false) return releaseBoot();
         playerShell = globalThis.AgPlayerShell.create({
             getSettings: () => settings,
-            expectsAutoStart: () => canAutoPlay && settings.autoPlay !== false,
+            expectsAutoStart: () => canAutoPlay && settings.autoPlay !== false && !holdsAutoStart(),
+            onOwnEpisodePick: onViewerPickedEpisode,
             patchSettings: async (patch) => {
                 settings = await window.agPatchSettings(patch);
                 return settings;

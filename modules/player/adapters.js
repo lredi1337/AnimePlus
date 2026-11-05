@@ -225,17 +225,161 @@
         return host ? host.shadowRoot : null;
     };
     const CVH_STYLE_ID = 'ag-shell-cvh';
+    const CVH_MENUS = {
+        episodes: { chip: 'button.chip--episode', row: '.nav-erow', matches: (el, item) => el.textContent.trim() === item.title },
+        voices: {
+            chip: 'button.chip--voice',
+            row: '.nav-vrow',
+            matches: (el, item) => {
+                const name = el.querySelector('.nav-vrow-name');
+                const note = el.querySelector('.nav-vrow-note');
+                return !!name && name.textContent.trim() === item.title && (!note || note.textContent.trim() === item.note);
+            }
+        }
+    };
+    const CVH_MENU_STEP_MS = 200;
+    const CVH_MENU_STEPS = 25;
+    const CVH_QUALITY_STEP_MS = 100;
+    const CVH_QUALITY_STEPS = 40;
+    const CVH_MENU_OPEN = '[data-testid="settings-menu"], .sub-menu';
+    // Плеер ещё несколько секунд отмечает прежнее качество: в это время его отметку не читаем
+    const CVH_QUALITY_PICK_MS = 20000;
+    const CVH_LEVELS = '[data-testid="quality-other-settings-sub-menu"] li[data-value]';
+    let cvhQualityRun = 0;
+    let cvhLevels = [];
+    let cvhLevelsSrc = null;
+    let cvhPickedAt = 0;
+    const cvhLevelEls = (root) => [...root.querySelectorAll(CVH_LEVELS)];
+    // Доходит по родному меню до разрешений: каждый уровень появляется не сразу, а обычные разрешения лежат в «Другое».
+    // Пока видео идёт, кнопку настроек плеер показывает только при движении мыши
+    const cvhOpenLevels = (alive) => new Promise((resolve) => {
+        const pressed = new WeakSet();
+        const press = (el) => {
+            if (pressed.has(el)) return;
+            pressed.add(el);
+            el.click();
+        };
+        let steps = 0;
+        const step = () => {
+            const root = cvhShadow();
+            if (!alive() || !root) return resolve(null);
+            if (cvhLevelEls(root).length) return resolve(root);
+            if (++steps > CVH_QUALITY_STEPS) return resolve(null);
+            const next = root.querySelector('[data-testid="quality-other-settings"]') || root.querySelector('[data-testid="quality-settings"]');
+            if (next) {
+                press(next);
+            } else if (!root.querySelector(CVH_MENU_OPEN)) {
+                const gear = root.querySelector('[data-testid="settings-btn"]');
+                if (gear) {
+                    press(gear);
+                } else {
+                    [root.querySelector('.keyboard-controls'), q('#app')].forEach((el) => {
+                        if (el) el.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, composed: true }));
+                    });
+                }
+            }
+            setTimeout(step, CVH_QUALITY_STEP_MS);
+            return undefined;
+        };
+        step();
+    });
+    const cvhCloseMenu = () => {
+        const root = cvhShadow();
+        if (!root || !root.querySelector(CVH_MENU_OPEN)) return;
+        const gear = root.querySelector('[data-testid="settings-btn"]');
+        if (gear) gear.click();
+    };
+    // Читает разрешения и сразу закрывает родное меню: дальше панель показывает запомненный список
+    const cvhLoadLevels = async () => {
+        const run = ++cvhQualityRun;
+        const root = await cvhOpenLevels(() => run === cvhQualityRun);
+        if (run !== cvhQualityRun) return;
+        if (root) {
+            cvhLevels = cvhLevelEls(root).map(el => ({
+                value: el.dataset.value,
+                label: el.getAttribute('aria-label') || el.textContent.trim(),
+                current: !!el.querySelector('[data-selected="true"]')
+            }));
+        }
+        cvhCloseMenu();
+    };
+    const cvhPickLevel = async (value) => {
+        cvhPickedAt = Date.now();
+        cvhLevels = cvhLevels.map(l => ({ ...l, current: l.value === value }));
+        const run = ++cvhQualityRun;
+        const root = await cvhOpenLevels(() => run === cvhQualityRun);
+        if (run !== cvhQualityRun) return;
+        const el = root && cvhLevelEls(root).find(x => x.dataset.value === value);
+        if (el) el.click();
+        else cvhCloseMenu();
+    };
+    const cvhControls = () => {
+        const c = root.AgCvhControls;
+        return c && c.currentEpisode ? c : null;
+    };
     const cvh = {
         ...COMMON,
         id: 'cvh',
         name: 'CVH',
         deep: true,
+        // Сам запускает серию, выбранную в его меню
+        startsPickedEpisode: true,
         css: `
-            body.ag-shell-on #app .controls { opacity: 0 !important; pointer-events: none !important; }
+            body.ag-shell-on #app :is(.controls, .player-nav-button, .nav-menu, .nav-scrim) { opacity: 0 !important; pointer-events: none !important; }
         `,
         video() {
             const root = cvhShadow();
             return root ? root.querySelector('video.player-media') : null;
+        },
+        // Плеер сам рассказывает о сериях и озвучках: только там, где сайт не ведёт их сам (см. modules/player/boot.js)
+        read(kind) {
+            const c = cvhControls();
+            if (!c) return [];
+            if (kind === 'episodes') {
+                if (!c.isSerial || c.isShowVoiceOnly || !c.currentSeason) return [];
+                return Object.values(c.currentSeason.episodes).sort((a, b) => a.name - b.name).map((e, index) => {
+                    const label = String(e.visibleName || e.name);
+                    return { index, selected: e.name === c.currentEpisode.name, label, title: `Серия ${label}`, type: 'voice', count: '' };
+                });
+            }
+            if (kind === 'voices') {
+                return Object.values(c.currentEpisode.voices || {}).map((v, index) => {
+                    const title = v.voiceStudio || v.name;
+                    return { index, selected: !!c.currentVoice && v.name === c.currentVoice.name, label: title, title, note: v.voiceType || '', type: /субтитр/i.test(v.voiceType || '') ? 'subtitles' : 'voice', count: '' };
+                });
+            }
+            return [];
+        },
+        // Пока плеер не рассказал о себе, считаем, что списки будут: иначе выбор нужной серии при запуске не дождётся их
+        hasLists() { return !!root.AgCvhOwnLists && (!cvhControls() || this.read('episodes').length > 0); },
+        // Строки есть только в открытом родном меню. Оно скрыто оболочкой и появляется не сразу, а при смене серии ненадолго пропадает кнопка
+        choose(kind, index) {
+            const menu = CVH_MENUS[kind];
+            const item = this.read(kind)[index];
+            if (!menu || !item || item.selected) return;
+            let steps = 0;
+            let opened = false;
+            const step = () => {
+                const row = qa(menu.row).find(el => menu.matches(el, item));
+                if (row) {
+                    row.click();
+                    return;
+                }
+                if (++steps > CVH_MENU_STEPS) return;
+                if (!opened && !q('.nav-menu')) {
+                    const chip = q(menu.chip);
+                    if (chip) {
+                        chip.click();
+                        opened = true;
+                    } else {
+                        // Пока видео идёт, плеер убирает кнопки и возвращает их при движении мыши
+                        const app = q('#app');
+                        if (app) app.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, composed: true }));
+                    }
+                }
+                setTimeout(step, CVH_MENU_STEP_MS);
+            };
+            step();
         },
         adState() {
             if (runs(q('video.ad-module-player'))) return 'playing';
@@ -247,23 +391,18 @@
             if (b && b.getBoundingClientRect().width) b.click();
             else if (v) v.play().catch(() => {});
         },
-        // Родное управление скрыто, поэтому открытое меню зритель не видит
+        // Родное управление скрыто, поэтому зритель не видит, как открывается меню. Панель показывает запомненный список
         openQuality() {
-            const root = cvhShadow();
-            if (!root || this.quality().length) return;
-            const gear = root.querySelector('[data-testid="settings-btn"]');
-            if (gear) gear.click();
-            const row = root.querySelector('[data-testid="quality-settings"]');
-            if (row) row.click();
+            return cvhLevels.length ? Promise.resolve() : cvhLoadLevels();
+        },
+        // Список узнаём заранее и обновляем с новой серией: у разных серий разрешения могут отличаться
+        refreshQuality(v) {
+            if (!v || !v.currentSrc || v.currentSrc === cvhLevelsSrc) return;
+            cvhLevelsSrc = v.currentSrc;
+            if (Date.now() - cvhPickedAt > CVH_QUALITY_PICK_MS) cvhLoadLevels();
         },
         quality() {
-            const root = cvhShadow();
-            if (!root) return [];
-            return [...root.querySelectorAll('[data-testid="quality-settings-sub-menu"] li[data-value]')].map(el => ({
-                label: el.getAttribute('aria-label') || el.textContent.trim(),
-                current: el.getAttribute('aria-checked') === 'true' || el.classList.contains('selected') || el.classList.contains('active'),
-                pick: () => el.click()
-            }));
+            return cvhLevels.map(l => ({ label: l.label, current: l.current, pick: () => cvhPickLevel(l.value) }));
         },
         // Родное управление лежит в Shadow DOM, куда стили страницы не доходят
         inject(on) {
@@ -374,6 +513,41 @@
         }))
     };
 
+    // ---------- Серия, выбранная зрителем ----------
+
+    const HOLD_STEP_MS = 100;
+    const HOLD_WAIT_MS = 30000;
+    const HOLD_SETTLE_MS = 1500;
+    const HOLD_OWN_ACTION_MS = 300;
+
+    /** Плеер сам запускает выбранную серию, а зритель выбрал её, чтобы запустить сам. Возвращает отмену */
+    function holdPickedEpisode(player) {
+        const current = player.video();
+        const before = current ? current.currentSrc : '';
+        const startedAt = Date.now();
+        let pausedAt = 0;
+        let timer = null;
+        const stop = () => {
+            clearInterval(timer);
+            document.removeEventListener('pointerdown', onViewer, true);
+            document.removeEventListener('keydown', onViewer, true);
+        };
+        // Своё нажатие зрителя важнее. Само нажатие, выбравшее серию, сюда не считается
+        const onViewer = () => { if (Date.now() - startedAt > HOLD_OWN_ACTION_MS) stop(); };
+        document.addEventListener('pointerdown', onViewer, true);
+        document.addEventListener('keydown', onViewer, true);
+        timer = setInterval(() => {
+            const now = Date.now();
+            if (now - startedAt > HOLD_WAIT_MS || (pausedAt && now - pausedAt > HOLD_SETTLE_MS)) return stop();
+            const v = player.video();
+            if (!v || !v.currentSrc || v.currentSrc === before || player.adState(v) !== 'none' || v.paused) return undefined;
+            v.pause();
+            pausedAt = now;
+            return undefined;
+        }, HOLD_STEP_MS);
+        return stop;
+    }
+
     // ---------- Выбор адаптера по адресу кадра ----------
 
     const PLAYERS = [
@@ -388,7 +562,7 @@
         return hit ? hit.adapter : kodik;
     }
 
-    const api = { byHost, current: () => byHost(location.hostname) };
+    const api = { byHost, current: () => byHost(location.hostname), holdPickedEpisode };
     root.AgPlayerAdapters = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

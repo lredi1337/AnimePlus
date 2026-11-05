@@ -19,6 +19,37 @@
     }
     disableCerametSkips();
 
+    // На этих сайтах плеер CVH открыт на весь тайтл, а списков сайт не ведёт. Серии и озвучки он сообщает сообщением от страницы-обёртки.
+    // На других сайтах серию и озвучку задаёт сайт, и родные списки плеера его только сбивали бы
+    const CVH_OWN_LISTS_SITES = /(^|\.)(jut-su\.net|yammyanime\.club|animego\.online|yummyanime\.tv)$/;
+    const topHost = () => {
+        try {
+            const parents = location.ancestorOrigins;
+            return new URL(parents && parents.length ? parents[parents.length - 1] : document.referrer).hostname;
+        } catch (e) {
+            return '';
+        }
+    };
+    // Первое сообщение приходит очень рано, поэтому слушаем с самого начала
+    function listenCvhControls() {
+        if (!/(^|\.)cdnvideohub\.com$/.test(location.hostname) || !CVH_OWN_LISTS_SITES.test(topHost())) return;
+        globalThis.AgCvhOwnLists = true;
+        let lastPayload = '';
+        window.addEventListener('message', (e) => {
+            const d = e.data;
+            if (e.source !== window.parent || !d || d.type !== 'renderControls' || typeof d.key !== 'string' || !d.key.startsWith('cvh_player')) return;
+            if (d.payload === lastPayload) return;
+            try {
+                globalThis.AgCvhControls = JSON.parse(d.payload);
+            } catch (err) {
+                return;
+            }
+            lastPayload = d.payload;
+            document.dispatchEvent(new Event('ag-player-lists'));
+        }, true);
+    }
+    listenCvhControls();
+
     const BOOT_CLASS = 'ag-shell-boot';
     const WAIT_MS = 2500;
     const root = document.documentElement;
