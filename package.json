@@ -7,7 +7,8 @@
     "lint": "eslint .",
     "test": "node --test --test-force-exit tests/*.test.js",
     "check": "npm run lint && npm test",
-    "zip": "node tools/build-store-zip.js"
+    "zip": "node tools/build-store-zip.js",
+    "stand": "node tools/stand/run.js"
   },
   "devDependencies": {
     "eslint": "^10.14.0",
