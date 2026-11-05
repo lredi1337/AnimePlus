@@ -138,6 +138,7 @@ function mountShell({ src = 'blob:one', started = true } = {}) {
     Object.defineProperty(video, 'currentSrc', { get: () => src });
     Object.defineProperty(video, 'paused', { get: () => !started });
     Object.defineProperty(video, 'readyState', { get: () => (started ? 4 : 0) });
+    page.w.eval(read('modules/player/shell-view.js'));
     page.w.eval(read('modules/player/shell.js'));
     const shell = page.w.AgPlayerShell.create({
         getSettings: () => ({ voice_priority_list: [] }),

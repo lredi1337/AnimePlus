@@ -227,6 +227,7 @@
         "https://*.ceramet.net/*"
       ],
       "js": [
+        "modules/shared/sites.js",
         "modules/player/boot.js"
       ],
       "run_at": "document_start",
@@ -279,6 +280,7 @@
         "modules/shared/guide.js",
         "modules/shared/guide-fox.js",
         "modules/player/adapters.js",
+        "modules/player/shell-view.js",
         "modules/player/shell.js",
         "modules/player/skip-memory.js",
         "content-player.js"

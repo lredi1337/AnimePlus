@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 const { read } = require('./helpers');
+require('../modules/player/shell-view.js');
 const { formatTime, episodeGroups, sortVoices, playerMode } = require('../modules/player/shell.js');
 
 const eps = (n) => Array.from({ length: n }, (_, i) => ({ label: String(i + 1) }));
@@ -51,6 +52,7 @@ function mount(extra = {}) {
     const w = dom.window;
     w.chrome = { storage: { local: { get: async () => ({}), set: async () => {} } } };
     w.eval(read('modules/player/adapters.js'));
+    w.eval(read('modules/player/shell-view.js'));
     w.eval(read('modules/player/shell.js'));
     const calls = [];
     const shell = w.AgPlayerShell.create({

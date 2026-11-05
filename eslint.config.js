@@ -64,7 +64,7 @@ module.exports = [
         languageOptions: { sourceType: 'module', globals: { ...globals.serviceworker } }
     },
     {
-        files: ['modules/audio/fingerprint.js', 'modules/audio/lookahead.js', 'modules/player/shell.js', 'modules/player/adapters.js', 'modules/shared/kodik-marks.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/player-choice.js'],
+        files: ['modules/audio/fingerprint.js', 'modules/audio/lookahead.js', 'modules/player/shell.js', 'modules/player/shell-view.js', 'modules/player/adapters.js', 'modules/shared/kodik-marks.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/player-choice.js'],
         languageOptions: { globals: { module: 'writable' } }
     }
 ];

@@ -66,3 +66,12 @@ test('экранирование HTML не копируется по файла�
         assert.equal(/\.replace\(\/&\/g|\[&<>"'\]/.test(read(file)), false, file);
     }
 });
+
+test('сайты DLE определяются по реестру, без отдельных списков в коде', () => {
+    const { AgSites } = (() => { const ctx = {}; new Function('globalThis', 'window', read('modules/shared/sites.js'))(ctx, ctx); return ctx; })();
+    for (const host of ['jut-su.net', 'yammyanime.club', 'animego.online', 'yummyanime.tv']) assert.equal(AgSites.isDleHost(host), true, host);
+    for (const host of ['animego.me', 'ru.yummyani.me', 'jut-su.net.evil.example', '']) assert.equal(AgSites.isDleHost(host), false, host);
+    for (const file of ['modules/player/boot.js', 'modules/player/agp-to-kodik.js', 'content-player.js']) {
+        assert.equal(/yammyanime\\?\.club/.test(read(file)), false, file);
+    }
+});

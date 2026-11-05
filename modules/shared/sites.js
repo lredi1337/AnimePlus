@@ -94,6 +94,12 @@
             return map[id] !== false;
         },
 
+        // Сайты на DLE: у них своя обёртка плееров, CVH открыт на весь тайтл, а собственный плеер сайта заменяется на Kodik
+        isDleHost(hostname) {
+            const site = AgSites.byHost(hostname);
+            return !!site && site.platform === 'dle';
+        },
+
         // Абсолютный адрес страницы тайтла по относительному пути
         absolute(site, path) {
             return new URL(path, site.home).href;

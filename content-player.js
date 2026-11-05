@@ -194,7 +194,7 @@
     const isDleNavSite = () => {
         const checkHost = refHost || embedDomain || hostOf(embedRef);
         return isJutsu || (parentSite && parentSite.platform === 'dle') ||
-            /yummyanime\.tv|animego\.online|yammyanime\.club|jut-su\.net/.test(checkHost);
+            !!(globalThis.AgSites && globalThis.AgSites.isDleHost(checkHost));
     };
 
     const shouldUseLocalNav = () => {

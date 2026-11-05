@@ -1,6 +1,6 @@
 # Anime+ (v11.0.4) — Архитектура и Руководство для ИИ / LLM
 
-> **Важно**: разделы 1-8 начаты для версии 10.1.1 и обновляются частями, поэтому сверяйте их с кодом. Описание входа в Shikimori и фоновых модулей соответствует версии 11.0.2, разделы 10 и 11 версии 11.0.4.
+> **Важно**: разделы 1-8 начаты для версии 10.1.1 и обновляются частями, поэтому сверяйте их с кодом. Структура файлов и разделы 9-12 соответствуют текущему коду. Источник правды по сообщениям фона: `MESSAGE_HANDLERS` в `background.js`, по загрузке файлов: `manifest.json`.
 >
 > **Назначение документа**: Данный файл содержит исчерпывающее техническое описание архитектуры, компонентов, потоков данных, сетевых протоколов и внутренних механизмов браузерного расширения **Anime+**. Документ составлен таким образом, чтобы любая нейросеть (LLM) или разработчик могли мгновенно понять устройство проекта, назначение каждого файла, протоколы обмена сообщениями и контекст выполнения.
 
@@ -35,34 +35,28 @@
 
 ```
 AnimePlus-main/
-├── manifest.json              # Манифест расширения (MV3, permissions, content_scripts, host_permissions)
-├── config.js                  # Глобальные константы, дефолтные настройки (DEFAULT_SETTINGS), хелперы
-├── credentials.js             # OAuth Client ID и URL Cloudflare Worker для авторизации Shikimori
-├── background.js              # Service Worker: центральный маршрутизатор сообщений и событий
-├── content-player.js           # Content Script для iframe плееров Kodik (all_frames: true)
-├── content-external.js        # Content Script для страниц Shikimori (кнопка "Смотреть с Anime+")
-├── content-shiki-auth.js      # Перехватчик OAuth-страницы Shikimori (стилизация + авто-подтверждение)
-│
-├── modules/                   # Модули расширения
-│   ├── bg-cache.js            # Движок кэширования ссылок, нечеткого поиска и нормализации названий
-│   ├── bg-shiki.js            # Движок API Shikimori, OAuth, синхронизации, очереди прогресса и push-уведомлений
-│   ├── bg-schedule.js         # Расписание онгоингов и поиск обложек
-│   ├── bg-random.js           # Случайное аниме
-│   ├── ui-utils.js            # Общие UI-утилиты (тоасты, логотипы, нормализация постеров)
-│   │
-│   ├── animego/               # Подсистема AnimeGO
-│   │   ├── ag-voice.js        # Автовыбор приоритетной озвучки и переключение на Kodik
-│   │   ├── ag-synthetic.js    # Генерация синтетических карточек аниме на 404 страницах
-│   │   ├── ag-schedule.js     # Расширение расписания онгоингов AnimeGO
-│   │   ├── ag-jutsu-search.js # Встраивание поиска Jut-Su в поисковую строку AnimeGO
-│   │
-│
-├── popup/                     # Всплывающее меню расширения (Popup)
-│   ├── popup.html             # Разметка Popup (Glassmorphism, адаптивная тема)
-│   ├── popup.js               # Логика Popup (список Shikimori, плеер, музыка, переключатели)
-│   └── popup.css              # Стилизация Popup (темы AnimeGO / Jut-Su / Default)
-│
-└── assets/ & icons/           # Графика, логотипы и иконки расширения
+├── manifest.json              # Какие файлы, в каком порядке, в каких кадрах и мирах
+├── config.js                  # DEFAULT_SETTINGS, getSettings, agPatchSettings, isValidOrigin
+├── credentials.js             # OAuth Client ID и адрес воркера входа
+├── background.js              # Service Worker: маршрутизатор MESSAGE_HANDLERS
+├── content-player.js          # Код в кадрах плеера: пропуск, марафон, учёт, клавиши, смена плеера
+├── content-external.js        # Страницы Shikimori: кнопка «Смотреть с Anime+»
+├── content-shiki-auth.js      # Страница входа Shikimori: передаёт код фону
+├── content-sites.js           # Запуск на страницах сайтов
+├── modules/
+│   ├── bg-cache.js  bg-shiki.js  bg-sites.js  bg-schedule.js  bg-random.js  bg-audio.js  bg-diag.js   # Фон
+│   ├── progress-tracker.js  site-selectors.js  ui-utils.js    # Страницы сайтов
+│   ├── animego/               # Только AnimeGO: расписание, озвучка, синтетические карточки, поиск
+│   ├── audio/                 # Пропуск по звуку: отпечатки, анализ заранее, выбор времени
+│   ├── player/                # boot, adapters, shell, shell-view, skip-memory, audio-unlock, agp-to-kodik
+│   └── shared/                # sites (реестр), ui-kit, tokens.css, guide, voice-choice, player-choice, kodik-marks, diag и др.
+├── providers/                 # Сайты: base, animego, dle, jutsu, yani, runtime
+├── features/                  # player-bridge, title-widgets, top-overlay, search-redirect, random-anime, legacy-top
+├── popup/  options/           # Окно расширения и страница настроек
+├── server/timings/            # Cloudflare Worker: общая база таймингов и письма поддержки
+├── tests/                     # node --test, jsdom
+├── tools/                     # build-store-zip, build-fingerprints, build-songs-site, stand/ (живые проверки)
+└── assets/  icons/            # Графика
 ```
 
 ---
@@ -229,6 +223,8 @@ AnimePlus-main/
 3. **Узнанная песня:** `modules/audio/fingerprint.js` считает отпечатки звука серии и сравнивает с образцами песен. Срабатывает по плотности совпадений за один сдвиг, сдвиг считается во времени видео, поэтому пауза и перемотка не мешают.
 4. **AniSkip:** автопрыжок, только если образца песни нет. Если образец есть, а песня не узнана, метка показывается кнопкой, потому что могла съехать.
 
+Метка сайта (`site`) идёт сразу после метки плеера, если похожа на песню и звук её не опередил. Точный порядок: `chooseTimings`.
+
 **Анализ заранее:** `modules/audio/lookahead.js` берёт адрес потока из журнала запросов кадра (`performance`), скачивает звук ещё не показанной части серии и сверяет с теми же образцами, поэтому песня находится до того, как зазвучит. Опенинг ищется при запуске (первые 5 минут), эндинг за 7 минут до конца. Идёт только если нет метки Kodik и подтверждённой метки общей базы и есть песни в базе, останавливается на находке, не больше 45 МБ на серию, отключается режимом экономии трафика и параметром `lookahead: false` в `v1/config.json`. Берётся самое лёгкое качество и только звук, где сервер его отдаёт (Alloha `-f1-a1`, DASH у Aksor, AniBoom, CVH); из `.ts` у Kodik и ceramet поток AAC вынимается вручную.
 
 **Кнопки плеера:** «Серии», «Озвучка» и «Плеер» (`renderPlayers` в `shell.js`), список плееров вынесен из настроек.
@@ -307,7 +303,7 @@ AnimePlus-main/
 
 ---
 
-## 6. Внешние интерфейсы (Popup, UI, Notifications)
+## 6. Внешние интерфейсы (Popup, UI)
 
 ### 6.1. Главное окно расширения (`popup/`)
 - **Адаптивный дизайн (Context Theme)**:
@@ -342,7 +338,7 @@ AnimePlus-main/
 Если вам (нейросети) поручено модифицировать или отлаживать данный проект, учитывайте следующие критические правила:
 
 1. **Безопасность Iframe (`content-player.js`)**:
-   - Скрипт `content-player.js` выполняется во всех фреймах (`all_frames: true`), но имеет строгий входной guard: он немедленно прекращает выполнение, если `window === window.top`, либо если `document.referrer` / параметры URL не принадлежат `animego.me`, `animego.org`, `jut-su.net` или доменам Kodik. Не удаляйте этот guard!
+   - Скрипт `content-player.js` выполняется во всех кадрах (`all_frames: true`), но сразу прекращает работу в окне верхнего уровня и там, где родительская страница не из реестра `modules/shared/sites.js`. Не удаляйте эту проверку!
 2. **Асинхронность DOM на AnimeGO и Jut-Su**:
    - Оба сайта активно используют AJAX-подгрузку контента (смена серий, переключение вкладок плеера, живой поиск). Всегда используйте `MutationObserver` с дебаунсом по времени (`Date.now() - lastCheck < 300`) или проверку флагов `data-ag-*`, чтобы избежать повторного срабатывания обработчиков.
 3. **Междоменные запросы и CORS**:

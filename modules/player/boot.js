@@ -21,7 +21,6 @@
 
     // На этих сайтах плеер CVH открыт на весь тайтл, а списков сайт не ведёт. Серии и озвучки он сообщает сообщением от страницы-обёртки.
     // На других сайтах серию и озвучку задаёт сайт, и родные списки плеера его только сбивали бы
-    const CVH_OWN_LISTS_SITES = /(^|\.)(jut-su\.net|yammyanime\.club|animego\.online|yummyanime\.tv)$/;
     const topHost = () => {
         try {
             const parents = location.ancestorOrigins;
@@ -32,7 +31,7 @@
     };
     // Первое сообщение приходит очень рано, поэтому слушаем с самого начала
     function listenCvhControls() {
-        if (!/(^|\.)cdnvideohub\.com$/.test(location.hostname) || !CVH_OWN_LISTS_SITES.test(topHost())) return;
+        if (!/(^|\.)cdnvideohub\.com$/.test(location.hostname) || !(globalThis.AgSites && globalThis.AgSites.isDleHost(topHost()))) return;
         globalThis.AgCvhOwnLists = true;
         let lastPayload = '';
         window.addEventListener('message', (e) => {

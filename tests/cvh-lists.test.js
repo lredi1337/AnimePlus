@@ -27,6 +27,7 @@ function cvhFrame(body = '', referrer = 'https://jut-su.net/') {
     const dom = new JSDOM(`<!doctype html><html><body>${body}</body></html>`, { url: 'https://player.cdnvideohub.com/s2/v2.40.0/frame/', referrer, runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window;
     w.chrome = { storage: { local: { get: async () => ({}) } } };
+    w.eval(read('modules/shared/sites.js'));
     w.eval(read('modules/player/boot.js'));
     w.eval(read('modules/player/adapters.js'));
     // Сообщение плеера приходит из родительского окна: в jsdom это само окно

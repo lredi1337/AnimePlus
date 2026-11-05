@@ -5,7 +5,6 @@
 (function () {
     'use strict';
 
-    const SITES = /(^|\.)(jut-su\.net|yammyanime\.club|animego\.online|yummyanime\.tv)$/;
     const TO_KODIK = /открыть плеер kodik|в обычном плеере/i;
     const STEP_MS = 100;
     const WAIT_MS = 30000;
@@ -20,9 +19,8 @@
     };
 
     async function isEnabledHere(host) {
-        if (!SITES.test(host)) return false;
-        const site = globalThis.AgSites && globalThis.AgSites.byHost(host);
-        if (!site) return false;
+        if (!globalThis.AgSites || !globalThis.AgSites.isDleHost(host)) return false;
+        const site = globalThis.AgSites.byHost(host);
         const { ag_settings: settings } = await chrome.storage.local.get(['ag_settings']);
         return globalThis.AgSites.isEnabled(settings || {}, site.id);
     }

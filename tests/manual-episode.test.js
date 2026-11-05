@@ -92,6 +92,7 @@ function mountShell() {
     const w = dom.window;
     w.chrome = { storage: { local: { get: async () => ({}), set: async () => {} } } };
     w.eval(read('modules/player/adapters.js'));
+    w.eval(read('modules/player/shell-view.js'));
     w.eval(read('modules/player/shell.js'));
     const picks = [];
     const shell = w.AgPlayerShell.create({
