@@ -133,6 +133,7 @@ async function smoke(opts) {
 
         // База песен и журнал сбоев. Письмо не отправляется: форма проверяется только до кнопки
         r.check('база песен отвечает', !!(await b.ev(worker, 'getAudioFingerprints(5114)')));
+        r.check('сайт базы песен читается из расширения', (await b.ev(worker, "fetch('https://anime-plus-db.ruscadred.workers.dev/v1/5114.json').then(x => x.ok && x.json()).then(j => !!j).catch(() => false)")) === true);
         const page = await b.openPage(`chrome-extension://${extId}/options/options.html`);
         await wait(1500);
         await b.ev(page.session, "chrome.runtime.sendMessage({ action: 'diag_note', where: 'stand_probe', detail: 'проверка https://example.test/secret?access_token=SECRET' })");

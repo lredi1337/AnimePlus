@@ -36,7 +36,7 @@ function load({ reply, caches = fakeCaches() }) {
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status });
 const isConfig = (url) => url.endsWith('config.json');
 
-test('файл берётся с GitHub, jsDelivr не нужен', async () => {
+test('файл песни берётся с GitHub, остальные источники не нужны', async () => {
     const { ctx, seen } = load({ reply: (url) => (isConfig(url) ? json({}) : json({ songs: [1] })) });
     assert.deepEqual(JSON.parse(JSON.stringify(await ctx.getAudioFingerprints(5))), { songs: [1] });
     const file = seen.filter(s => s.url.endsWith('/5.json'));
@@ -44,13 +44,34 @@ test('файл берётся с GitHub, jsDelivr не нужен', async () => 
     assert.ok(file[0].url.includes('raw.githubusercontent.com'));
 });
 
-test('отказ первого источника: файл берётся из резервного', async () => {
-    const { ctx, seen } = load({ reply: (url) => {
+test('отказ GitHub: файл берётся с сайта Cloudflare, затем с jsDelivr', async () => {
+    const down = (...hosts) => (url) => {
         if (isConfig(url)) return json({});
-        return url.includes('raw.githubusercontent') ? new Response('', { status: 403 }) : json({ songs: [1] });
+        return hosts.some(h => url.includes(h)) ? new Response('', { status: 503 }) : json({ songs: [1] });
+    };
+    const first = load({ reply: down('raw.githubusercontent') });
+    assert.deepEqual(JSON.parse(JSON.stringify(await first.ctx.getAudioFingerprints(5))), { songs: [1] });
+    assert.ok(first.seen.some(s => s.url.includes('anime-plus-db') && s.url.endsWith('/5.json')));
+    assert.equal(first.seen.some(s => s.url.includes('jsdelivr') && s.url.endsWith('/5.json')), false);
+    const second = load({ reply: down('raw.githubusercontent', 'anime-plus-db') });
+    assert.deepEqual(JSON.parse(JSON.stringify(await second.ctx.getAudioFingerprints(5))), { songs: [1] });
+    assert.ok(second.seen.some(s => s.url.includes('jsdelivr') && s.url.endsWith('/5.json')));
+});
+
+test('файл оборвался при загрузке: берётся из следующего источника, а не считается отсутствующим', async () => {
+    const { ctx } = load({ reply: (url) => {
+        if (isConfig(url)) return json({});
+        return url.includes('raw.githubusercontent') ? new Response('{"songs":[1', { status: 200 }) : json({ songs: [2] });
     } });
-    assert.deepEqual(JSON.parse(JSON.stringify(await ctx.getAudioFingerprints(5))), { songs: [1] });
-    assert.ok(seen.some(s => s.url.includes('jsdelivr') && s.url.endsWith('/5.json')));
+    assert.deepEqual(JSON.parse(JSON.stringify(await ctx.getAudioFingerprints(5))), { songs: [2] });
+});
+
+test('аварийный выключатель читается прямо из репозитория, а не с сайта', async () => {
+    const { ctx, seen } = load({ reply: () => json({ audioSkip: false }) });
+    await ctx.getRemoteConfig();
+    const config = seen.filter(s => isConfig(s.url));
+    assert.equal(config.length, 1);
+    assert.ok(config[0].url.includes('raw.githubusercontent.com'));
 });
 
 test('сбой сети не считается отсутствием файла: остаётся прошлая версия', async () => {

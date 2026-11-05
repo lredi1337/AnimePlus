@@ -17,6 +17,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -42,3 +44,22 @@ jobs:
             git commit -m "Обновление базы отпечатков"
             git push
           fi
+      # Сайт Cloudflare: запасной источник песен на случай отказа GitHub. Сбой здесь не отменяет обновление на GitHub.
+      # Нужны секреты CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID, без них шаг пропускается
+      - name: Deploy to Cloudflare
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node tools/build-songs-site.js db/v1 songs-site
+          cat > wrangler.toml <<'EOF'
+          name = "anime-plus-db"
+          compatibility_date = "2026-10-01"
+          workers_dev = true
+
+          [assets]
+          directory = "songs-site"
+          not_found_handling = "404-page"
+          EOF
+          npx --yes wrangler@4 deploy

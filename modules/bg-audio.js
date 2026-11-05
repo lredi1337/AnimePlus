@@ -1,12 +1,19 @@
 // modules/bg-audio.js
-// База отпечатков песен для пропуска по звуку: файлы лежат в репозитории и отдаются бесплатно. Сначала GitHub, резерв jsDelivr:
-// база больше его лимита на пакет в 50 МБ, поэтому файлы не из его кэша он отклоняет (замер 2026-11-05: 3 из 15).
+// База отпечатков песен для пропуска по звуку: файлы лежат в репозитории и отдаются бесплатно.
+// Сначала GitHub: замер 2026-11-05 из Вьетнама дал стабильные 0,2-0,7 с. Сайт Cloudflare отвечал от 0,3 до 25 с и обрывал файлы, поэтому он запасной.
+// У jsDelivr база больше лимита на пакет в 50 МБ: файлы не из его кэша он отклоняет (3 из 15), поэтому он последний.
 // Там же настройки с аварийным выключателем: функцию можно отключить у всех без обновления расширения.
 
+const githubSource = (file) => `https://raw.githubusercontent.com/lredi1337/AnimePlus/fingerprints/v1/${file}`;
+const jsdelivrSource = (file) => `https://cdn.jsdelivr.net/gh/lredi1337/AnimePlus@fingerprints/v1/${file}`;
+const AUDIO_CONFIG_SOURCES = [githubSource, jsdelivrSource];
 const AUDIO_FP_SOURCES = [
-    (file) => `https://raw.githubusercontent.com/lredi1337/AnimePlus/fingerprints/v1/${file}`,
-    (file) => `https://cdn.jsdelivr.net/gh/lredi1337/AnimePlus@fingerprints/v1/${file}`
+    githubSource,
+    (file) => `https://anime-plus-db.ruscadred.workers.dev/v1/${file}`,
+    jsdelivrSource
 ];
+// Аварийный выключатель должен срабатывать сразу, а не после выкладки сайта, поэтому настройки читаем прямо из репозитория
+const AUDIO_CONFIG_FILE = 'config.json';
 const AUDIO_FP_CACHE = 'ap-audio-fingerprints-v1';
 const AUDIO_FP_TTL = 30 * 24 * 3600 * 1000;
 const AUDIO_FP_MISS_TTL = 3 * 24 * 3600 * 1000;
@@ -23,7 +30,7 @@ const audioKey = (name) => `https://anime-plus.invalid/fingerprints/${name}`;
 /** Файл из базы с кэшем: возвращает { found, data }, сбой сети возвращает null */
 async function fetchAudioFile(file) {
     let missing = false;
-    for (const source of AUDIO_FP_SOURCES) {
+    for (const source of file === AUDIO_CONFIG_FILE ? AUDIO_CONFIG_SOURCES : AUDIO_FP_SOURCES) {
         try {
             const r = await fetch(source(file), { signal: AbortSignal.timeout(20000) });
             if (r.status === 404) { missing = true; continue; }

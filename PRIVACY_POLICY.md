@@ -53,7 +53,7 @@
 1. **Информационные аниме-базы и API таймингов:**
    * `shikimori.io`, `shikimori.one`, `shikimori.me`
    * `api.aniskip.com`, `api.animethemes.moe`, `kitsu.io`
-   * `cdn.jsdelivr.net`, `raw.githubusercontent.com`
+   * `anime-plus-db.ruscadred.workers.dev`, `cdn.jsdelivr.net`, `raw.githubusercontent.com`
    * *Цель:* получение публичных метаданных (название аниме, обложки, эпизоды, тайминги опенингов, отпечатки песен для распознавания).
 2. **Аниме-порталы и плееры:**
    * `animego.me`, `animego.org`, `jut-su.net`, `ru.yummyani.me`, `old.yummyani.me`, `yummyanime.tv`, `animego.online`, `yammyanime.club`
