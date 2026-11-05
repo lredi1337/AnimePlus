@@ -155,3 +155,9 @@ test('своя вкладка: на странице разрешения вид
     assert.equal(code.sent.find(m => m.action === 'shiki_auto_auth').code, CODE);
     code.w.close();
 });
+
+test('фон не следит за вкладками: код передаёт сама страница входа', () => {
+    assert.equal(read('background.js').includes('onUpdated'), false);
+    assert.match(read('content-shiki-auth.js'), /shiki_auto_auth/);
+    assert.match(read('content-shiki-auth.js'), /close_current_tab/);
+});

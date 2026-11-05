@@ -40,6 +40,25 @@ test('кнопка появилась позже: нажимается один 
     w.close();
 });
 
+test('кадр скрытой вкладки не уходит на Kodik, пока его не покажут', async () => {
+    const { JSDOM: Dom } = require('jsdom');
+    const dom = new Dom('<!doctype html><body><button>Открыть плеер Kodik</button></body>', { url: 'https://ani5.top/5/embed/agp', referrer: 'https://yammyanime.club/', runScripts: 'outside-only', pretendToBeVisual: true });
+    const w = dom.window;
+    let width = 0;
+    Object.defineProperty(w, 'innerWidth', { get: () => width, configurable: true });
+    const clicks = [];
+    w.document.addEventListener('click', (e) => clicks.push(e.target.textContent.trim()), true);
+    w.chrome = { storage: { local: { get: async () => ({}) } } };
+    w.eval(read('modules/shared/sites.js'));
+    w.eval(read('modules/player/agp-to-kodik.js'));
+    await tick();
+    assert.deepEqual(clicks, []);
+    width = 800;
+    await tick();
+    assert.deepEqual(clicks, ['Открыть плеер Kodik']);
+    w.close();
+});
+
 test('расширение выключено: плеер сайта не трогаем', async () => {
     const off = agpFrame({ settings: { global_enabled: false } });
     await tick();

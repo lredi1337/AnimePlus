@@ -27,6 +27,8 @@ function parseArgs(argv) {
         if (rest[i] === '--proxy') opts.proxy = value;
         else if (rest[i] === '--adblock') opts.adblock = value;
         else if (rest[i] === '--sites') opts.sites = value.split(',');
+        else if (rest[i] === '--url') opts.url = value;
+        else if (rest[i] === '--no-extension') { opts.noExtension = true; i -= 1; }
         else throw new Error(`неизвестный параметр ${rest[i]}`);
     }
     return opts;
@@ -276,7 +278,74 @@ async function quality(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, kodik, episodes, quality };
+/** Сколько времени код страницы и кадра плеера занимает процессор при просмотре и на паузе. Сравните с --no-extension */
+async function perf(opts) {
+    const r = reporter();
+    const b = launch({ proxy: opts.proxy });
+    try {
+        if (!opts.noExtension) {
+            const extId = await b.loadExtension(prepareExtension());
+            if (opts.adblock) await b.loadExtension(opts.adblock);
+            await b.ev(await b.serviceWorker(extId), GUIDE_DONE);
+        } else if (opts.adblock) {
+            await b.loadExtension(opts.adblock);
+        }
+        const page = await openTitle(b, opts.url || 'https://jut-su.net/47-ataka-titanov-p7.html');
+        // Плеер на экране: у скрытых вкладок свои кадры, и видео в них не идёт
+        let target = null;
+        let frame = null;
+        for (const candidate of (await b.targets('iframe')).filter(t => /kodikplayer|kodik\.|thealloha|cdnvideohub|aksor|ceramet|aniboom/.test(t.url) && !/kodikres/.test(t.url))) {
+            const session = await b.attach(candidate.targetId);
+            if (await b.ev(session, 'innerWidth > 0')) {
+                target = candidate;
+                frame = session;
+                break;
+            }
+        }
+        if (!target) {
+            r.check('кадр плеера на экране есть', false);
+            return r.failed;
+        }
+        r.info('плеер', new URL(target.url).hostname);
+        await b.send('Performance.enable', {}, frame);
+        await b.send('Performance.enable', {}, page.session);
+        const VIDEO = "(() => { const list = [...document.querySelectorAll('video')]; const h = document.querySelector('.shadow-root-container'); if (h && h.shadowRoot) list.push(...h.shadowRoot.querySelectorAll('video')); return list.sort((a, c) => (c.duration || 0) - (a.duration || 0))[0] || null; })()";
+        // Запуск настоящим нажатием по центру: кнопка оболочки или родная кнопка плеера
+        const size = await b.ev(frame, '[innerWidth, innerHeight]');
+        for (let i = 0; i < 30; i++) {
+            const v = await b.ev(frame, `(() => { const v = ${VIDEO}; return v ? { t: v.currentTime, d: v.duration || 0, paused: v.paused } : null; })()`);
+            if (v && !v.paused && v.d > 120 && v.t > 2) break;
+            if (i % 8 === 0) {
+                const shell = await b.ev(frame, "!!document.getElementById('ag-shell')");
+                const native = shell ? null : await b.ev(frame, "(() => { const e = document.querySelector('.play_button, .allplay__control--overlaid, .playButton'); if (!e) return null; const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()");
+                if (shell) await pressShell(b, frame, '.big');
+                else await b.clickAt(frame, native || { x: size[0] / 2, y: size[1] / 2 });
+            }
+            await wait(2500);
+        }
+        const metrics = async (session) => Object.fromEntries((await b.send('Performance.getMetrics', {}, session)).metrics.map(m => [m.name, m.value]));
+        const measure = async (name, ms) => {
+            const [f0, p0] = [await metrics(frame), await metrics(page.session)];
+            const started = Date.now();
+            await wait(ms);
+            const seconds = (Date.now() - started) / 1000;
+            const [f1, p1] = [await metrics(frame), await metrics(page.session)];
+            const share = (a, c, key) => +((100 * (c[key] - a[key])) / seconds).toFixed(2);
+            r.info(name, { кадр: { скрипты: share(f0, f1, 'ScriptDuration'), задачи: share(f0, f1, 'TaskDuration'), стили: share(f0, f1, 'RecalcStyleDuration'), узлы: f1.Nodes, слушатели: f1.JSEventListeners, память_МБ: Math.round(f1.JSHeapUsedSize / 1048576) }, страница: { скрипты: share(p0, p1, 'ScriptDuration'), задачи: share(p0, p1, 'TaskDuration'), память_МБ: Math.round(p1.JSHeapUsedSize / 1048576) } });
+        };
+        const state = await b.ev(frame, `(() => { const v = ${VIDEO}; return v ? { t: Math.round(v.currentTime), d: Math.round(v.duration || 0), paused: v.paused, h: v.videoHeight } : null; })()`);
+        r.check('видео идёт', !!state && !state.paused, state);
+        await measure('просмотр, % времени за 30 с', 30000);
+        await b.ev(frame, `(() => { const v = ${VIDEO}; if (v) v.pause(); })()`);
+        await wait(1000);
+        await measure('пауза, % времени за 20 с', 20000);
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, kodik, episodes, quality, perf };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

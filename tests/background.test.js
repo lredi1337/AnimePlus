@@ -220,10 +220,9 @@ test('«Войти» принимается только со страницы �
 
 const tokenRoutes = { 'workers.dev': { access_token: 'a1', refresh_token: 'r1', expires_in: 100 }, 'whoami': { id: 1 } };
 
-test('адрес с кодом на чужом сайте и чужая вкладка не меняют аккаунт', async () => {
+test('код из чужой вкладки не меняет аккаунт, а за вкладками фон не следит', async () => {
     const { listeners, seen, local, send } = loadBackground({ routes: tokenRoutes, store: { shiki_access_token: 'mine' } });
-    listeners.tabUpdated(5, { url: `https://evil.example/oauth/authorize/${CODE}` }, {});
-    listeners.tabUpdated(5, { url: `https://shikimori.io/oauth/authorize/${CODE}` }, {});
+    assert.equal(listeners.tabUpdated, undefined);
     const res = (await send({ action: 'shiki_auto_auth', code: CODE }, fromTab(5))).response;
     await new Promise(r => setTimeout(r, 20));
     assert.equal(res.reason, 'not_expected');
@@ -231,15 +230,14 @@ test('адрес с кодом на чужом сайте и чужая вкла
     assert.equal(local.shiki_access_token, 'mine');
 });
 
-test('своя вкладка: код с адреса привязывает аккаунт, страница узнаёт об этом и при опоздании', async () => {
-    const { listeners, send, local } = loadBackground({ routes: tokenRoutes });
+test('своя вкладка: код со страницы входа привязывает аккаунт, повторная проверка страницы его не теряет и при опоздании', async () => {
+    const { send, local } = loadBackground({ routes: tokenRoutes });
     await send({ action: 'shiki_auth_begin' }, EXT_PAGE);
     const url = `https://shikimori.io/oauth/authorize/${CODE}`;
     assert.equal((await send({ action: 'shiki_auth_expected' }, fromTab(77, 9, url))).response.expected, true);
     assert.equal((await send({ action: 'shiki_auth_expected' }, fromTab(78, 9, url))).response.expected, false);
 
-    listeners.tabUpdated(77, { url }, {});
-    await new Promise(r => setTimeout(r, 30));
+    assert.equal((await send({ action: 'shiki_auto_auth', code: CODE }, fromTab(77, 9, url))).response.success, true);
     assert.equal(local.shiki_access_token, 'a1');
     // Разрешение уже потрачено, но это тот же код: страница не должна показать родной вид или ошибку
     assert.equal((await send({ action: 'shiki_auth_expected' }, fromTab(77, 9, url))).response.expected, true);

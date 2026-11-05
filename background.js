@@ -207,14 +207,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then(sendResponse);
     return true;
 });
-
-// Автоматический перехват кода авторизации Shikimori с адреса вкладки
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    const url = changeInfo.url || (tab && tab.url);
-    if (!url || !url.includes('/oauth/authorize/')) return;
-    const code = shikiAuthCodeFromUrl(url);
-    if (!code) return;
-    completeShikiAuth(code, tabId).then((res) => {
-        if (res.success) setTimeout(() => chrome.tabs.remove(tabId).catch(() => {}), 3800);
-    });
-});

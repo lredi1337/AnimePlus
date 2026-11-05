@@ -28,9 +28,12 @@
     }
 
     function pressWhenReady() {
-        const startedAt = Date.now();
+        let shownAt = 0;
         const timer = setInterval(() => {
-            if (Date.now() - startedAt > WAIT_MS) {
+            // Кадр скрытой вкладки пока никто не смотрит. У тайтла со своей вкладкой Kodik его и не откроют, а второй Kodik грузился бы зря
+            if (!window.innerWidth) return undefined;
+            if (!shownAt) shownAt = Date.now();
+            if (Date.now() - shownAt > WAIT_MS) {
                 // Сайт мог сменить текст кнопки: тогда зритель снова увидит плеер сайта
                 clearInterval(timer);
                 if (globalThis.AgDiag) globalThis.AgDiag.note('agp_no_button');
