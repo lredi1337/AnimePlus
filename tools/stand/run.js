@@ -28,6 +28,7 @@ function parseArgs(argv) {
         else if (rest[i] === '--adblock') opts.adblock = value;
         else if (rest[i] === '--sites') opts.sites = value.split(',');
         else if (rest[i] === '--url') opts.url = value;
+        else if (rest[i] === '--count') opts.count = Number(value);
         else if (rest[i] === '--no-extension') { opts.noExtension = true; i -= 1; }
         else throw new Error(`неизвестный параметр ${rest[i]}`);
     }
@@ -345,7 +346,109 @@ async function perf(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, kodik, episodes, quality, perf };
+/**
+ * Точность сравнения серий на настоящем звуке: подряд идут серии одного тайтла, эталон это метки Kodik.
+ * Работает в копии расширения: анализ заранее не останавливается на готовых метках, иначе при метках Kodik его бы не было.
+ * Отчёты в общую базу копия не отправит: сервер принимает их только от расширения из магазина.
+ */
+async function accuracy(opts) {
+    const r = reporter();
+    const dir = prepareExtension();
+    const skipFile = path.join(dir, 'modules/audio/audio-skip.js');
+    const code = fs.readFileSync(skipFile, 'utf8');
+    const WANTED = 'wanted: (part) => !found[part] && !repeat[part] && !resolved(part, video),';
+    if (!code.includes(WANTED)) throw new Error('в audio-skip.js изменилось условие анализа');
+    fs.writeFileSync(skipFile, code.replace(WANTED, 'wanted: (part) => !repeat[part],'));
+    const b = launch({ proxy: opts.proxy });
+    const summary = [];
+    try {
+        const extId = await b.loadExtension(dir);
+        const worker = await b.serviceWorker(extId);
+        await b.ev(worker, "chrome.storage.local.set({ ag_guide: { tourDone: true, tipsDone: true, switchTipDone: true, questHidden: true }, ag_settings: { audioDebug: true, autoSkip: false, autoPlay: false } })");
+        const titles = opts.url ? opts.url.split(',') : ['https://jut-su.net/3552-monolog-farmacevta-h2.html'];
+        for (const url of titles) {
+            r.info('тайтл', url);
+            const page = await openTitle(b, url);
+            let target = null;
+            let frame = null;
+            for (const t of (await b.targets('iframe')).filter(x => /kodikplayer|kodik\./.test(x.url))) {
+                const session = await b.attach(t.targetId);
+                if (await b.ev(session, 'innerWidth > 0')) {
+                    target = t;
+                    frame = session;
+                    break;
+                }
+            }
+            if (!target) {
+                r.check('кадр Kodik на экране', false);
+                continue;
+            }
+            const STATE = "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; if (!v) return null; let audio = null; try { audio = JSON.parse(v.dataset.agAudio || 'null'); } catch (e) {} return { t: v.currentTime, d: v.duration || 0, paused: v.paused, audio }; })()";
+            const waitFor = async (test, tries, ms = 2000) => {
+                for (let i = 0; i < tries; i++) {
+                    const s = await b.ev(frame, STATE);
+                    if (s && test(s)) return s;
+                    await wait(ms);
+                }
+                return b.ev(frame, STATE);
+            };
+            for (let episode = 0; episode < (opts.count || 3); episode++) {
+                await wake(b, frame);
+                await pressShell(b, frame, '.big');
+                let s = await waitFor(x => x.d > 120 && !x.paused && x.t > 1, 45);
+                if (!s || s.paused || !(s.d > 120)) {
+                    r.check(`серия ${episode + 1} запустилась`, false, s && { t: s.t, d: s.d });
+                    break;
+                }
+                s = await waitFor(x => x.audio && (/^op: готово|^ed|^сбой|^поток не найден/.test((x.audio.ahead && x.audio.ahead.status) || '') || (x.audio.repeat && x.audio.repeat.op)), 75);
+                const head = s && s.audio && s.audio.ahead ? s.audio.ahead.status : null;
+                await b.ev(frame, "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.currentTime = v.duration - 410; })()");
+                s = await waitFor(x => x.audio && (/^ed: готово|^сбой|^лимит/.test((x.audio.ahead && x.audio.ahead.status) || '') || (x.audio.repeat && x.audio.repeat.ed)), 75);
+                await wait(1500);
+                const a = (s && s.audio) || {};
+                const line = { серия: episode + 1, длина: Math.round(s ? s.d : 0), анализ: [head, a.ahead && a.ahead.status], мб: a.ahead ? Math.round(a.ahead.bytes / 1048576) : 0 };
+                // Метки Kodik той же серии: фон сам читает их со страницы плеера, как для других плееров
+                const pageUrl = await b.ev(frame, 'location.href');
+                const label = await b.ev(frame, `(${SHELL}.querySelector('.sub') || {}).textContent || ''`);
+                const number = (label.match(/Серия (\d+)/) || [])[1] || String(episode + 1);
+                const marks = await b.ev(worker, `AgKodikMarks.find({ url: ${JSON.stringify(pageUrl)}, episode: ${JSON.stringify(number)}, voice: '', season: null }, (u) => fetch(u, { credentials: 'omit' }).then(r => (r.ok ? r.text() : ''))).then(x => AgKodikMarks.splitMarks(x, ${Math.round(s ? s.d : 0)})).catch(() => null)`).catch(() => null);
+                line.метки = marks;
+                for (const part of ['op', 'ed']) {
+                    const mark = marks && marks[part] && marks[part].end > 0 ? marks[part] : null;
+                    const truth = mark || (a.timings && a.timings[part] && /kodik|site/.test(String(a.timings[part].source)) ? a.timings[part] : null);
+                    const found = a.repeat && a.repeat[part];
+                    line[part] = {
+                        эталон: truth ? [Math.round(truth.start), Math.round(truth.end)] : null,
+                        найдено: found ? [Math.round(found.start), Math.round(found.end), found.manual ? 'кнопка' : 'авто'] : null,
+                        ошибка: truth && found ? [+(found.start - truth.start).toFixed(1), +(found.end - truth.end).toFixed(1)] : null
+                    };
+                }
+                summary.push(line);
+                r.info('итог серии', line);
+                if (episode + 1 >= (opts.count || 3)) break;
+                // Следующая серия настоящим нажатием в панели
+                if (!await b.ev(frame, `!!${SHELL}.querySelector('.panel.on')`)) await pressShell(b, frame, '[data-act="episodes"]');
+                await wait(700);
+                const next = await b.ev(frame, `(() => { const eps = [...${SHELL}.querySelectorAll('.panel .ep')]; const i = eps.findIndex(e => e.classList.contains('now')); const e = eps[i + 1]; if (!e) return null; const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2, label: e.textContent }; })()`);
+                if (!next) break;
+                await b.clickAt(frame, next);
+                await wait(5000);
+                if (await b.ev(frame, `!!${SHELL}.querySelector('.panel.on')`)) await pressShell(b, frame, '[data-act="episodes"]');
+                await wait(1000);
+            }
+            await b.closePage(page);
+        }
+        const compared = summary.filter(x => x.серия > 1).flatMap(x => [x.op, x.ed]).filter(p => p.эталон);
+        const hits = compared.filter(p => p.найдено);
+        r.info('сводка', { 'со второй серии с эталоном': compared.length, найдено: hits.length, 'ошибка начала': hits.map(p => p.ошибка[0]), 'ошибка конца': hits.map(p => p.ошибка[1]) });
+        r.check('в первой серии сравнивать не с чем', summary.length > 0 && summary.filter(x => x.серия === 1).every(x => !x.op.найдено && !x.ed.найдено));
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, kodik, episodes, quality, perf, accuracy };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

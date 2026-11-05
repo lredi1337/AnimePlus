@@ -145,6 +145,8 @@ const MESSAGE_HANDLERS = {
     get_remote_config: [() => getRemoteConfig(), () => null],
     get_shared_timings: [getSharedTimings, () => null],
     report_audio_timing: [reportAudioTiming, () => null],
+    get_episode_prints: [getEpisodePrints, () => []],
+    save_episode_print: [saveEpisodePrint, () => null],
 
     // Данные Shikimori
     resolve_shiki_posters: [async (m) => ({ posters: await getShikiPosters(m.ids || []) }), () => ({ posters: {} })],

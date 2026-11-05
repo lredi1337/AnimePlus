@@ -334,7 +334,7 @@
     }
 
     /**
-     * options: { video, fingerprint, songs, wanted(part), onFound(result), onState(state) }.
+     * options: { video, fingerprint, songs, wanted(part), onFound(result), onState(state), onHashes(part, list, final) }.
      * start() ищет опенинг, tail() эндинг, stop() прекращает всё.
      */
     function create(options) {
@@ -389,9 +389,12 @@
                 const pcm = await decodeBatch(init, buffers, FP.SAMPLE_RATE);
                 if (!pcm) continue;
                 const hits = [];
+                const heard = [];
                 const hasher = FP.createHasher((h, frame) => {
-                    const r = matcher.feed(h, batch.at + frame * FP.FRAME_SEC);
+                    const sec = batch.at + frame * FP.FRAME_SEC;
+                    const r = matcher.feed(h, sec);
                     if (r) hits.push(r);
+                    if (options.onHashes) heard.push({ h, sec });
                 });
                 const slice = HASH_SLICE_SEC * FP.SAMPLE_RATE;
                 for (let i = 0; i < pcm.length && !stopped; i += slice) {
@@ -400,9 +403,11 @@
                 }
                 hasher.finish();
                 hits.forEach(r => options.onFound(r));
+                if (options.onHashes) await options.onHashes(part, heard, false);
                 state.ms += Math.round(performance.now() - started);
                 await sleep(BATCH_PAUSE_MS);
             }
+            if (options.onHashes) await options.onHashes(part, [], true);
             return report({ status: `${part}: готово` });
         };
 

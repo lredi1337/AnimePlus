@@ -108,6 +108,44 @@ async function reportAudioTiming(info) {
     return null;
 }
 
+// ---------- Отпечатки серий для сравнения между собой ----------
+// Только необратимые отпечатки начала и конца серии, в браузере зрителя. Старые удаляет общая чистка кэша
+
+const PRINTS_PER_TITLE = 3;
+const PRINT_MAX_CHARS = 2 * 1024 * 1024;
+const printPrefix = (title, part) => audioKey(`prints/${title}/${part}/`);
+const validPrintKey = ({ title, part, episode }) => /^\d+$/.test(String(title)) && (part === 'op' || part === 'ed') && /^[\w.-]{1,16}$/.test(String(episode));
+
+async function readPrints(cache, title, part) {
+    const prefix = printPrefix(title, part);
+    const out = [];
+    for (const request of await cache.keys()) {
+        if (!request.url.startsWith(prefix)) continue;
+        const hit = await cache.match(request.url);
+        try {
+            const saved = await hit.json();
+            out.push({ url: request.url, episode: request.url.slice(prefix.length), at: saved.at, print: saved.print });
+        } catch (e) {}
+    }
+    return out.sort((a, b) => b.at - a.at);
+}
+
+/** Отпечатки других серий тайтла, новые первыми */
+async function getEpisodePrints(info) {
+    if (!validPrintKey(info)) return [];
+    const cache = await caches.open(AUDIO_FP_CACHE);
+    return (await readPrints(cache, info.title, info.part)).filter(p => p.episode !== String(info.episode)).map(p => p.print);
+}
+
+async function saveEpisodePrint(info) {
+    if (!validPrintKey(info) || !info.print || typeof info.print.fp !== 'string' || !(info.print.fp.length <= PRINT_MAX_CHARS)) return null;
+    const cache = await caches.open(AUDIO_FP_CACHE);
+    await cache.put(`${printPrefix(info.title, info.part)}${info.episode}`, new Response(JSON.stringify({ at: Date.now(), print: { base: Number(info.print.base) || 0, fp: info.print.fp } })));
+    const all = await readPrints(cache, info.title, info.part);
+    for (const old of all.slice(PRINTS_PER_TITLE)) await cache.delete(old.url);
+    return null;
+}
+
 // ---------- Чистка кэша ----------
 // Устаревшая запись нужна как запас на случай сбоя сети, но тайтлы и серии, которые давно не открывали, копились бы вечно
 

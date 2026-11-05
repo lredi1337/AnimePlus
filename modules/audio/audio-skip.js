@@ -1,6 +1,6 @@
 // modules/audio/audio-skip.js
 // Пропуск по звуку внутри плеера: узнаёт опенинг или эндинг по базе отпечатков песен.
-// Порядок для каждой части отдельно: метка самого плеера → метка сайта → общая база таймингов → узнанная песня → AniSkip.
+// Порядок для каждой части отдельно: метка самого плеера → метка сайта → общая база таймингов → узнанная песня → повтор между сериями → AniSkip.
 // Метка сайта обычно точна и срабатывает сразу, но бывает грубо неверной: такую показываем кнопкой, пока песню не подтвердит звук.
 // Время в AniSkip часто не совпадает с конкретной озвучкой, поэтому узнанная песня важнее метки.
 // Звук анализируется на устройстве, не сохраняется и никуда не отправляется. В общую базу уходит только найденное время.
@@ -192,7 +192,7 @@
     }
 
     /** Итоговое время для части серии: чистая логика, проверяется тестами */
-    function chooseTimings({ native, site, siteFits = true, shared, hit, mark, hasSong, listening }) {
+    function chooseTimings({ native, site, siteFits = true, shared, hit, repeat, mark, hasSong, listening }) {
         if (native) return { ...native, source: native.source || 'kodik' };
         // Метка сайта срабатывает сразу, без прослушивания. Если песню всё-таки успели узнать, звук точнее
         if (site && siteFits && !hit) return { start: site.start, end: site.end, source: 'site' };
@@ -205,6 +205,8 @@
             }
             return { start: hit.start, end, source: 'audio' };
         }
+        // Кусок, повторяющийся в сериях тайтла. Точнее метки AniSkip, потому что найден в этом самом файле
+        if (repeat) return { start: repeat.start, end: repeat.end, source: 'repeat', ...(repeat.manual ? { manual: true } : {}) };
         // Метка сайта не похожа на песню: автопрыжок съел бы серию, поэтому только кнопка
         if (site) return { start: site.start, end: site.end, source: 'site', manual: true };
         if (m.end <= 0) return { start: 0, end: 0 };
@@ -219,6 +221,7 @@
         let songs = null;
         let aniskip = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
         let found = { op: null, ed: null };
+        let repeat = { op: null, ed: null };
         let matcher = null;
         let hasher = null;
         let segment = null;
@@ -273,6 +276,7 @@
                 siteFits: !site || siteMarkFits(part, site),
                 shared: shared[part],
                 hit: found[part],
+                repeat: repeat[part],
                 mark: aniskip[part],
                 hasSong: hasSongs(part.toUpperCase()),
                 listening: listening(video)
@@ -295,6 +299,7 @@
                     blocked,
                     analysisOff,
                     found: { op: found.op && +found.op.start.toFixed(1), ed: found.ed && +found.ed.start.toFixed(1) },
+                    repeat,
                     foundAt,
                     timings
                 });
@@ -326,7 +331,7 @@
 
         // Анализ заранее: песня находится до того, как зазвучит. Нужен, только если места песни ещё никто не знает наверняка
         const startAhead = async (video) => {
-            if (!globalThis.AgLookahead || aheadFor === video.currentSrc || !songs || !songs.length) return;
+            if (!globalThis.AgLookahead || aheadFor === video.currentSrc || !songs) return;
             if (options.getSettings().audioSkip === false || !(video.duration > MAIN_VIDEO_MIN_SEC) || !window.innerWidth) return;
             // Зритель просил экономить трафик: песню найдёт и обычное прослушивание
             if (navigator.connection && navigator.connection.saveData) return;
@@ -335,15 +340,43 @@
             ahead = null;
             const config = await chrome.runtime.sendMessage({ action: 'get_remote_config' }).catch(() => null);
             if ((config && config.lookahead === false) || bound !== video) return;
+            // Песен тайтла может не быть в базе: тогда смотреть вперёд есть смысл только ради сравнения серий
+            const comparing = !(config && config.repeatSkip === false) && !!globalThis.AgRepeatFinder;
+            if (!songs.length && !comparing) return;
+            const comparer = comparing ? createEpisodeComparer(video) : null;
             ahead = globalThis.AgLookahead.create({
                 video,
                 fingerprint: FP,
                 songs,
-                wanted: (part) => !found[part] && !resolved(part, video),
+                wanted: (part) => !found[part] && !repeat[part] && !resolved(part, video),
                 onFound: (r) => acceptHit(r, video.currentTime),
+                onHashes: comparer ? comparer.onHashes : undefined,
                 onState: () => { if (options.getSettings().audioDebug) publish(video); }
             });
             ahead.start();
+        };
+
+        // Сравнение серий одного тайтла. Эта серия запоминается для следующих, а звук не хранится: только отпечатки в браузере зрителя
+        const createEpisodeComparer = (video) => {
+            const id = title;
+            const episode = String(options.getEpisode ? options.getEpisode() || '' : '');
+            if (!id || !episode) return null;
+            const comparer = globalThis.AgRepeatFinder.createComparer({
+                loadOthers: async (part) => (await chrome.runtime.sendMessage({ action: 'get_episode_prints', title: id, part, episode })) || [],
+                onFound: (part, run) => {
+                    if (bound !== video || title !== id) return;
+                    repeat[part] = run;
+                    publish(video);
+                }
+            });
+            return {
+                async onHashes(part, list, final) {
+                    await comparer.add(part, list, final);
+                    if (!final) return;
+                    const print = comparer.print(part);
+                    if (print) chrome.runtime.sendMessage({ action: 'save_episode_print', title: id, part, episode, print }).catch(() => {});
+                }
+            };
         };
 
         // Первый зритель находит тайминг, остальные получают его сразу и без прослушивания
@@ -436,6 +469,7 @@
             const episode = options.getEpisode ? options.getEpisode() : '';
             if (native && native.episode !== episode) native = null;
             found = { op: null, ed: null };
+            repeat = { op: null, ed: null };
             shared = {};
             sharedKey = null;
             if (ahead) ahead.stop();

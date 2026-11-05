@@ -275,6 +275,7 @@
         "modules/shared/sites.js",
         "modules/shared/ui-kit.js",
         "modules/audio/fingerprint.js",
+        "modules/audio/repeat-finder.js",
         "modules/audio/lookahead.js",
         "modules/audio/audio-skip.js",
         "modules/shared/guide.js",

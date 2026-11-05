@@ -14,7 +14,7 @@ const backgroundShared = Object.fromEntries([
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
     'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'searchShikimoriAnime', 'setDirectUrlInCache',
-    'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming', 'pruneAudioCache',
+    'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming', 'getEpisodePrints', 'saveEpisodePrint', 'pruneAudioCache',
     'SHIKI_CLIENT_ID', 'beginShikiAuth', 'completeShikiAuth', 'isShikiAuthExpected', 'isShikiCodeInProgress', 'shikiAuthCodeFromUrl',
     'getShikiStatus', 'resetTodayCount', 'getShikiRelated', 'getOngoingSchedule', 'resolveJutsuCover', 'getRandomShikimoriAnime',
     'shikiFetch', 'shikiPosterMemo', 'storageWriteQueues', 'toShikiApiUrl', 'updateShikiUserRate', 'updateStorageObject'
@@ -64,7 +64,7 @@ module.exports = [
         languageOptions: { sourceType: 'module', globals: { ...globals.serviceworker } }
     },
     {
-        files: ['modules/audio/fingerprint.js', 'modules/audio/lookahead.js', 'modules/player/shell.js', 'modules/player/shell-view.js', 'modules/player/adapters.js', 'modules/shared/kodik-marks.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/player-choice.js'],
+        files: ['modules/audio/fingerprint.js', 'modules/audio/lookahead.js', 'modules/audio/repeat-finder.js', 'modules/player/shell.js', 'modules/player/shell-view.js', 'modules/player/adapters.js', 'modules/shared/kodik-marks.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/player-choice.js'],
         languageOptions: { globals: { module: 'writable' } }
     }
 ];
