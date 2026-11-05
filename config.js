@@ -17,7 +17,6 @@
         random_min_score: 6.0,
         random_kinds: ["tv", "movie", "ona", "ova", "special"],
         ongoing_types: ["TV", "ONA", "OVA"],
-        notif_enabled: true,
         auto_select_voice: true,
         voice_priority_list: [
             "Anilibria",

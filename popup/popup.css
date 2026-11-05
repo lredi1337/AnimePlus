@@ -1036,27 +1036,6 @@ a { color: var(--ap-accent); }
     cursor: pointer;
 }
 
-.notif-badge {
-    min-width: 16px;
-    padding: 2px 4px;
-    font-size: var(--ap-fs-xs);
-    font-weight: 700;
-    line-height: 1;
-    text-align: center;
-    color: var(--ap-on-accent);
-    background: var(--ap-accent);
-    border-radius: 999px;
-}
-
-.notif-24h-list {
-    display: flex;
-    flex-direction: column;
-    max-height: 180px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--ap-line-strong) transparent;
-}
-
 /* Музыка */
 .anime-info-header {
     margin-bottom: 8px;

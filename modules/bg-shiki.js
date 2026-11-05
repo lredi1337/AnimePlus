@@ -602,8 +602,6 @@ async function getShikiWatchingList(targetStatus = 'watching') {
                             name: anime.name || '',
                             episodesWatched: rate.episodes || 0,
                             episodesTotal: anime.episodes || 0,
-                            episodesAired: anime.episodes_aired || 0,
-                            status: anime.status || '',
                             poster: poster,
                             kind: (anime.kind || '').toUpperCase(),
                             score: anime.score || null
@@ -909,253 +907,41 @@ async function addToWatchHistory(item) {
     }
 }
 
-async function cleanupOldNotifications() {
-    try {
-        const storage = await chrome.storage.local.get(['notified_episodes_history', 'active_notifications_map']);
-        const history = Array.isArray(storage.notified_episodes_history) ? storage.notified_episodes_history : [];
-        const notifMap = storage.active_notifications_map || {};
+// Повтор неотправленного прогресса.
+// chrome.alarms.create с тем же именем отменяет существующий alarm и запускает отсчёт заново,
+// а service worker просыпается на каждое сообщение: создаём, только если его нет
+const SHIKI_RETRY_ALARM = 'shiki_sync_retry';
+const SHIKI_RETRY_MINUTES = 30;
 
-        const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 hours ago
+async function ensureRetryAlarm() {
+    const existing = await chrome.alarms.get(SHIKI_RETRY_ALARM);
+    if (!existing) await chrome.alarms.create(SHIKI_RETRY_ALARM, { periodInMinutes: SHIKI_RETRY_MINUTES });
+}
 
-        const freshHistory = history.filter(item => item && item.timestamp && item.timestamp > cutoff);
+// Уведомления о сериях убраны в 11.1: от них не должно остаться ни будильника, ни данных
+const OLD_NOTIFICATION_KEYS = ['shiki_aired_seen', 'notified_episodes', 'notified_episodes_history', 'active_notifications_map'];
 
-        for (const key in notifMap) {
-            if (notifMap[key] && notifMap[key].timestamp && notifMap[key].timestamp <= cutoff) {
-                delete notifMap[key];
-            }
-        }
-
-        await chrome.storage.local.set({
-            notified_episodes_history: freshHistory,
-            active_notifications_map: notifMap
-        });
-    } catch (e) {
-        console.warn('[Anime+] Error cleaning up notifications:', e);
+async function removeNotificationLeftovers() {
+    await chrome.alarms.clear('check_new_episodes_alarm');
+    await chrome.storage.local.remove(OLD_NOTIFICATION_KEYS);
+    const { ag_settings: settings } = await chrome.storage.local.get(['ag_settings']);
+    if (settings && 'notif_enabled' in settings) {
+        delete settings.notif_enabled;
+        await chrome.storage.local.set({ ag_settings: settings });
     }
-}
-
-async function findEpisodeLinks(animeTitle, origTitle) {
-    const [animegoUrl, jutsuUrl] = await Promise.all([
-        findAnimeGoDirectUrl(animeTitle, origTitle).catch(() => null),
-        findJutsuDirectUrl(animeTitle, origTitle).catch(() => null)
-    ]);
-    return { animegoUrl: animegoUrl || null, jutsuUrl: jutsuUrl || null };
-}
-
-async function openNotificationTarget(notifId, buttonIndex = null) {
-    try {
-        const storage = await chrome.storage.local.get(['active_notifications_map']);
-        const notifMap = storage.active_notifications_map || {};
-        const notifInfo = notifMap[notifId];
-
-        let targetUrl = null;
-
-        if (notifInfo) {
-            if (buttonIndex !== null && Array.isArray(notifInfo.buttonsMap) && notifInfo.buttonsMap[buttonIndex]) {
-                targetUrl = notifInfo.buttonsMap[buttonIndex];
-            } else {
-                targetUrl = notifInfo.animegoUrl || notifInfo.jutsuUrl;
-            }
-        }
-
-        if (targetUrl) {
-            chrome.tabs.create({ url: targetUrl });
-        }
-
-        chrome.notifications.clear(notifId);
-    } catch (e) {
-        console.error('[Anime+] Error opening notification link:', e);
-    }
-}
-
-try {
-    chrome.notifications.onClicked.addListener((notifId) => {
-        if (notifId.startsWith('animeplus_notif_')) {
-            openNotificationTarget(notifId, null);
-        }
-    });
-    chrome.notifications.onButtonClicked.addListener((notifId, buttonIndex) => {
-        if (notifId.startsWith('animeplus_notif_')) {
-            openNotificationTarget(notifId, buttonIndex);
-        }
-    });
-} catch (e) {}
-
-// Alarm проверки новых серий.
-// chrome.alarms.create с тем же именем отменяет существующий alarm и запускает отсчёт заново.
-// Раньше create вызывался при каждом пробуждении service worker (а он просыпается на каждое сообщение),
-// поэтому при активном просмотре проверка могла откладываться бесконечно.
-const EPISODES_ALARM = 'check_new_episodes_alarm';
-const EPISODES_PERIOD_MIN = 30;
-
-async function ensureEpisodesAlarm({ force = false } = {}) {
-    const period = EPISODES_PERIOD_MIN;
-    const existing = await chrome.alarms.get(EPISODES_ALARM);
-    if (!force && existing && existing.periodInMinutes === period) return;
-    await chrome.alarms.create(EPISODES_ALARM, { periodInMinutes: period, delayInMinutes: existing && !force ? period : 1 });
 }
 
 try {
     chrome.alarms.onAlarm.addListener((alarm) => {
-        if (alarm.name !== EPISODES_ALARM) return;
-            checkNewEpisodeNotifications();
-            flushShikiSyncQueue().catch(() => {});
+        if (alarm.name === SHIKI_RETRY_ALARM) flushShikiSyncQueue().catch(() => {});
     });
-    chrome.runtime.onInstalled.addListener(() => ensureEpisodesAlarm({ force: true }));
+    chrome.runtime.onInstalled.addListener(() => {
+        removeNotificationLeftovers().catch(() => {});
+        ensureRetryAlarm();
+    });
     chrome.runtime.onStartup.addListener(() => {
-        ensureEpisodesAlarm();
+        ensureRetryAlarm();
         flushShikiSyncQueue().catch(() => {});
     });
-    // Страховка: alarm мог потеряться (например, при обновлении браузера) — создаём, только если его нет
-    ensureEpisodesAlarm();
+    ensureRetryAlarm();
 } catch (e) {}
-
-/** Последняя вышедшая серия. В календаре next_episode ещё не вышла, пока не наступило её время */
-function latestAiredEpisode(item, calendarItem, now = Date.now()) {
-    // У вышедших тайтлов Shikimori часто отдаёт episodes_aired: 0
-    let aired = item.status === 'released' ? (item.episodesTotal || item.episodesAired || 0) : (item.episodesAired || 0);
-    const next = calendarItem ? parseInt(calendarItem.next_episode, 10) : 0;
-    if (next > 0) {
-        const airsAt = Date.parse(calendarItem.next_episode_at);
-        aired = Math.max(aired, airsAt <= now ? next : next - 1);
-    }
-    return aired;
-}
-
-async function fetchCalendarById() {
-    const byId = new Map();
-    try {
-        const res = await shikiRateFetch(`${SHIKI_API_BASE}/api/calendar`);
-        if (!res.ok) return byId;
-        const calendar = await res.json();
-        if (Array.isArray(calendar)) calendar.forEach(c => { if (c && c.anime) byId.set(c.anime.id, c); });
-    } catch (e) {}
-    return byId;
-}
-
-function showEpisodeSystemNotification(item) {
-    chrome.notifications.create(item.notifId, {
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-        title: `Вышла ${item.episode} серия`,
-        message: item.notifMessage,
-        buttons: item.toastButtons,
-        priority: 2
-    });
-}
-
-// Окно не забирает фокус: зритель может смотреть серию. В полном экране его не будет видно, поэтому там системное уведомление
-async function showEpisodeWindow(item) {
-    try {
-        const current = await chrome.windows.getLastFocused();
-        if (current.state === 'fullscreen') return showEpisodeSystemNotification(item);
-        const width = 370;
-        const height = 155;
-        await chrome.windows.create({
-            url: chrome.runtime.getURL(`notification.html?id=${encodeURIComponent(item.notifId)}`),
-            type: 'popup',
-            width,
-            height,
-            left: Math.max(0, (current.left || 0) + (current.width || 1300) - width - 30),
-            top: Math.max(0, (current.top || 0) + (current.height || 800) - height - 50),
-            focused: false
-        });
-    } catch (e) {
-        showEpisodeSystemNotification(item);
-    }
-    return undefined;
-}
-
-async function announceEpisodes(queue) {
-    for (let i = 0; i < queue.length; i++) {
-        const item = queue[i];
-        await showEpisodeWindow(item);
-        const tabs = await chrome.tabs.query({}).catch(() => []);
-        tabs.forEach((tab) => {
-            if (!tab.id) return;
-            chrome.tabs.sendMessage(tab.id, {
-                action: 'SHOW_EPISODE_NOTIFICATION',
-                data: { title: item.title, episode: item.episode, poster: item.poster, voiceovers: '', animegoUrl: item.animegoUrl, jutsuUrl: item.jutsuUrl }
-            }).catch(() => {});
-        });
-        if (i < queue.length - 1) await shikiSleep(7500);
-    }
-}
-
-async function checkNewEpisodeNotifications(isManual = false) {
-    try {
-        const settingsRes = await chrome.storage.local.get(['ag_settings']);
-        const settings = settingsRes.ag_settings || {};
-        if (settings.notif_enabled === false) return;
-
-        await cleanupOldNotifications();
-
-        const watchingRes = await getShikiWatchingList('watching');
-        // Список из кэша устарел: по нему новые серии не определить
-        if (!watchingRes || !watchingRes.success || watchingRes.fromCache || !Array.isArray(watchingRes.items)) return;
-
-        const calendar = await fetchCalendarById();
-        const stored = await chrome.storage.local.get(['shiki_aired_seen', 'notified_episodes_history', 'active_notifications_map']);
-        const seen = stored.shiki_aired_seen || {};
-        const nextSeen = {};
-        let history = Array.isArray(stored.notified_episodes_history) ? stored.notified_episodes_history : [];
-        const notifMap = stored.active_notifications_map || {};
-        const queue = [];
-
-        for (const item of watchingRes.items) {
-            const animeId = item.animeId;
-            const known = seen[animeId];
-            const aired = latestAiredEpisode(item, calendar.get(animeId));
-            // Данные тайтла не пришли: уже известное не теряем
-            if (!(aired > 0)) {
-                if (known !== undefined) nextSeen[animeId] = known;
-                continue;
-            }
-            nextSeen[animeId] = Math.max(aired, known || 0);
-            // Первая встреча с тайтлом только запоминает, что уже вышло: иначе при обновлении расширения открылись бы десятки окон
-            if (known === undefined || aired <= known || aired <= (item.episodesWatched || 0)) continue;
-
-            const title = item.russian || item.name;
-            const origTitle = item.name || '';
-            const { animegoUrl, jutsuUrl } = await findEpisodeLinks(title, origTitle);
-            const poster = isMissingShikiPoster(item.poster)
-                ? ((await getShikiPosters([animeId]))[animeId] || chrome.runtime.getURL('icons/icon128.png'))
-                : absoluteShikiUrl(item.poster);
-            const notifId = `animeplus_notif_${animeId}_${aired}_${Date.now()}`;
-
-            const toastButtons = [];
-            const buttonsMap = [];
-            if (animegoUrl) {
-                toastButtons.push({ title: '▶ AnimeGO' });
-                buttonsMap.push(animegoUrl);
-            }
-            if (jutsuUrl) {
-                toastButtons.push({ title: '▶ JUT-SU' });
-                buttonsMap.push(jutsuUrl);
-            }
-            if (toastButtons.length === 0) {
-                toastButtons.push({ title: '▶ Смотреть' });
-                buttonsMap.push(`https://animego.me/search/anime?q=${encodeURIComponent(title)}`);
-            }
-
-            const timestamp = Date.now();
-            history.unshift({ id: notifId, animeId, episode: aired, title, origTitle, poster, voiceovers: '', animegoUrl, jutsuUrl, timestamp });
-            notifMap[notifId] = { russianName: title, origName: origTitle, animeId, episode: aired, animegoUrl, jutsuUrl, buttonsMap, poster, voiceovers: '', timestamp };
-            queue.push({ notifId, title, episode: aired, poster, notifMessage: title, toastButtons, animegoUrl, jutsuUrl });
-        }
-        history = history.slice(0, 20);
-
-        await chrome.storage.local.set({
-            shiki_aired_seen: nextSeen,
-            notified_episodes_history: history,
-            active_notifications_map: notifMap
-        });
-        // Прежний список хранил серии, о которых сообщали заранее
-        await chrome.storage.local.remove(['notified_episodes']);
-
-        // Ручная проверка из окна расширения показывает результат там же
-        if (!isManual) await announceEpisodes(queue);
-    } catch (e) {
-        console.error('[Anime+] Error checking new episode notifications:', e);
-    }
-}

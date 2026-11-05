@@ -7,7 +7,6 @@
   "permissions": [
     "storage",
     "scripting",
-    "notifications",
     "alarms"
   ],
   "icons": {

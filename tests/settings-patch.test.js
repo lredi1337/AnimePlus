@@ -24,15 +24,15 @@ function makePage(files, initial) {
 }
 
 test('agPatchSettings меняет только переданные поля и возвращает настройки с дефолтами', async () => {
-    const { w, store } = makePage([], { notif_enabled: false, hideTime: 1000 });
+    const { w, store } = makePage([], { autoNext: false, hideTime: 1000 });
     const result = await w.agPatchSettings({ hideTime: 3000 });
-    assert.deepEqual(JSON.parse(JSON.stringify(store.ag_settings)), { notif_enabled: false, hideTime: 3000 });
+    assert.deepEqual(JSON.parse(JSON.stringify(store.ag_settings)), { autoNext: false, hideTime: 3000 });
     assert.equal(result.hideTime, 3000);
     assert.equal(result.autoPlay, true, 'значения по умолчанию подставлены');
 });
 
 test('agPatchSettings работает, когда настроек ещё нет', async () => {
     const { w, store } = makePage([], undefined);
-    await w.agPatchSettings({ notif_enabled: false });
-    assert.deepEqual(JSON.parse(JSON.stringify(store.ag_settings)), { notif_enabled: false });
+    await w.agPatchSettings({ autoNext: false });
+    assert.deepEqual(JSON.parse(JSON.stringify(store.ag_settings)), { autoNext: false });
 });

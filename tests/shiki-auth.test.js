@@ -33,8 +33,7 @@ function loadBg({ store = {} } = {}) {
             storage: { local: area(local), session: area(session), onChanged: { addListener() {} } },
             alarms: { create() {}, get: async () => null, onAlarm: { addListener() {} } },
             tabs: { create: async ({ url }) => { stats.opened.push(url); return { id: nextTabId++ }; } },
-            runtime: { getManifest: () => ({ version: '0' }), onInstalled: { addListener() {} }, onStartup: { addListener() {} } },
-            notifications: { onClicked: { addListener() {} }, onButtonClicked: { addListener() {} } }
+            runtime: { getManifest: () => ({ version: '0' }), onInstalled: { addListener() {} }, onStartup: { addListener() {} } }
         }
     });
     return { ctx, local, session, stats };

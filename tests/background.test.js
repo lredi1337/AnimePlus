@@ -53,7 +53,6 @@ function loadBackground({ routes = {}, store = {}, failStorage = false } = {}) {
                 update: async (id, patch) => { seen.windows.push({ id, ...patch }); },
                 getLastFocused: async () => ({ id: 1 })
             },
-            notifications: { create() {}, clear() {}, onClicked: event('n1'), onButtonClicked: event('n2') },
             runtime: {
                 id: EXT_ID,
                 getManifest: () => JSON.parse(read('manifest.json')),
@@ -100,7 +99,7 @@ test('каждое действие, которое шлёт расширени�
         }
     };
     ['modules', 'providers', 'features', 'popup', 'options'].forEach(walk);
-    fs.readdirSync(ROOT).filter(f => /^content-.*\.js$|^notification\.js$/.test(f)).forEach(f => files.push(f));
+    fs.readdirSync(ROOT).filter(f => /^content-.*\.js$/.test(f)).forEach(f => files.push(f));
 
     const actions = new Set();
     for (const file of files) {

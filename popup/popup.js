@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const btnShiki = document.getElementById('btn-shiki');
 
-    // --- Helper: Toast Notification ---
+    // --- Helper: всплывающая подсказка ---
     function showToast(toastEl, message, duration = 2000) {
         if (!toastEl) return;
         toastEl.textContent = message;
@@ -276,11 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
-    const btnNotif = document.getElementById('btnNotif');
-    const panelNotif = document.getElementById('panelNotif');
-
     const panelsList = [
-        { btn: btnNotif, panel: panelNotif },
         { btn: btnMusic, panel: panelMusic },
         { btn: btnPlayer, panel: panelPlayer }
     ];
@@ -948,129 +944,4 @@ document.addEventListener('DOMContentLoaded', async () => {
             container.appendChild(div);
         });
     }
-
-    // --- Notification Settings & 24h History Render ---
-    const notifEnabledToggle = document.getElementById('notif-enabled-toggle');
-    const notifPanelItems = document.getElementById('notif-panel-items');
-    const notifTabBadge = document.getElementById('notif-tab-badge');
-    const btnCheckNow = document.getElementById('btn-check-now');
-
-    if (notifEnabledToggle) {
-        notifEnabledToggle.checked = settings.notif_enabled !== false;
-        notifEnabledToggle.onchange = async () => {
-            settings.notif_enabled = notifEnabledToggle.checked;
-            await window.agPatchSettings({ notif_enabled: settings.notif_enabled });
-        };
-    }
-
-    if (btnCheckNow) {
-        btnCheckNow.onclick = async () => {
-            btnCheckNow.textContent = 'Проверяем…';
-            btnCheckNow.disabled = true;
-            chrome.runtime.sendMessage({ action: 'force_check_episodes' }, () => {
-                setTimeout(async () => {
-                    await render24hNotifications();
-                    btnCheckNow.textContent = 'Готово';
-                    setTimeout(() => {
-                        btnCheckNow.textContent = 'Проверить';
-                        btnCheckNow.disabled = false;
-                    }, 1200);
-                }, 1000);
-            });
-        };
-    }
-
-    async function render24hNotifications() {
-        if (!notifPanelItems) return;
-        try {
-            const data = await chrome.storage.local.get(['notified_episodes_history']);
-            const history = Array.isArray(data.notified_episodes_history) ? data.notified_episodes_history : [];
-            const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 hours
-
-            const freshItems = history.filter(item => item && item.timestamp && item.timestamp > cutoff);
-
-            if (notifTabBadge) {
-                if (freshItems.length > 0) {
-                    notifTabBadge.textContent = freshItems.length;
-                    notifTabBadge.style.display = 'inline-block';
-                } else {
-                    notifTabBadge.style.display = 'none';
-                }
-            }
-
-            if (freshItems.length === 0) {
-                notifPanelItems.innerHTML = `
-                    <div class="panel-note">Новых серий за последние 24 часа не выходило</div>
-                `;
-                return;
-            }
-
-            notifPanelItems.innerHTML = '';
-            freshItems.forEach(item => {
-                const row = document.createElement('div');
-                row.className = 'anime-row';
-
-                const posterRaw = item.poster || '../icons/icon128.png';
-                const posterSrc = (window.agNormalizePosterUrl && typeof window.agNormalizePosterUrl === 'function')
-                    ? (window.agNormalizePosterUrl(posterRaw) || posterRaw)
-                    : posterRaw;
-                const metaText = item.voiceovers ? item.voiceovers : 'Новая серия';
-                const epLabel = item.episode ? `${item.episode} эп.` : '';
-                const safeTitle = escapeHtml(item.title || '');
-
-                row.innerHTML = `
-                    <img src="${escapeHtml(posterSrc)}" class="anime-thumb" alt="poster">
-                    <div class="anime-row-body">
-                        <div class="anime-title" title="${safeTitle}">${safeTitle} ${epLabel ? `<small>${escapeHtml(epLabel)}</small>` : ''}</div>
-                        <div class="anime-progress">${escapeHtml(metaText)}</div>
-                    </div>
-                    <button class="play-btn" data-title="${safeTitle}" aria-label="Смотреть">${AgUI.icon('play', 14)}</button>
-                `;
-
-                bindPopupPoster(row.querySelector('img.anime-thumb'), item.animeId);
-                const watchBtn = row.querySelector('.play-btn');
-                watchBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    if (row.querySelector('.shiki-portal-choice')) return;
-
-                    if (item.animegoUrl && item.jutsuUrl) {
-                        const choiceBar = document.createElement('div');
-                        choiceBar.className = 'shiki-portal-choice';
-                        choiceBar.innerHTML = `
-                            <button class="btn-choice btn-choice-animego" title="Смотреть на AnimeGO">AnimeGO</button>
-                            <button class="btn-choice btn-choice-jutsu" title="Смотреть на JUT-SU">JUT-SU</button>
-                        `;
-                        watchBtn.replaceWith(choiceBar);
-
-                        choiceBar.querySelector('.btn-choice-animego').onclick = (ev) => {
-                            ev.stopPropagation();
-                            window.open(item.animegoUrl, '_blank');
-                        };
-                        choiceBar.querySelector('.btn-choice-jutsu').onclick = (ev) => {
-                            ev.stopPropagation();
-                            window.open(item.jutsuUrl, '_blank');
-                        };
-                    } else {
-                        const targetUrl = item.animegoUrl || item.jutsuUrl || `https://animego.me/search/anime?q=${encodeURIComponent(item.title || '')}`;
-                        window.open(targetUrl, '_blank');
-                    }
-                };
-
-                row.onclick = () => {
-                    const choice = row.querySelector('.shiki-portal-choice');
-                    if (!choice && watchBtn && watchBtn.parentNode) {
-                        watchBtn.click();
-                    }
-                };
-
-                notifPanelItems.appendChild(row);
-            });
-        } catch (e) {
-            console.warn('[Anime+] Error rendering 24h notifications:', e);
-        }
-    }
-
-    render24hNotifications();
 });
-
-

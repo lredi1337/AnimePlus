@@ -1,19 +1,19 @@
-// Уведомления о сериях, очередь отправки прогресса и ограничение запросов к Shikimori (modules/bg-shiki.js)
+// Список «Смотрю», очередь отправки прогресса и ограничение запросов к Shikimori (modules/bg-shiki.js)
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadInContext, flush } = require('./helpers');
+const { loadInContext } = require('./helpers');
 
 const DAY = 864e5;
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status });
 
-function loadBg({ store = {}, route = () => json({}), windows = {} } = {}) {
+function loadBg({ store = {}, route = () => json({}) } = {}) {
     const local = { shiki_access_token: 't', shiki_token_expires_at: 9999999999, shiki_user: { id: 1 }, ...store };
     const area = (data) => ({
         get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(k => k in data).map(k => [k, data[k]])),
         set: async (obj) => { Object.assign(data, obj); },
         remove: async (keys) => { (Array.isArray(keys) ? keys : [keys]).forEach(k => delete data[k]); }
     });
-    const log = { windows: [], notifications: [], requests: [], requestTimes: [] };
+    const log = { requests: [], requestTimes: [], alarmsCleared: [] };
     const fetchMock = async (url, options = {}) => {
         log.requests.push({ url: String(url), method: options.method || 'GET', body: options.body });
         log.requestTimes.push(Date.now());
@@ -25,129 +25,12 @@ function loadBg({ store = {}, route = () => json({}), windows = {} } = {}) {
         SHIKI_CREDENTIALS: { client_id: 'client', worker_url: 'https://worker.test' },
         chrome: {
             storage: { local: area(local), session: area({}), onChanged: noop },
-            alarms: { create() {}, get: async () => null, onAlarm: noop },
-            tabs: { query: async () => [], sendMessage: async () => {}, create() {} },
-            runtime: { getManifest: () => ({ version: '0' }), getURL: p => `chrome-extension://x/${p}`, onInstalled: noop, onStartup: noop },
-            notifications: { onClicked: noop, onButtonClicked: noop, clear() {}, create: (id, opts) => { log.notifications.push({ id, ...opts }); } },
-            windows: {
-                getLastFocused: async () => ({ width: 1000, height: 800, left: 0, top: 0, state: 'normal', ...windows.current }),
-                create: async (opts) => {
-                    if (windows.createFails) throw new Error('нет окна');
-                    log.windows.push(opts);
-                }
-            }
+            alarms: { create() {}, get: async () => null, clear: async (name) => log.alarmsCleared.push(name), onAlarm: noop },
+            runtime: { getManifest: () => ({ version: '0' }), getURL: p => `chrome-extension://x/${p}`, onInstalled: noop, onStartup: noop }
         }
     });
-    ctx.findAnimeGoDirectUrl = async () => 'https://animego.me/anime/test-1';
-    ctx.findJutsuDirectUrl = async () => null;
     return { ctx, local, log };
 }
-
-/** Сервер Shikimori: тайтл id 100 в списке «Смотрю» */
-function shiki({ aired = 7, status = 'ongoing', total = 12, watched = 7, nextEpisode = 8, nextAt = Date.now() + 5 * DAY, calendarFails = false } = {}) {
-    return (url) => {
-        if (url.includes('/api/v2/user_rates')) return json([{ id: 5, target_id: 100, episodes: watched }]);
-        if (url.includes('/api/animes?ids')) return json([{ id: 100, russian: 'Тест', name: 'Test', kind: 'tv', status, episodes: total, episodes_aired: aired, image: { original: 'https://x/p.jpg' } }]);
-        if (url.includes('/api/calendar')) {
-            if (calendarFails) return json({}, 500);
-            return json(nextEpisode ? [{ next_episode: nextEpisode, next_episode_at: new Date(nextAt).toISOString(), anime: { id: 100, name: 'Test', russian: 'Тест' } }] : []);
-        }
-        return json({});
-    };
-}
-
-const check = async (t, manual = false) => {
-    await t.ctx.checkNewEpisodeNotifications(manual);
-    await flush();
-};
-
-test('серия ещё не вышла: уведомления нет', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki() });
-    await check(t);
-    assert.equal(t.log.windows.length, 0);
-    assert.equal(t.local.shiki_aired_seen[100], 7);
-});
-
-test('первая проверка только запоминает вышедшее: при обновлении расширения нет потока окон', async () => {
-    const t = loadBg({ route: shiki({ watched: 2 }) });
-    await check(t);
-    assert.equal(t.log.windows.length, 0);
-    assert.equal(t.local.shiki_aired_seen[100], 7);
-});
-
-test('вышла новая серия: одно уведомление с верным номером, повторная проверка молчит', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, nextEpisode: 9 }) });
-    await check(t);
-    assert.equal(t.log.windows.length, 1);
-    assert.equal(t.local.notified_episodes_history[0].episode, 8);
-    assert.equal(t.local.shiki_aired_seen[100], 8);
-    await check(t);
-    assert.equal(t.log.windows.length, 1);
-});
-
-test('в календаре время серии прошло, а счётчик Shikimori отстаёт: серия считается вышедшей', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 7, nextEpisode: 8, nextAt: Date.now() - 3600000 }) });
-    await check(t);
-    assert.equal(t.local.notified_episodes_history[0].episode, 8);
-});
-
-test('последняя серия: тайтла больше нет в календаре, уведомление всё равно приходит', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 11 } }, route: shiki({ status: 'released', aired: 0, total: 12, watched: 11, nextEpisode: 0 }) });
-    await check(t);
-    assert.equal(t.local.notified_episodes_history[0].episode, 12);
-});
-
-test('серия уже просмотрена: уведомления нет, вышедшая запоминается', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, watched: 8, nextEpisode: 9 }) });
-    await check(t);
-    assert.equal(t.log.windows.length, 0);
-    assert.equal(t.local.shiki_aired_seen[100], 8);
-});
-
-test('календарь не ответил: проверка работает по списку и не откатывает вышедшее', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, calendarFails: true }) });
-    await check(t);
-    assert.equal(t.log.windows.length, 1);
-    assert.equal(t.local.shiki_aired_seen[100], 8);
-});
-
-test('данные тайтла не пришли: вышедшее не теряется и окна нет', async () => {
-    const route = (url) => {
-        if (url.includes('/api/animes?ids')) return json([], 500);
-        if (url.includes('/api/calendar')) return json([]);
-        return shiki()(url);
-    };
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route });
-    await check(t);
-    assert.equal(t.log.windows.length, 0);
-    assert.equal(t.local.shiki_aired_seen[100], 7);
-});
-
-test('окно уведомления не забирает фокус у видео', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, nextEpisode: 9 }) });
-    await check(t);
-    assert.equal(t.log.windows[0].focused, false);
-});
-
-test('браузер в полном экране: вместо окна системное уведомление', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, nextEpisode: 9 }), windows: { current: { state: 'fullscreen' } } });
-    await check(t);
-    assert.equal(t.log.windows.length, 0);
-    assert.equal(t.log.notifications.length, 1);
-    assert.match(t.log.notifications[0].title, /8/);
-});
-
-test('окно не открылось: уведомление не теряется', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, nextEpisode: 9 }), windows: { createFails: true } });
-    await check(t);
-    assert.equal(t.log.notifications.length, 1);
-});
-
-test('несуществующий адрес Kodik больше не запрашивается', async () => {
-    const t = loadBg({ store: { shiki_aired_seen: { 100: 7 } }, route: shiki({ aired: 8, nextEpisode: 9 }) });
-    await check(t);
-    assert.equal(t.log.requests.some(r => /kodik/i.test(r.url)), false);
-});
 
 test('список длиннее 50 тайтлов приходит целиком, данные запрашиваются частями', async () => {
     const rates = Array.from({ length: 120 }, (_, i) => ({ id: i + 1, target_id: i + 1000, episodes: 1 }));
@@ -277,4 +160,20 @@ test('ответ 429 повторяется на том же адресе, а н
     const res = await t.ctx.fetchShikimoriApi('/api/animes/1');
     assert.equal(res.ok, true);
     assert.ok(t.log.requests.every(r => r.url.startsWith('https://shikimori.io/')));
+});
+
+// ---------- Следы уведомлений ----------
+
+test('после обновления от уведомлений не остаётся ни будильника, ни данных', async () => {
+    const t = loadBg({ store: {
+        shiki_aired_seen: { 1: 2 },
+        notified_episodes: ['ep_1_2'],
+        notified_episodes_history: [{}],
+        active_notifications_map: { a: {} },
+        ag_settings: { notif_enabled: false, autoNext: false }
+    } });
+    await t.ctx.removeNotificationLeftovers();
+    assert.deepEqual(t.log.alarmsCleared, ['check_new_episodes_alarm']);
+    for (const key of ['shiki_aired_seen', 'notified_episodes', 'notified_episodes_history', 'active_notifications_map']) assert.equal(key in t.local, false, key);
+    assert.deepEqual(JSON.parse(JSON.stringify(t.local.ag_settings)), { autoNext: false }, 'остальные настройки целы');
 });

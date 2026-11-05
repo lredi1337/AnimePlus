@@ -122,7 +122,6 @@ const MESSAGE_HANDLERS = {
         if (sender.tab && sender.tab.id) chrome.tabs.remove(sender.tab.id).catch(() => {});
         return { success: true };
     }, failure],
-    force_check_episodes: [async () => { await checkNewEpisodeNotifications(true); return { success: true }; }, failure],
 
     // Сайты из реестра (modules/bg-sites.js)
     resolve_site_url: [async (m) => ({ url: await resolveSiteUrl(m.siteId, m) }), () => ({ url: null })],

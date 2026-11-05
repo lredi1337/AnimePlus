@@ -6,7 +6,6 @@
     'use strict';
 
     const PATHS = {
-        bell: '<path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2h-15l1.5-2Z"/><path d="M10 21a2.2 2.2 0 0 0 4 0"/>',
         check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
         close: '<path d="m6 6 12 12M18 6 6 18"/>',
         external: '<path d="M14 5h5v5M19 5l-8.5 8.5"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 18V8a1.5 1.5 0 0 1 1.5-1.5H10"/>',
