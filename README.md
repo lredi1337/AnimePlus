@@ -218,12 +218,26 @@ AnimeVost часто меняет адрес. Все зеркала на vost.pw
 </details>
 
 <details>
+<summary><b>🦊 Лиса на сайтах</b></summary>
+<br>
+
+| Меню лисы на странице тайтла |
+| :---: |
+| <img src="assets/fox_dock.jpg" width="700" alt="Значок лисы с открытым меню: оценка Shikimori, Топ и случайное аниме" /> |
+
+</details>
+
+<details>
 <summary><b>🏆 Топ Shikimori</b></summary>
 <br>
 
-| Весь рейтинг | Переход по оценкам |
+| Весь рейтинг поверх сайта | Переход по оценкам |
 | :---: | :---: |
-| <img src="assets/top_overlay.jpg" width="450" alt="Окно Топа Shikimori" /> | <img src="assets/top_scores.jpg" width="450" alt="Топ Shikimori с оценками от 7 до 8" /> |
+| <img src="assets/top_overlay.jpg" width="450" alt="Окно Топа Shikimori поверх сайта" /> | <img src="assets/top_scores.jpg" width="450" alt="Топ Shikimori с оценками от 7 до 8" /> |
+
+| Вкладка из окна расширения с выбором сайта |
+| :---: |
+| <img src="assets/top_pick.jpg" width="700" alt="Вкладка Топа с выпадающим списком сайтов" /> |
 
 </details>
 
