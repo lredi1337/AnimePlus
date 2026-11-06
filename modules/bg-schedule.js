@@ -117,8 +117,6 @@ async function toScheduleEntry(item) {
     const kind = anime.kind ? anime.kind.toUpperCase() : 'TV';
     const year = anime.aired_on ? parseInt(anime.aired_on.split('-')[0]) : null;
     const nextEpisodeAt = item.next_episode_at || null;
-    const fallbackJutsuUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(russian || origTitle)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(origTitle)}&ag_year=${encodeURIComponent(year || '')}&ag_kind=${encodeURIComponent(kind || '')}`;
-    const cachedDirect = await getDirectUrlFromCache(getCacheKey(russian, origTitle, year));
     return {
         id: anime.id,
         russian,
@@ -129,8 +127,7 @@ async function toScheduleEntry(item) {
         year,
         nextEpisode: item.next_episode || null,
         nextEpisodeAt,
-        dayOfWeek: nextEpisodeAt ? new Date(nextEpisodeAt).getDay() : null,
-        jutsuUrl: cachedDirect || fallbackJutsuUrl
+        dayOfWeek: nextEpisodeAt ? new Date(nextEpisodeAt).getDay() : null
     };
 }
 

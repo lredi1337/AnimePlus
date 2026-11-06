@@ -13,7 +13,7 @@ const backgroundShared = Object.fromEntries([
     'ensureRetryAlarm', 'exchangeShikiCode', 'fetchShikimoriApi', 'fillShikiPosters',
     'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
     'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
-    'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'searchShikimoriAnime', 'setDirectUrlInCache',
+    'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'searchShikimoriAnime', 'getShikiGenres', 'setDirectUrlInCache',
     'getAudioFingerprints', 'getRemoteConfig', 'getSharedTimings', 'reportAudioTiming', 'getEpisodePrints', 'saveEpisodePrint', 'pruneAudioCache',
     'SHIKI_CLIENT_ID', 'beginShikiAuth', 'completeShikiAuth', 'isShikiAuthExpected', 'isShikiCodeInProgress', 'shikiAuthCodeFromUrl',
     'getShikiStatus', 'resetTodayCount', 'getShikiRelated', 'getOngoingSchedule', 'resolveJutsuCover', 'getRandomShikimoriAnime',

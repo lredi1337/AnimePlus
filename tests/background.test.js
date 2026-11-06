@@ -131,7 +131,7 @@ test('расписание применяет настройки зрителя'
     assert.deepEqual(out.map(x => x.id), [1]);
     assert.equal(out[0].poster, 'https://shikimori.io/p/1.jpg');
     assert.equal(out[0].kind, 'TV');
-    assert.match(out[0].jutsuUrl, /^https:\/\/jut-su\.net\/\?do=search/);
+    assert.equal(out[0].jutsuUrl, undefined, 'тайтл открывается синтетической страницей AnimeGO по id, а не на Jut-Su');
 
     const off = await send({ action: 'get_ongoing_schedule', settings: { ongoing_enabled: false } });
     assert.deepEqual(plain(off.response), { schedule: [] });

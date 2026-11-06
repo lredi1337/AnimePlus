@@ -66,12 +66,14 @@
             poster = (gql && gql.posters && gql.posters[raw.id]) || poster;
         }
 
-        let rawScreens = Array.isArray(raw.screenshots) ? raw.screenshots : null;
-        if (!rawScreens) {
-            const scr = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${shikiId}/screenshots` });
-            rawScreens = scr && Array.isArray(scr.data) ? scr.data : [];
-        }
-        const screenshots = rawScreens.slice(0, 10).map(s => normalize(s.original || s.preview || '')).filter(Boolean);
+        // В карточке тайтла Shikimori только первые 2–4 кадра, все кадры отдаёт отдельный запрос
+        const scr = await window.agSendMessage({ action: 'fetch_shikimori', url: `https://shikimori.io/api/animes/${shikiId}/screenshots` });
+        const rawScreens = (scr && Array.isArray(scr.data) && scr.data.length ? scr.data : raw.screenshots) || [];
+        const shots = rawScreens
+            .map(x => ({ full: normalize(x.original || x.preview || ''), thumb: normalize(x.preview || x.original || '') }))
+            .filter(x => x.full);
+        const screenshots = shots.map(x => x.full);
+        const screenshotThumbs = shots.map(x => x.thumb);
 
         const kindMap = { tv: 'ТВ Сериал', movie: 'Фильм', ova: 'OVA', ona: 'ONA', special: 'Спешл', music: 'Клип', tv_special: 'ТВ Спешл' };
 
@@ -93,6 +95,7 @@
             studios: Array.isArray(raw.studios) ? raw.studios.map(s => s.name) : [],
             videos: Array.isArray(raw.videos) ? raw.videos : [],
             screenshots,
+            screenshotThumbs,
             english: Array.isArray(raw.english) ? raw.english.filter(Boolean) : []
         };
     };
@@ -506,12 +509,15 @@
                     }
 
                     if (screenshotsBlock && data.screenshots && data.screenshots.length > 0) {
-                        const gridScreenshots = data.screenshots.slice(0, 4);
+                        // Как на страницах AnimeGO: в сетке один ряд из 4 кадров, а нажатие открывает просмотрщик со всеми кадрами.
+                        // В сетке и ленте просмотрщика уменьшенные копии, полный размер — только у открытого кадра
+                        const thumbUrls = data.screenshotThumbs && data.screenshotThumbs.length === data.screenshots.length ? data.screenshotThumbs : data.screenshots;
+                        const gridScreenshots = thumbUrls.slice(0, 4);
                         screenshotsBlock.className = 'screenshots grid mb-4';
                         screenshotsBlock.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; width: 100%;';
                         screenshotsBlock.innerHTML = gridScreenshots.map((src, idx) => `
                             <div class="ag-screenshot-thumb" data-idx="${idx}" style="aspect-ratio: 16 / 9; width: 100%; position: relative; overflow: hidden; border-radius: 8px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='scale(1.03)'; this.style.boxShadow='0 6px 15px rgba(0,0,0,0.4)';" onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                                <img referrerpolicy="no-referrer" src="${escapeHtml(src)}" class="rounded" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                                <img referrerpolicy="no-referrer" loading="lazy" decoding="async" src="${escapeHtml(src)}" class="rounded" style="width: 100%; height: 100%; object-fit: cover; display: block;">
                             </div>
                         `).join('');
 
@@ -522,7 +528,7 @@
                             if (!lightboxOverlay) {
                                 lightboxOverlay = document.createElement('div');
                                 lightboxOverlay.id = 'ag-screenshot-lightbox';
-                                lightboxOverlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 12, 16, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 999999; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);';
+                                lightboxOverlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 12, 16, 0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 2147483000; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);';
                                 lightboxOverlay.innerHTML = `
                                     <div style="position: absolute; top: 0; left: 0; width: 100%; padding: 24px 36px; display: flex; justify-content: space-between; align-items: center; z-index: 100; box-sizing: border-box;">
                                         <div class="ag-lb-counter" style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.65); letter-spacing: 1.5px; text-transform: uppercase; font-family: system-ui, -apple-system, sans-serif;">
@@ -532,13 +538,18 @@
                                     </div>
                                     <button class="ag-lb-prev" style="position: absolute; left: 36px; top: 50%; transform: translateY(-50%); background: var(--ap-hover); border: 1px solid var(--ap-line); color: #fff; width: 54px; height: 54px; border-radius: 50%; font-size: 22px; cursor: pointer; z-index: 10; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.background='var(--ap-line-strong)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='var(--ap-hover)'; this.style.borderColor='var(--ap-line)'; this.style.transform='translateY(-50%)';">❮</button>
                                     <div class="ag-lightbox-content" style="position: relative; max-width: 82vw; max-height: 76vh; display: flex; align-items: center; justify-content: center;">
-                                        <img class="ag-lb-img" referrerpolicy="no-referrer" src="" style="max-width: 82vw; max-height: 76vh; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px var(--ap-line); object-fit: contain; user-select: none; transition: opacity 0.2s ease, transform 0.2s ease;">
+                                        <img class="ag-lb-img" referrerpolicy="no-referrer" src="" style="max-width: 82vw; max-height: 76vh; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.8), 0 0 0 1px var(--ap-line); object-fit: contain; user-select: none; transition: filter 0.2s ease, opacity 0.2s ease;">
+                                        <div class="ag-lb-loading" role="status" aria-label="Кадр загружается" style="position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; pointer-events: none; color: #fff; font: 600 13px system-ui, -apple-system, sans-serif; text-shadow: 0 1px 6px rgba(0,0,0,0.8);">
+                                            <span class="ag-lb-spinner" style="width: 42px; height: 42px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.25); border-top-color: var(--ap-accent, #ef4444); animation: ag-lb-spin 0.8s linear infinite;"></span>
+                                            <span>Загружается…</span>
+                                        </div>
+                                        <style>@keyframes ag-lb-spin { to { transform: rotate(360deg); } } @media (prefers-reduced-motion: reduce) { .ag-lb-spinner { animation-duration: 2.4s !important; } }</style>
                                     </div>
                                     <button class="ag-lb-next" style="position: absolute; right: 36px; top: 50%; transform: translateY(-50%); background: var(--ap-hover); border: 1px solid var(--ap-line); color: #fff; width: 54px; height: 54px; border-radius: 50%; font-size: 22px; cursor: pointer; z-index: 10; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);" onmouseover="this.style.background='var(--ap-line-strong)'; this.style.borderColor='rgba(255, 255, 255, 0.3)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='var(--ap-hover)'; this.style.borderColor='var(--ap-line)'; this.style.transform='translateY(-50%)';">❯</button>
-                                    <div class="ag-lb-strip" style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; padding: 8px 14px; background: var(--ap-hover); border: 1px solid var(--ap-line); border-radius: 30px; backdrop-filter: blur(16px); z-index: 10;">
-                                        ${data.screenshots.map((src, i) => `
-                                            <div class="ag-lb-dot" data-idx="${i}" style="width: 44px; height: 28px; border-radius: 6px; overflow: hidden; opacity: 0.4; border: 2px solid transparent; cursor: pointer; transition: all 0.2s ease;">
-                                                <img referrerpolicy="no-referrer" src="${escapeHtml(src)}" style="width: 100%; height: 100%; object-fit: cover;">
+                                    <div class="ag-lb-strip" style="position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); max-width: 82vw; overflow-x: auto; scrollbar-width: thin; display: flex; gap: 10px; padding: 8px 14px; background: var(--ap-hover); border: 1px solid var(--ap-line); border-radius: 30px; backdrop-filter: blur(16px); z-index: 10;">
+                                        ${thumbUrls.map((src, i) => `
+                                            <div class="ag-lb-dot" data-idx="${i}" style="flex: none; width: 44px; height: 28px; border-radius: 6px; overflow: hidden; opacity: 0.4; border: 2px solid transparent; cursor: pointer; transition: all 0.2s ease;">
+                                                <img referrerpolicy="no-referrer" loading="lazy" src="${escapeHtml(src)}" style="width: 100%; height: 100%; object-fit: cover;">
                                             </div>
                                         `).join('')}
                                     </div>
@@ -552,23 +563,58 @@
                                 const currEl = lightboxOverlay.querySelector('#ag-lb-curr');
                                 const dots = lightboxOverlay.querySelectorAll('.ag-lb-dot');
 
+                                const lbLoading = lightboxOverlay.querySelector('.ag-lb-loading');
+                                const loaded = new Set();
+                                // Полный кадр грузится в фоне; соседние подгружаются заранее, чтобы листать без ожидания
+                                const preload = (index, onDone) => {
+                                    const src = data.screenshots[index];
+                                    if (!src) return;
+                                    const img = new Image();
+                                    img.referrerPolicy = 'no-referrer';
+                                    img.onload = () => { loaded.add(src); if (onDone) onDone(true); };
+                                    img.onerror = () => { if (onDone) onDone(false); };
+                                    img.src = src;
+                                };
+
+                                // Сразу показываем выбранный кадр: пока полный размер грузится, на его месте размытая
+                                // уменьшенная копия того же кадра и значок загрузки, а не прежний кадр
                                 const showImage = (index) => {
                                     if (index < 0) index = data.screenshots.length - 1;
                                     if (index >= data.screenshots.length) index = 0;
                                     currentIndex = index;
-
-                                    lbImg.style.opacity = '0.4';
-                                    lbImg.style.transform = 'scale(0.98)';
-                                    setTimeout(() => {
-                                        lbImg.src = data.screenshots[currentIndex];
+                                    const full = data.screenshots[index];
+                                    const ready = () => {
+                                        if (currentIndex !== index) return;
+                                        lbImg.src = full;
+                                        lbImg.style.width = '';
+                                        lbImg.style.filter = 'none';
                                         lbImg.style.opacity = '1';
-                                        lbImg.style.transform = 'scale(1)';
-                                    }, 100);
+                                        lbLoading.style.display = 'none';
+                                        preload((index + 1) % data.screenshots.length);
+                                        preload((index - 1 + data.screenshots.length) % data.screenshots.length);
+                                    };
+
+                                    if (loaded.has(full)) {
+                                        ready();
+                                    } else {
+                                        // Уменьшенная копия меньше полного кадра: держим прежний размер окна, чтобы оно не прыгало
+                                        const width = lbImg.getBoundingClientRect().width;
+                                        lbImg.style.width = width > 0 ? `${Math.round(width)}px` : 'min(82vw, calc(76vh * 16 / 9))';
+                                        lbImg.src = thumbUrls[index] || full;
+                                        lbImg.style.filter = 'blur(6px) brightness(0.7)';
+                                        lbLoading.style.display = 'flex';
+                                        preload(index, (ok) => {
+                                            if (ok) ready();
+                                            else if (currentIndex === index) lbLoading.querySelector('span:last-child').textContent = 'Не удалось загрузить кадр';
+                                        });
+                                        lbLoading.querySelector('span:last-child').textContent = 'Загружается…';
+                                    }
 
                                     if (currEl) currEl.textContent = currentIndex + 1;
 
                                     dots.forEach((dot, idx) => {
                                         if (idx === currentIndex) {
+                                            dot.scrollIntoView({ block: 'nearest', inline: 'center' });
                                             dot.style.opacity = '1';
                                             dot.style.borderColor = 'var(--ap-accent)';
                                             dot.style.transform = 'scale(1.1)';

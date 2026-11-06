@@ -743,9 +743,11 @@
             const epNum = item.nextEpisode ? `Серия ${item.nextEpisode}` : 'Новая серия';
             const isAccordionLayout = !!targetDayEl.closest('.anime-widget') || (targetDayEl.id && targetDayEl.id.startsWith('collapse-'));
 
+            // Как и родные карточки, открывается в этой вкладке. Тайтла нет на AnimeGO: синтетическая страница
+            // (ag-synthetic.js) покажет его и даст выбрать, где смотреть. Её строит расширение при обычной загрузке
             const card = document.createElement('a');
-            card.href = item.jutsuUrl;
-            card.target = '_blank';
+            card.href = `/anime/shiki-${item.id}`;
+            card.dataset.turbo = 'false';
             card.dataset.agShikiId = item.id;
             card.dataset.agRussian = item.russian || '';
             card.dataset.agName = item.name || '';
@@ -767,7 +769,6 @@
                         </div>
                         <div class="aw-meta small opacity-75 d-flex align-items-center gap-1 flex-wrap">
                             <span>${epNum}</span>
-                            <span class="badge" style="font-size: 0.65rem; font-weight: 500; background: var(--ap-accent-soft) !important; color: var(--ap-accent) !important; border: 1px solid var(--ap-accent-line) !important; padding: 1px 5px; border-radius: 4px; vertical-align: middle;">jut-su.net ↗</span>
                         </div>
                     </div>
                 `;
@@ -785,7 +786,6 @@
                         <div class="text-truncate" style="font-weight: 600; font-size: 0.9rem; color: #fff; margin-bottom: 2px;">${titleStr}</div>
                         <div class="text-truncate" style="font-size: 0.78rem; color: var(--ap-text-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                             <span>${epNum}</span>
-                            <span class="badge" style="font-size: 0.65rem; font-weight: 500; background: var(--ap-accent-soft) !important; color: var(--ap-accent) !important; border: 1px solid var(--ap-accent-line) !important; padding: 1px 5px; border-radius: 4px;">jut-su.net ↗</span>
                         </div>
                     </div>
                 `;
@@ -805,40 +805,6 @@
                     }
                 });
             }
-
-            card.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                let targetUrl = item.jutsuUrl || card.href;
-                if (targetUrl && !targetUrl.includes('do=search') && !targetUrl.includes('subaction=')) {
-                    window.open(targetUrl, '_blank');
-                    return;
-                }
-
-                const russian = card.dataset.agRussian || item.russian || '';
-                const name = card.dataset.agName || item.name || '';
-                const year = card.dataset.agYear || item.year || '';
-                const kind = card.dataset.agKind || item.kind || '';
-                const searchQuery = russian || name;
-                const fallbackUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(name)}&ag_year=${encodeURIComponent(year)}&ag_kind=${encodeURIComponent(kind)}`;
-
-                try {
-                    const res = await new Promise((resolve) => {
-                        const timer = setTimeout(() => resolve(null), 250);
-                        chrome.runtime.sendMessage({
-                            action: "resolve_direct_jutsu_url",
-                            russian, name, year, kind, fallbackUrl
-                        }, (resp) => {
-                            clearTimeout(timer);
-                            resolve(resp);
-                        });
-                    });
-                    window.open((res && res.url) ? res.url : fallbackUrl, '_blank');
-                } catch (err) {
-                    window.open(fallbackUrl, '_blank');
-                }
-            });
 
             targetList.appendChild(card);
         });

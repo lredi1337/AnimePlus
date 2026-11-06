@@ -1,12 +1,11 @@
 // modules/animego/ag-jutsu-search.js
-// Модуль интеграции нативного поиска Jut-Su в поисковую выдачу AnimeGO
+// Тайтлы Shikimori, которых нет на AnimeGO, в выдаче поиска сайта. Карточка повторяет разметку самого сайта,
+// а ведёт на синтетическую страницу /anime/shiki-<id> (ag-synthetic.js): там зритель сам выбирает, где смотреть
 
 (function () {
     'use strict';
 
     let isRenderingJutsuSearch = false;
-
-    const escapeHtml = window.agEscapeHtml;
 
     function cleanTitleForCompare(str) {
         if (!str) return '';
@@ -88,14 +87,79 @@
         return 0;
     }
 
-    const AG_NO_POSTER_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="180" height="252" viewBox="0 0 180 252">
-  <rect width="100%" height="100%" fill="#1a1e29"/>
-  <rect x="2" y="2" width="176" height="248" rx="6" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
-  <text x="50%" y="46%" dominant-baseline="middle" text-anchor="middle" fill="#64748b" font-family="sans-serif" font-size="32">🎬</text>
-  <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" fill="#475569" font-family="sans-serif" font-size="11" font-weight="600" letter-spacing="1">НЕТ ОБЛОЖКИ</text>
-</svg>
-`);
+    // Оценка на постере, как у самого сайта: rating-badge positive / neutral / negative
+    function ratingClass(score) {
+        if (score >= 7) return 'positive';
+        if (score >= 5) return 'neutral';
+        return 'negative';
+    }
+
+    /** Карточка выдачи в разметке AnimeGO (снята с выдачи сайта) */
+    function buildItem(item) {
+        const el = (tag, cls, text) => {
+            const node = document.createElement(tag);
+            if (cls) node.className = cls;
+            if (text) node.textContent = text;
+            return node;
+        };
+        const title = item.russian || item.name;
+        const a = el('a', 'ajax-search__item d-flex list-group-item list-group-item-action ag-shiki-item');
+        a.href = `/anime/shiki-${item.id}`;
+        // Синтетическую страницу строит расширение при обычной загрузке, переход силами Turbo её не покажет
+        a.dataset.turbo = 'false';
+        a.setAttribute('aria-selected', 'false');
+        a.setAttribute('role', 'button');
+
+        const picture = el('div', 'me-3 position-relative');
+        const score = parseFloat(item.score);
+        if (score > 0) picture.append(el('div', `rating-badge ${ratingClass(score)}`, score.toFixed(1)));
+        const frame = el('span', 'd-block ajax-search__item-picture image__picture aspect-ratio-5-7');
+        const img = el('img', 'img-fluid rounded');
+        img.alt = title;
+        img.referrerPolicy = 'no-referrer';
+        img.src = item.poster || '';
+        img.dataset.agPosterId = item.id;
+        img.dataset.agPosterRu = item.russian || '';
+        img.dataset.agPosterEn = item.name || '';
+        frame.append(img);
+        picture.append(frame);
+
+        const body = el('div', 'ajax-search__item-body mw-0');
+        body.append(el('div', 'ajax-search__item-title h5 fw-normal mb-1 text-line-clamp', title));
+        if (item.name && item.name !== title) {
+            const orig = el('div', 'fw-lighter small mb-2 text-line-clamp', item.name);
+            orig.style.setProperty('--lines-to-show', '1');
+            body.append(orig);
+        }
+        const meta = [getKindLabel(item.kind), item.year].filter(Boolean);
+        if (meta.length) {
+            const row = el('div', 'ajax-search__item-genres mb-2 d-flex gap-1');
+            meta.forEach((text, i) => {
+                if (i) {
+                    const slash = el('span', 'fw-lighter', '/');
+                    slash.setAttribute('aria-hidden', 'true');
+                    row.append(slash);
+                }
+                const wrap = el('span');
+                wrap.append(el('span', 'ajax-search__item-genres__link', text));
+                row.append(wrap);
+            });
+            body.append(row);
+        }
+        if (item.genres && item.genres.length) {
+            const box = el('div', 'd-none d-sm-block');
+            const line = el('span', 'text-line-clamp');
+            line.style.setProperty('--lines-to-show', '2');
+            item.genres.forEach((genre, i) => {
+                if (i) line.append(', ');
+                line.append(el('span', 'ajax-search__item-genres__link', genre));
+            });
+            box.append(line);
+            body.append(box);
+        }
+        a.append(picture, body);
+        return a;
+    }
 
     window.agInitJutsuSearchEnhancer = function () {
         function renderNativeJutsuItems(results, query) {
@@ -121,11 +185,11 @@
                 if (!resContainer) resContainer = document.getElementById('site-search-results');
                 if (!resContainer) return;
 
-                if (resContainer.dataset.agRenderedQuery === query && resContainer.querySelector('.ag-jutsu-item')) {
+                if (resContainer.dataset.agRenderedQuery === query && resContainer.querySelector('.ag-shiki-item')) {
                     return;
                 }
 
-                const nativeItems = Array.from(resContainer.querySelectorAll('.ajax-search__item:not(.ag-jutsu-item)'));
+                const nativeItems = Array.from(resContainer.querySelectorAll('.ajax-search__item:not(.ag-shiki-item)'));
 
                 const existingAnimeTitles = [];
                 nativeItems.forEach(el => {
@@ -139,7 +203,7 @@
                     }
                 });
 
-                resContainer.querySelectorAll('.ag-jutsu-item').forEach(el => el.remove());
+                resContainer.querySelectorAll('.ag-shiki-item').forEach(el => el.remove());
 
                 const newJutsuElements = [];
                 if (results && results.length > 0) {
@@ -151,100 +215,15 @@
                         if (item.russian) existingAnimeTitles.push(item.russian);
                         if (item.name) existingAnimeTitles.push(item.name);
 
-                        const titleStr = escapeHtml(item.russian || item.name);
-                        const origStr = item.name ? escapeHtml(item.name) : '';
-                        let posterUrl = item.poster || '';
-                        if (!posterUrl || posterUrl.includes('missing') || posterUrl.includes('404') || posterUrl.includes('assets/globals') || posterUrl.includes('no-image') || posterUrl.includes('stub') || posterUrl.includes('no-poster')) {
-                            posterUrl = AG_NO_POSTER_SVG;
-                        }
-                        const yearStr = item.year ? `${item.year}` : '';
-                        const kindLabel = getKindLabel(item.kind);
-
-                        let scoreFormatted = '';
-                        let scoreClass = 'positive';
-                        if (item.score) {
-                            const num = parseFloat(item.score);
-                            if (!isNaN(num) && num > 0) {
-                                scoreFormatted = num.toFixed(1);
-                                if (num < 6.0) scoreClass = 'negative';
-                                else if (num < 7.5) scoreClass = 'neutral';
-                                else scoreClass = 'positive';
-                            }
-                        }
-
-                        const a = document.createElement('a');
-                        a.className = 'ajax-search__item d-flex list-group-item list-group-item-action ag-jutsu-item';
-                        a.href = item.jutsuUrl;
-                        a.target = '_blank';
-                        a.title = `Смотреть ${item.russian || item.name} на Jut.su`;
-                        a.setAttribute('aria-selected', 'false');
-                        a.setAttribute('role', 'button');
-                        a.dataset.agJutsu = '1';
-                        a.dataset.agRussian = item.russian || '';
-                        a.dataset.agName = item.name || '';
-                        a.dataset.agYear = item.year || '';
-                        a.dataset.agKind = item.kind || '';
-
-                        a.addEventListener('click', async (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-
-                            let targetUrl = item.jutsuUrl || a.href;
-                            if (targetUrl && !targetUrl.includes('do=search') && !targetUrl.includes('subaction=')) {
-                                window.open(targetUrl, '_blank');
-                                return;
-                            }
-
-                            const russian = a.dataset.agRussian || item.russian || '';
-                            const name = a.dataset.agName || item.name || '';
-                            const year = a.dataset.agYear || item.year || '';
-                            const kind = a.dataset.agKind || item.kind || '';
-                            const searchQuery = russian || name;
-                            const fallbackUrl = `https://jut-su.net/?do=search&subaction=search&story=${encodeURIComponent(searchQuery)}&ag_from=animeplus&ag_russian=${encodeURIComponent(russian)}&ag_name=${encodeURIComponent(name)}&ag_year=${encodeURIComponent(year)}&ag_kind=${encodeURIComponent(kind)}`;
-
-                            try {
-                                const res = await new Promise((resolve) => {
-                                    const timer = setTimeout(() => resolve(null), 250);
-                                    chrome.runtime.sendMessage({
-                                        action: "resolve_direct_jutsu_url",
-                                        russian, name, year, kind, fallbackUrl
-                                    }, (resp) => {
-                                        clearTimeout(timer);
-                                        resolve(resp);
-                                    });
-                                });
-
-                                if (res && res.url) {
-                                    window.open(res.url, '_blank');
-                                } else {
-                                    window.open(fallbackUrl, '_blank');
-                                }
-                            } catch (err) {
-                                window.open(fallbackUrl, '_blank');
-                            }
-                        });
-
-                        a.innerHTML = `
-                            <div class="flex-shrink-0 me-3 position-relative">
-                                <img class="rounded" src="${escapeHtml(posterUrl)}" alt="${titleStr}" style="width: 48px; height: 68px; object-fit: cover;" data-ag-poster-ru="${titleStr}">
-                            </div>
-                            <div class="flex-grow-1 min-w-0 d-flex flex-column justify-content-center me-2">
-                                <div class="ajax-search__item-title text-truncate fw-bold color-main">${titleStr}</div>
-                                ${origStr ? `<div class="fw-lighter small text-truncate text-secondary mb-1">${origStr}</div>` : ''}
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="badge ag-badge-jutsu">JUT-SU</span>
-                                    ${kindLabel ? `<span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25">${kindLabel}</span>` : ''}
-                                    ${yearStr ? `<span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25">${yearStr}</span>` : ''}
-                                </div>
-                            </div>
-                            ${scoreFormatted ? `<div class="flex-shrink-0 d-flex align-items-center"><span class="ag-rating-badge ag-rating-badge--${scoreClass}">★ ${scoreFormatted}</span></div>` : ''}
-                        `;
-
+                        if (!item.id) return;
+                        const a = buildItem(item);
                         newJutsuElements.push({ element: a, score: calculateRelevanceScore(query, item.russian, item.name) });
                     });
                 }
 
                 newJutsuElements.sort((a, b) => b.score - a.score);
+                // Постер без картинки у Shikimori: настоящий постер подставит общий механизм (ui-utils.js)
+                if (window.agBindPostersIn) newJutsuElements.forEach(({ element }) => window.agBindPostersIn(element));
 
                 newJutsuElements.forEach(itemObj => {
                     const el = itemObj.element;
@@ -268,6 +247,15 @@
                         resContainer.appendChild(el);
                     }
                 });
+
+                // Счётчик «Аниме N» над выдачей учитывает и наши карточки. Сайт пересоздаёт выдачу при каждом вводе,
+                // поэтому число сайта запоминаем в самом счётчике
+                const counter = resContainer.parentElement && resContainer.parentElement.querySelector('h4 .badge');
+                if (counter) {
+                    if (!counter.dataset.agNative) counter.dataset.agNative = counter.textContent.trim();
+                    const native = parseInt(counter.dataset.agNative, 10);
+                    if (!isNaN(native)) counter.textContent = String(native + newJutsuElements.length);
+                }
 
                 resContainer.dataset.agRenderedQuery = query;
             } catch (e) {

@@ -701,23 +701,41 @@ async function resolveShikimoriId({ titles = [], year = '', kind = '' }) {
     return data;
 }
 
-/** Тайтлы для объединённого поиска на AnimeGO: нет в выдаче сайта — ссылка ведёт на поиск Jut-Su */
+// Жанры тайтлов одним запросом GraphQL: в REST-поиске их нет. Без жанров карточка всё равно показывается
+async function getShikiGenres(ids) {
+    const unique = [...new Set(ids.map(id => parseInt(id, 10)).filter(Boolean))];
+    if (unique.length === 0) return {};
+    try {
+        const res = await shikiRateFetch(`${SHIKI_API_BASE}/api/graphql`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ query: `{ animes(ids: "${unique.join(',')}", limit: ${unique.length}) { id genres { russian } } }` })
+        });
+        if (!res.ok) return {};
+        const json = await res.json();
+        const list = json && json.data && Array.isArray(json.data.animes) ? json.data.animes : [];
+        return Object.fromEntries(list.map(a => [String(a.id), (a.genres || []).map(g => g.russian).filter(Boolean)]));
+    } catch (e) {
+        return {};
+    }
+}
+
+/** Тайтлы для объединённого поиска на AnimeGO: тех, что нет в выдаче сайта, открывает синтетическая страница /anime/shiki-<id> */
 async function searchShikimoriAnime(query) {
     const list = await fetchShikimoriApi(`/api/animes?search=${encodeURIComponent(query)}&limit=8&censored=true`);
     if (!Array.isArray(list)) return [];
-    return list.filter(item => !['music', 'pv', 'cm'].includes(item.kind)).map(item => {
-        const russian = item.russian || '';
-        const name = item.name || '';
-        const year = item.aired_on ? item.aired_on.slice(0, 4) : '';
-        const params = new URLSearchParams({ do: 'search', subaction: 'search', story: russian || name, ag_from: 'animeplus', ag_russian: russian, ag_name: name, ag_year: year });
-        return {
-            russian, name, year,
-            kind: item.kind || '',
-            score: item.score,
-            poster: item.image && item.image.original ? `https://shikimori.io${item.image.original}` : '',
-            jutsuUrl: `https://jut-su.net/?${params}`
-        };
-    });
+    const shown = list.filter(item => item && item.id && !['music', 'pv', 'cm'].includes(item.kind));
+    const genres = await getShikiGenres(shown.map(item => item.id));
+    return shown.map(item => ({
+        id: item.id,
+        russian: item.russian || '',
+        name: item.name || '',
+        year: item.aired_on ? item.aired_on.slice(0, 4) : '',
+        kind: item.kind || '',
+        score: item.score,
+        poster: item.image && item.image.original ? `https://shikimori.io${item.image.original}` : '',
+        genres: genres[String(item.id)] || []
+    }));
 }
 
 async function updateShikiUserRate({ shikimoriId, episode, status }) {
