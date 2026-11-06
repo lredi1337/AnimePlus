@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "11.1.0",
+  "version": "11.2.0",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
@@ -126,10 +126,10 @@
         "providers/base.js",
         "providers/animego.js",
         "features/player-bridge.js",
-        "features/title-widgets.js",
-        "features/top-overlay.js",
+        "modules/shared/guide.js",
+        "modules/shared/guide-fox.js",
+        "features/fox-dock.js",
         "features/search-redirect.js",
-        "features/random-anime.js",
         "providers/runtime.js",
         "content-sites.js"
       ],
@@ -169,10 +169,10 @@
         "providers/yani.js",
         "providers/vost.js",
         "features/player-bridge.js",
-        "features/title-widgets.js",
-        "features/top-overlay.js",
+        "modules/shared/guide.js",
+        "modules/shared/guide-fox.js",
+        "features/fox-dock.js",
         "features/search-redirect.js",
-        "features/random-anime.js",
         "providers/runtime.js",
         "content-sites.js"
       ],
@@ -360,6 +360,15 @@
         "https://animego.online/*",
         "https://yammyanime.club/*"
       ]
+    },
+    {
+      "resources": [
+        "top/frame.html"
+      ],
+      "matches": [
+        "https://*/*"
+      ],
+      "use_dynamic_url": true
     }
   ],
   "optional_host_permissions": [

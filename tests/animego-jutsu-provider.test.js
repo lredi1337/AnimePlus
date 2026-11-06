@@ -128,12 +128,14 @@ test('Jut-Su: случайное аниме остаётся на Jut-Su, а н�
     assert.match(provider.getRandomUrl({ russian: 'Фрирен', url: 'https://animego.me/anime/a-1' }), /^\/\?do=search.*story=%D0%A4/);
 });
 
-test('Jut-Su: оценка Shikimori уже на странице — отдельная кнопка не нужна, логотип с плюсом', () => {
-    const { w, provider } = jutsu('<a class="jutsu-header__logo logo">JUT-SU<span>.net</span></a><div class="jutsu-page__ratings-item--shikimori"></div>');
-    assert.strictEqual(provider.showsShikimoriRating, true);
+test('Jut-Su: логотип и блок оценок сайта остаются как есть', () => {
+    const html = '<a class="jutsu-header__logo logo">JUT-SU<span>.net</span></a><div class="jutsu-page__ratings-item--shikimori">8.9</div>';
+    const { w, provider } = jutsu(html);
+    const before = w.document.body.innerHTML;
     w.agSelectors = w.agSelectors || {};
     provider.mount(new w.AgProviders.Scope());
-    assert.ok(w.document.querySelector('#ag-logo-plus'));
+    assert.strictEqual(w.document.body.innerHTML, before);
+    assert.strictEqual(w.document.querySelector('#ag-logo-plus'), null);
 });
 
 test('старые модули не подключены, у всех сайтов есть провайдер', () => {

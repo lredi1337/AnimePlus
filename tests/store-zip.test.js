@@ -45,7 +45,8 @@ test('всё, на что ссылается манифест, попадает 
         ...manifest.web_accessible_resources.flatMap(r => r.resources)
     ];
     for (const m of read('background.js').match(/importScripts\(([^)]*)\)/)[1].matchAll(/'\.\/([^']+)'/g)) needed.push(m[1]);
-    for (const page of [manifest.action.default_popup, manifest.options_ui.page]) {
+    // top/top.html открывают значок и окно расширения: среди страниц манифеста её нет
+    for (const page of [manifest.action.default_popup, manifest.options_ui.page, 'top/top.html', 'top/frame.html']) {
         const dir = page.split('/').slice(0, -1).join('/');
         for (const m of read(page).matchAll(/(?:src|href)="(\.\.\/[^"#?]+|[\w-]+\.(?:js|css))"/g)) {
             needed.push(m[1].startsWith('../') ? m[1].slice(3) : `${dir}/${m[1]}`);

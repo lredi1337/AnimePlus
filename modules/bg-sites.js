@@ -3,7 +3,8 @@
 // Топа Shikimori и кнопки «Смотреть» в popup.
 //   - yani: JSON API /api/search → точное совпадение по remote_ids.shikimori_id, иначе по названию;
 //   - dle:  страница поиска DLE → разбор карточек → то же название (AgTitleMatch.findSameTitle);
-//   - animego: существующий findAnimeGoDirectUrl (bg-cache.js).
+//   - animego: существующий findAnimeGoDirectUrl (bg-cache.js);
+//   - vost: API приложений AnimeVost (api.animetop.info), он ищет только по латинскому названию.
 // Service worker не имеет DOMParser, поэтому HTML разбирается регулярными выражениями.
 
 const SITE_URL_CACHE_TTL = 3 * 24 * 60 * 60 * 1000;
@@ -106,6 +107,64 @@ async function searchYaniSite(site, { titles, year, shikimoriId }) {
     return null;
 }
 
+// API приложений AnimeVost: тот же каталог, что на сайте, и отвечает с любого адреса (CORS *), поэтому разрешение
+// на него не нужно. Русские запросы он не находит, поэтому ищем по латинскому названию Shikimori
+const VOST_API = 'https://api.animetop.info/v1/search';
+
+/** «Рус / Romaji [1-12 из 12] [6 серия - 12 ноября]» → { title, orig } */
+function splitVostTitle(raw) {
+    const clean = String(raw || '').replace(/\s*\[[^\]]*\]/g, '').trim();
+    const [title, ...rest] = clean.split(' / ');
+    return { title: title.trim(), orig: rest.join(' / ').trim() };
+}
+
+/** Рабочий адрес AnimeVost: сайт часто переезжает, последний открытый зрителем адрес хранит providers/vost.js */
+async function vostHome(site) {
+    const { ag_site_home: homes = {} } = await chrome.storage.local.get(['ag_site_home']);
+    return homes[site.id] || site.home;
+}
+
+async function queryVost(home, query) {
+    const res = await fetch(VOST_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ name: query }).toString()
+    });
+    if (!res.ok) throw new Error(`vost api ${res.status}`);
+    // Страницу по номеру сайт сам перенаправляет на полный адрес тайтла
+    return ((await res.json()).data || []).map(a => ({ ...splitVostTitle(a.title), year: a.year, href: `${home}/index.php?newsid=${a.id}` }));
+}
+
+async function searchVostSite(site, { titles, year, shikimoriId }) {
+    const { findSameTitle, baseTitle } = globalThis.AgTitleMatch;
+    const latinOf = (list) => [...new Set(list.flatMap(t => [t, baseTitle(t)]).filter(q => q && q.length > 2 && !/[а-яё]/i.test(q)))];
+    const home = await vostHome(site);
+    const tried = new Set();
+    let unreachable = false;
+    const attempt = async (queries, wanted) => {
+        for (const query of queries.filter(q => !tried.has(q)).slice(0, 3)) {
+            tried.add(query);
+            try {
+                const same = findSameTitle(await queryVost(home, query), { titles: wanted, year });
+                if (same.length > 0) return same[0].href;
+            } catch (e) { unreachable = true; }
+        }
+        return null;
+    };
+
+    const found = await attempt(latinOf(titles), titles);
+    if (found) return found;
+    // Часть тайтлов AnimeVost называет по-английски («Attack on Titan», а не «Shingeki no Kyojin»)
+    if (shikimoriId) {
+        const anime = await fetchShikimoriApi(`/api/animes/${shikimoriId}`).catch(() => null);
+        const extra = anime ? [...(anime.english || []), ...(anime.synonyms || [])] : [];
+        const more = await attempt(latinOf(extra), [...titles, ...extra]);
+        if (more) return more;
+    }
+    if (unreachable) throw new Error(`${site.id} unreachable`);
+    return null;
+}
+
 /**
  * Прямая ссылка на тайтл на сайте siteId или null.
  * @param {string} siteId
@@ -141,6 +200,8 @@ async function resolveSiteUrl(siteId, query) {
         url = site.id === 'jutsu'
             ? await findJutsuDirectUrl(titles.find(t => /[а-яё]/i.test(t)) || titles[0], titles.find(t => !/[а-яё]/i.test(t)) || '', year)
             : await searchDleSite(site, { titles, year });
+    } else if (site.platform === 'vost') {
+        url = await searchVostSite(site, { titles, year, shikimoriId });
     } else if (site.platform === 'animego') {
         url = await findAnimeGoDirectUrl(titles.find(t => /[а-яё]/i.test(t)) || titles[0], titles.find(t => !/[а-яё]/i.test(t)) || titles[0], year, titles);
     }

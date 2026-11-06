@@ -21,7 +21,6 @@
         info: ['[class*="page__info"]', '[class*="page__details"]', '[class*="page__list"]', '[class*="inner-page__list"]'],
         shikiLink: ['a[href*="/go/shikimori/"]', 'a[href*="shikimori."][href*="/animes/"]'],
         // animego.online: меню лежит не в <header>, а в соседнем блоке .animego-online-header__menu--bothead
-        navTop: ['header a[href*="top"]', 'nav a[href*="top"]', '[class*="header__menu"] > li > a[href*="/top"]'],
         nav: ['header ul', 'header nav']
     };
 
@@ -252,23 +251,6 @@
             setTimeout(retry, TAB_SWITCH_MS);
         }
 
-        getTitleAnchor() {
-            return window.agQueryFirst(SEL.title)?.parentElement || null;
-        }
-
-        getNavAnchor() {
-            const top = window.agQueryFirst(SEL.navTop);
-            return top ? (top.closest('li') || top) : null;
-        }
-
-        getExtraNavAnchors() {
-            // Сайт копирует меню в мобильную панель (.js-this-in-mobile-menu)
-            const main = this.getNavAnchor();
-            return Array.from(document.querySelectorAll('[class*="header__menu"] > li > a[href*="/top"]'))
-                .map(a => a.closest('li'))
-                .filter(li => li && li !== main);
-        }
-
         isSearchPage() {
             return new URLSearchParams(location.search).has('story');
         }
@@ -295,12 +277,6 @@
         }
 
         mount(scope) {
-            if (this.site.dle.navCss) {
-                const style = document.createElement('style');
-                style.textContent = this.site.dle.navCss;
-                (document.head || document.documentElement).appendChild(style);
-                scope.own(style);
-            }
             this.episode = null;
             this.infoPromise = null;
             this.playerChoice = undefined;

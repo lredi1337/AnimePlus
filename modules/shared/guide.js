@@ -1,5 +1,5 @@
 // modules/shared/guide.js
-// Экскурсия с лисой: задания и их состояние. Общее для окна расширения, страницы настроек и плеера
+// Экскурсия с лисой: задания и их состояние. Общее для окна расширения, страницы настроек, плеера и значка на сайтах
 
 (function (root) {
     'use strict';
@@ -11,14 +11,15 @@
         { id: 'play', title: 'Запустите серию', hint: 'На любом поддерживаемом сайте' },
         { id: 'skip', title: 'Пропустите песню', hint: 'Кнопкой +89 в плеере или автопропуском' },
         { id: 'panel', title: 'Откройте серии или озвучку', hint: 'Кнопки внизу плеера' },
+        { id: 'dock', title: 'Нажмите на лису в углу сайта', hint: 'Там Топ Shikimori и случайное аниме' },
         { id: 'shiki', title: 'Подключите Shikimori', hint: 'Серии будут отмечаться сами' },
         { id: 'settings', title: 'Загляните в настройки', hint: 'Шестерёнка вверху этого окна' }
     ];
 
     const TASK_IDS = TASKS.map(t => t.id);
 
-    // Просьба об оценке не зависит от Shikimori: аккаунт есть не у всех
-    const RATING_TASKS = TASK_IDS.filter(id => id !== 'shiki');
+    // Просьба об оценке не зависит от Shikimori (аккаунт есть не у всех) и от значка (его задание появилось позже)
+    const RATING_TASKS = TASK_IDS.filter(id => id !== 'shiki' && id !== 'dock');
     const DAY_MS = 24 * 60 * 60 * 1000;
     const RATING_AFTER_MS = 3 * DAY_MS;
     const RATING_LATER_MS = 14 * DAY_MS;
@@ -27,7 +28,7 @@
     const normalize = (raw) => {
         const state = raw && typeof raw === 'object' ? raw : {};
         const tasks = state.tasks && typeof state.tasks === 'object' ? state.tasks : {};
-        return { tourDone: state.tourDone === true, questHidden: state.questHidden === true, tipsDone: state.tipsDone === true, switchTipDone: state.switchTipDone === true, rated: state.rated === true, firstSeen: Number(state.firstSeen) || 0, rateLaterUntil: Number(state.rateLaterUntil) || 0, rateLaterCount: Number(state.rateLaterCount) || 0, tasks };
+        return { tourDone: state.tourDone === true, questHidden: state.questHidden === true, tipsDone: state.tipsDone === true, switchTipDone: state.switchTipDone === true, dockTipDone: state.dockTipDone === true, rated: state.rated === true, firstSeen: Number(state.firstSeen) || 0, rateLaterUntil: Number(state.rateLaterUntil) || 0, rateLaterCount: Number(state.rateLaterCount) || 0, tasks };
     };
 
     const progress = (state) => {

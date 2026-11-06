@@ -113,8 +113,15 @@
             if (el && !el.classList.contains(this.mode().active)) el.click();
         }
 
-        getTitleAnchor() {
-            return window.agQueryFirst(SEL.title)?.parentElement || null;
+        // Фон знает только сохранённый адрес сайта, а зритель может быть уже на новом зеркале
+        getRandomUrl(res) {
+            if (!res || !res.url) return null;
+            try {
+                const url = new URL(res.url);
+                return location.origin + url.pathname + url.search;
+            } catch (e) {
+                return null;
+            }
         }
 
         isSearchPage() {

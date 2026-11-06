@@ -327,6 +327,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    // Топ Shikimori в новой вкладке с выбором сайта. Выбор запоминает сама вкладка; без него — сайт, открытый сейчас
+    const btnTop = document.getElementById('btnTop');
+    if (btnTop) {
+        btnTop.addEventListener('click', () => {
+            const here = currentSite && AgSites.isEnabled(settings, currentSite.id) ? currentSite : null;
+            let origin = '';
+            try { origin = here ? new URL(activeTab.url).origin : ''; } catch (e) {}
+            const url = AgSites.topPageUrl({ pick: '1', site: here ? here.id : '', origin });
+            chrome.tabs.create({ url }).catch(() => {}).finally(() => window.close());
+        });
+    }
+
     const panelsList = [
         { btn: btnMusic, panel: panelMusic },
         { btn: btnPlayer, panel: panelPlayer }

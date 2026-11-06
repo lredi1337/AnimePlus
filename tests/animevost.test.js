@@ -98,10 +98,9 @@ test('серии сайта: текущая, список для оболочк�
     assert.equal(clicked, 'p2');
 });
 
-test('кадр плеера и место для кнопок у названия находятся', () => {
+test('кадр плеера находится', () => {
     const { provider } = makeVost();
     assert.equal(provider.getPlayerContainer().id, 'player2');
-    assert.equal(provider.getTitleAnchor().tagName.toLowerCase() !== 'body', true);
     assert.equal(provider.getPlayerWindows().length, 1);
 });
 
@@ -144,8 +143,8 @@ test('качество AnimeVost: 720p и 480p — это плееры №1 и �
     assert.equal(next.window.sessionStorage.getItem('ag_vost_resume'), null);
 });
 
-test('«Смотреть на…» не предлагает AnimeVost, пока поиск по нему не сделан', () => {
+test('тайтл ищется и на AnimeVost: Топ, «Случайное аниме», кнопка на Shikimori', () => {
     const AgSites = loadSites();
-    assert.ok(!AgSites.searchable().some(s => s.id === 'animevost'));
-    assert.equal(AgSites.searchable().length, AgSites.list.length - 1);
+    assert.ok(AgSites.searchable().some(s => s.id === 'animevost'));
+    assert.equal(AgSites.searchable().length, AgSites.list.length);
 });

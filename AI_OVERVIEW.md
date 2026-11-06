@@ -51,7 +51,8 @@ AnimePlus-main/
 │   ├── player/                # boot, adapters, shell, shell-view, skip-memory, audio-unlock, agp-to-kodik
 │   └── shared/                # sites (реестр), ui-kit, tokens.css, guide, voice-choice, player-choice, kodik-marks, diag и др.
 ├── providers/                 # Сайты: base, animego, dle, jutsu, yani, runtime
-├── features/                  # player-bridge, title-widgets, top-overlay, search-redirect, random-anime, legacy-top
+├── features/                  # player-bridge, fox-dock, search-redirect
+├── top/                       # Вкладка «Топ Shikimori» (страница расширения)
 ├── popup/  options/           # Окно расширения и страница настроек
 ├── server/timings/            # Cloudflare Worker: общая база таймингов и письма поддержки
 ├── tests/                     # node --test, jsdom
@@ -367,10 +368,11 @@ AnimePlus-main/
    - `providers/runtime.js`: диспетчер запуска фич для сайтов-провайдеров.
 3. **Модульные фичи (`features/`)**:
    - `player-bridge.js`: управление плеером Kodik (автоскип, горячие клавиши, переключение серий).
-   - `title-widgets.js`: виджеты Shikimori на странице тайтла (рейтинг, статус в списках пользователя, кнопка перехода на Shikimori).
-   - `top-overlay.js`: кнопка «Топ Shikimori» в меню сайта и модальное окно с топом аниме. Одно окно на все сайты; AnimeGO и Jut-Su подключают его через `features/legacy-top.js`, где описаны их меню и действие для тайтла, которого нет на сайте.
+   - `fox-dock.js`: значок с лисой в углу страницы и его меню: оценка Shikimori (на странице тайтла), «Топ Shikimori» (поверх страницы), «Случайное аниме» (фильтры `random_min_score`, `random_kinds`, тайтл на этом же сайте). Значок прикреплён к `<html>` в собственном Shadow DOM и не ищет элементы сайта. Угол перетаскивается и хранится в `ag_fox_corner`; в полноэкранном просмотре значок прячется. Старые ссылки `#ag-top-shikimori` открывают Топ поверх страницы.
    - `search-redirect.js`: умный автопереход со страницы поиска на лучший результат.
-   - `random-anime.js`: перехват нативной кнопки «Случайное» на сайте, применение пользовательских фильтров (минимальный рейтинг `random_min_score`, форматы `random_kinds`), подбор случайного тайтла с Shikimori и поиск его страницы на текущем сайте с мгновенным переходом.
+4. **Топ Shikimori (`top/`)**: один код `top/top.js`, две страницы. `top/frame.html?embed=1&site=&origin=` открывается кадром поверх сайта внутри значка: сайт фиксирован, нажатие на тайтл и закрытие кадр передаёт значку через `postMessage` (`source: 'anime-plus-top'`), значок принимает сообщения только от своего кадра и только адреса этого сайта. Эта страница в `web_accessible_resources` с `use_dynamic_url`, поэтому во вкладке её открыть нельзя. `top/top.html?pick=1` открывает окно расширения в новой вкладке: зритель выбирает сайт, выбор хранится в `ag_top_site`. У AnimeGO тайтл вне каталога открывается синтетической страницей (`shikiPage` в `modules/shared/sites.js`), у AnimeVost — на текущем зеркале. Адреса из параметров принимаются, только если они ведут на тот же сайт.
+
+**Правило:** в вёрстку сайтов встраивается только оболочка плеера и то, что ей нужно (`player-bridge.js`, выбор Kodik, стили полноэкранного режима). Всё остальное живёт в значке, во вкладках расширения и в окне расширения. Исключение: модули AnimeGO (`modules/animego/`: синтетические страницы, расписание, поиск Jut-Su) пока остаются как были.
 
 ## 9. Запросы к Shikimori
 

@@ -164,8 +164,18 @@ test('бесшовная смена: новичок видит её в подс�
 
 test('о смене плеера лиса рассказывает только в плеере: в заданиях её нет', async () => {
     const { AgGuide } = loadGuide({});
-    assert.deepEqual([...AgGuide.TASKS.map(t => t.id)], ['play', 'skip', 'panel', 'shiki', 'settings']);
+    assert.deepEqual([...AgGuide.TASKS.map(t => t.id)], ['play', 'skip', 'panel', 'dock', 'shiki', 'settings']);
     assert.equal(AgGuide.normalize({ switchTipDone: true }).switchTipDone, true);
+});
+
+test('значок лисы: своё задание и разовая подсказка, на просьбу об оценке не влияют', async () => {
+    const { AgGuide } = loadGuide({});
+    assert.equal(AgGuide.normalize({ dockTipDone: true }).dockTipDone, true);
+    assert.equal(AgGuide.normalize({}).dockTipDone, false);
+    // Прошёл всё обучение до появления значка: просьба об оценке не откладывается из-за нового задания
+    const state = AgGuide.normalize({ tourDone: true, firstSeen: 1, tasks: { play: true, skip: true, panel: true, settings: true } });
+    assert.equal(AgGuide.ratingDue(state, 2), true);
+    assert.equal(AgGuide.progress(state).total, 6);
 });
 
 test('плеер выбирается своей кнопкой, а лиса рассказывает о нём перед настройками', async () => {

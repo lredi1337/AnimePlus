@@ -224,37 +224,6 @@
             }
         }
 
-        getTitleAnchor() { return window.agFind('animego', 'title')?.parentElement || null; }
-
-        getNavAnchor() {
-            const menu = window.agFind('animego', 'headerNav');
-            if (!menu) return null;
-            const link = menu.querySelector('a[href*="/anime/random"]') || menu.querySelector('a[href*="/anime"]');
-            return link ? (link.closest('li') || link) : null;
-        }
-
-        // В боковом меню пункты — голые ссылки без <li>
-        getExtraNavAnchors() {
-            const last = document.querySelector('#mmenu .nav.flex-column > a:last-of-type');
-            return last ? [last] : [];
-        }
-
-        createExtraNavItem() {
-            const link = document.createElement('a');
-            link.className = 'nav-link fw-semibold text-reset fs-5 ag-top-nav-link';
-            link.href = '#ag-top-shikimori';
-            link.textContent = 'Топ Shikimori';
-            return link;
-        }
-
-        beforeTopOpen() {
-            const menu = document.getElementById('mmenu');
-            if (menu && menu.classList.contains('show')) menu.querySelector('.btn-close')?.click();
-        }
-
-        // Тайтла нет в каталоге — страница из данных Shikimori (ag-synthetic.js)
-        getTopFallbackUrl(item) { return `/anime/shiki-${item.id}`; }
-
         mount(scope) {
             if (window.AgProviders.redirectOldTopLink()) return;
             const style = document.createElement('style');

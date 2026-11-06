@@ -94,3 +94,56 @@ test('сбой сети: результат помечается как «нет
     assert.equal(res.timedOut, true);
     assert.equal(session.ag_site_url_cache, undefined);
 });
+
+// AnimeVost: API приложений (api.animetop.info), ответы сняты с настоящего API и сокращены
+function makeVost({ answers, shikimori = null, home = 'https://v14.vost.pw' }) {
+    const queries = [];
+    const session = {};
+    const ctx = loadInContext(['modules/shared/sites.js', 'modules/shared/title-match.js', 'modules/bg-sites.js'], {
+        URLSearchParams,
+        fetch: async (url, init) => {
+            const name = new URLSearchParams(init.body).get('name');
+            queries.push({ url, method: init.method, name });
+            if (answers === 'down') throw new Error('network');
+            const data = answers[name];
+            return { ok: true, json: async () => (data ? { data } : { error: 'Ничего не найдено' }) };
+        },
+        chrome: { storage: { session: { get: async () => ({}) }, local: { get: async () => ({ ag_site_home: { animevost: home } }) } } },
+        fetchShikimoriApi: async () => shikimori,
+        updateStorageObject: async (key, mutator) => { session[key] = session[key] || {}; await mutator(session[key]); }
+    });
+    return { ctx, queries };
+}
+
+const ICEBLADE = [
+    { id: 2907, year: '2023', title: 'Волшебник ледяного клинка правит миром / Hyouken no Majutsushi ga Sekai wo Suberu [1-12 из 12]' },
+    { id: 4020, year: '2026', title: 'Волшебник ледяного клинка правит миром (второй сезон) / Hyouken no Majutsushi ga Sekai wo Suberu II [1-5 из 12+] [6 серия - 12 ноября]' }
+];
+
+test('AnimeVost: поиск по латинскому названию, нужный сезон, адрес на рабочем зеркале', async () => {
+    const { ctx, queries } = makeVost({ answers: { 'Hyouken no Majutsushi ga Sekai wo Suberu II': ICEBLADE, 'Hyouken no Majutsushi ga Sekai wo Suberu': ICEBLADE } });
+    const second = await ctx.resolveSiteUrl('animevost', { titles: ['Волшебник ледяного клинка правит миром 2', 'Hyouken no Majutsushi ga Sekai wo Suberu II'], year: '2026', shikimoriId: 1 });
+    assert.equal(second, 'https://v14.vost.pw/index.php?newsid=4020');
+    assert.ok(queries.every(q => q.url === 'https://api.animetop.info/v1/search' && q.method === 'POST' && !/[а-яё]/i.test(q.name)), 'русские названия API не находит, их не отправляем');
+    const first = await ctx.resolveSiteUrl('animevost', { titles: ['Волшебник ледяного клинка правит миром', 'Hyouken no Majutsushi ga Sekai wo Suberu'], year: '2023', shikimoriId: 2 });
+    assert.equal(first, 'https://v14.vost.pw/index.php?newsid=2907');
+});
+
+test('AnimeVost: тайтл под английским названием находится через названия Shikimori', async () => {
+    const { ctx } = makeVost({
+        answers: { 'Attack on Titan': [{ id: 587, year: '2013', title: 'Вторжение Гигантов ОВА / Attack on Titan OVA [1-5 из 5]' }, { id: 58, year: '2013', title: 'Вторжение Гигантов / Attack on Titan [1-25 из 25]' }] },
+        shikimori: { english: ['Attack on Titan'], synonyms: ['AoT'] }
+    });
+    const url = await ctx.resolveSiteUrl('animevost', { titles: ['Атака титанов', 'Shingeki no Kyojin'], year: '2013', shikimoriId: 16498 });
+    assert.equal(url, 'https://v14.vost.pw/index.php?newsid=58');
+});
+
+test('AnimeVost: API недоступен — это не «тайтла нет»', async () => {
+    const { ctx } = makeVost({ answers: 'down' });
+    await assert.rejects(ctx.searchVostSite(ctx.AgSites.byId('animevost'), { titles: ['Sousou no Frieren'], year: '2023' }));
+});
+
+test('AnimeVost есть в списке сайтов, где ищется тайтл', () => {
+    const { ctx } = makeVost({ answers: {} });
+    assert.ok(ctx.AgSites.searchable().some(s => s.id === 'animevost'));
+});

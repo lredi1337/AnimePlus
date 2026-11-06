@@ -5,7 +5,8 @@
 (function () {
     'use strict';
 
-    const FEATURES = ['playerBridge', 'titleWidgets', 'topOverlay', 'searchRedirect', 'randomAnime'];
+    // Кроме оболочки плеера (playerBridge) ничего не встраивается в вёрстку сайта: значок живёт в своём Shadow DOM
+    const FEATURES = ['playerBridge', 'foxDock', 'searchRedirect'];
 
     window.AgProviders.start = async function () {
         // Адреса переехавших сайтов, которые зритель добавил сам, читаются из хранилища

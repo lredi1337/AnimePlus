@@ -17,7 +17,7 @@ const KODIK_TAB_TITLES = {
 };
 const SHELL = "document.getElementById('ag-shell').shadowRoot";
 const CVH = "document.querySelector('.shadow-root-container').shadowRoot";
-const GUIDE_DONE = "chrome.storage.local.set({ ag_guide: { tourDone: true, tipsDone: true, switchTipDone: true, questHidden: true } })";
+const GUIDE_DONE = "chrome.storage.local.set({ ag_guide: { tourDone: true, tipsDone: true, switchTipDone: true, dockTipDone: true, questHidden: true } })";
 
 function parseArgs(argv) {
     const [scenario, ...rest] = argv;
@@ -152,7 +152,7 @@ async function smoke(opts) {
 
         const site = await b.openPage('https://animego.me/');
         await wait(7000);
-        r.check('на сайте есть пункт Топа', await b.ev(site.session, "[...document.querySelectorAll('a,button,li,div')].some(e => e.children.length < 3 && /Топ Shikimori/i.test(e.textContent || ''))"));
+        r.check('на сайте есть значок Anime+', await b.ev(site.session, "!!document.querySelector('ag-fox-dock')"));
         await b.closePage(site);
 
         const title = await openTitle(b, 'https://jut-su.net/47-ataka-titanov-p7.html');
@@ -485,7 +485,155 @@ async function accuracy(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, kodik, episodes, quality, perf, accuracy };
+// ---------- Значок Anime+ и вкладка Топа ----------
+const DOCK = "document.querySelector('ag-fox-dock')";
+const HOMES = {
+    animego: 'https://animego.me/',
+    jutsu: 'https://jut-su.net/',
+    yummy_ru: 'https://ru.yummyani.me/',
+    yummy_old: 'https://old.yummyani.me/',
+    yummyanime_tv: 'https://yummyanime.tv/',
+    animego_online: 'https://animego.online/',
+    yammy_club: 'https://yammyanime.club/',
+    animevost: 'https://v14.vost.pw/'
+};
+const DOCK_TITLE = 'https://jut-su.net/3325-provozhajuschaja-v-poslednij-put-friren-p1.html';
+
+const dockRect = (b, session, selector) => b.ev(session, `(() => { const d = ${DOCK}; const el = d && d.shadowRoot.querySelector(${JSON.stringify(selector)}); if (!el || el.hidden) return null; const r = el.getBoundingClientRect(); return r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; })()`);
+const dockItem = (b, session, re) => b.ev(session, `(() => { const d = ${DOCK}; const el = d && [...d.shadowRoot.querySelectorAll('.item')].find(i => !i.hidden && ${re}.test(i.textContent)); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, text: el.textContent.trim() }; })()`);
+const pressDock = async (b, session) => {
+    const at = await dockRect(b, session, '.fab');
+    if (at) await b.clickAt(session, at);
+    await wait(600);
+    return !!at;
+};
+const hrefOf = (b, session) => b.ev(session, 'location.href');
+
+/** Без VPN: значок на всех сайтах, вёрстка сайта не тронута, Топ и случайный тайтл настоящими нажатиями */
+async function dock(opts) {
+    const r = reporter();
+    const { b, extId } = await startBrowser(opts);
+    try {
+        for (const [id, url] of Object.entries(HOMES)) {
+            const page = await b.openPage(url);
+            await wait(9000);
+            const state = await b.ev(page.session, `(() => { const d = ${DOCK}; if (!d) return { dock: false, title: document.title }; const r = d.shadowRoot.querySelector('.fab').getBoundingClientRect(); return { dock: true, visible: r.width > 0 && r.top >= 0 && r.bottom <= innerHeight, injected: document.querySelectorAll('.ag-top-nav-link, .ag-top-nav-wrapper, .ag-tw').length }; })()`);
+            r.check(`${id}: значок на месте, в вёрстке сайта ничего нашего`, state.dock && state.visible && state.injected === 0, state);
+            await b.closePage(page);
+        }
+
+        const page = await b.openPage(DOCK_TITLE);
+        await wait(12000);
+        r.check('нажатие открывает меню', await pressDock(b, page.session) && !!(await dockRect(b, page.session, '.menu')));
+        let rating = null;
+        for (let i = 0; i < 10 && !(rating && /Shikimori \d/.test(rating.text)); i++) {
+            await wait(1000);
+            rating = await dockItem(b, page.session, '/Shikimori/');
+        }
+        r.check('оценка Shikimori в меню', !!rating && /Shikimori \d/.test(rating.text), rating && rating.text);
+
+        const top = await dockItem(b, page.session, '/Топ Shikimori/');
+        if (top) await b.clickAt(page.session, top);
+        await wait(6000);
+        r.check('Топ открылся поверх сайта, страница та же', (await hrefOf(b, page.session)) === DOCK_TITLE && !!(await b.ev(page.session, `!!${DOCK}.shadowRoot.querySelector('.top-frame')`)));
+        const frameTarget = (await b.targets('iframe')).find(t => t.url.includes('/top/frame.html'));
+        const topFrame = frameTarget ? await b.attach(frameTarget.targetId) : null;
+        r.check('Топ помнит сайт', !!frameTarget && frameTarget.url.includes('site=jutsu') && frameTarget.url.includes('embed=1'), frameTarget && frameTarget.url);
+        const cards = topFrame ? await b.ev(topFrame, "document.querySelectorAll('.top__card').length") : 0;
+        r.check('рейтинг загрузился', cards >= 50, cards);
+        // Кадр на весь экран: координаты в нём совпадают с координатами страницы
+        if (topFrame) {
+            await b.ev(topFrame, "document.querySelector('.top__close').click()");
+            await wait(800);
+            r.check('крестик закрывает Топ', !(await b.ev(page.session, `!!${DOCK}.shadowRoot.querySelector('.top-frame')`)));
+            await pressDock(b, page.session);
+            await b.clickAt(page.session, await dockItem(b, page.session, '/Топ Shikimori/'));
+            await wait(6000);
+        }
+        const again = (await b.targets('iframe')).find(t => t.url.includes('/top/frame.html'));
+        const againSession = again ? await b.attach(again.targetId) : null;
+        const card = againSession ? await b.ev(againSession, "(() => { const r = document.querySelectorAll('.top__card')[1].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 3 }; })()") : null;
+        if (card) await b.clickAt(page.session, card);
+        let opened = DOCK_TITLE;
+        for (let i = 0; i < 20 && opened === DOCK_TITLE; i++) {
+            await wait(1000);
+            opened = await hrefOf(b, page.session).catch(() => DOCK_TITLE);
+        }
+        r.check('тайтл из Топа открылся на Jut-Su', /^https:\/\/jut-su\.net\/.+\.html/.test(opened) && opened !== DOCK_TITLE, opened);
+
+        await wait(6000);
+        await pressDock(b, page.session);
+        const random = await dockItem(b, page.session, '/Случайное аниме/');
+        const before = await hrefOf(b, page.session);
+        if (random) await b.clickAt(page.session, random);
+        let after = before;
+        for (let i = 0; i < 25 && after === before; i++) {
+            await wait(1000);
+            after = await hrefOf(b, page.session).catch(() => before);
+        }
+        r.check('«Случайное аниме» открыло другой тайтл на Jut-Su', after !== before && /^https:\/\/jut-su\.net\//.test(after), after);
+
+        // Перетаскивание в левый верхний угол настоящей мышью
+        await wait(6000);
+        const fab = await dockRect(b, page.session, '.fab');
+        if (fab) {
+            await b.mouse(page.session, 'mouseMoved', fab.x, fab.y);
+            await b.mouse(page.session, 'mousePressed', fab.x, fab.y, { button: 'left', clickCount: 1 });
+            for (const k of [0.3, 0.6, 1]) await b.mouse(page.session, 'mouseMoved', fab.x - (fab.x - 60) * k, fab.y - (fab.y - 60) * k, { button: 'left', buttons: 1 });
+            await b.mouse(page.session, 'mouseReleased', 60, 60, { button: 'left', clickCount: 1 });
+            await wait(800);
+        }
+        const corner = await b.ev(page.session, `${DOCK}.dataset.corner`);
+        r.check('значок перетаскивается в угол', corner === 'tl', corner);
+        r.check('меню при перетаскивании не открылось', !(await dockRect(b, page.session, '.menu')));
+        await b.closePage(page);
+
+        // AnimeVost: «Случайное аниме» через API приложений сайта
+        const vost = await b.openPage(HOMES.animevost);
+        await wait(9000);
+        await pressDock(b, vost.session);
+        const vostRandom = await dockItem(b, vost.session, '/Случайное аниме/');
+        if (vostRandom) await b.clickAt(vost.session, vostRandom);
+        let vostUrl = HOMES.animevost;
+        for (let i = 0; i < 40 && !/\/tip\//.test(vostUrl); i++) {
+            await wait(1000);
+            vostUrl = await hrefOf(b, vost.session).catch(() => vostUrl);
+        }
+        r.check('«Случайное аниме» работает на AnimeVost', /^https:\/\/v14\.vost\.pw\/tip\//.test(vostUrl), vostUrl);
+        await b.closePage(vost);
+
+        // Окно расширения: Топ в новой вкладке с выбором сайта, выбор запоминается
+        const popup = await b.openPage(`chrome-extension://${extId}/popup/popup.html`);
+        await wait(2500);
+        const btn = await b.ev(popup.session, "(() => { const r = document.getElementById('btnTop').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+        await b.clickAt(popup.session, btn);
+        await wait(4000);
+        const tabTarget = (await b.targets('page')).find(t => t.url.includes('/top/top.html'));
+        r.check('кнопка «Топ» в окне расширения открывает вкладку с выбором сайта', !!tabTarget && tabTarget.url.includes('pick=1'), tabTarget && tabTarget.url);
+        if (tabTarget) {
+            const tab = await b.attach(tabTarget.targetId);
+            for (let i = 0; i < 15 && !(await b.ev(tab, "!!document.querySelector('.top__site')")); i++) await wait(1000);
+            // Список сайтов раскрывается настоящим нажатием на кнопку выбора
+            const opener = await b.ev(tab, "(() => { const r = document.querySelector('.top__picker-btn').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+            await b.clickAt(tab, opener);
+            await wait(400);
+            const choose = await b.ev(tab, "(() => { const el = document.querySelector('.top__site[aria-selected=\"false\"]'); const r = el.getBoundingClientRect(); return { id: el.dataset.site, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+            await b.clickAt(tab, choose);
+            await wait(800);
+            const saved = await b.ev(tab, "chrome.storage.local.get(['ag_top_site']).then(s => s.ag_top_site)");
+            await b.send('Page.reload', {}, tab);
+            await wait(1500);
+            for (let i = 0; i < 15 && !(await b.ev(tab, "!!document.querySelector('.top__site')").catch(() => false)); i++) await wait(1000);
+            const pressedAfter = await b.ev(tab, "document.querySelector('.top__site[aria-selected=\"true\"]').dataset.site");
+            r.check('выбор сайта запоминается', saved === choose.id && pressedAfter === choose.id, { chosen: choose.id, saved, pressedAfter });
+        }
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, dock, kodik, episodes, quality, perf, accuracy };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

@@ -80,27 +80,6 @@ test('yani: страница не тайтла', () => {
     assert.equal(provider.isTitlePage(), false);
 });
 
-test('yani: getNavAnchor находит div меню на ru.yummyani.me и li на old.yummyani.me', () => {
-    const htmlSpa = `
-        <nav class="bo">
-            <div data-variant="top" class="fM dm">
-                <a href="/catalog/top" class="fO"><span class="fP">ТОП 100</span></a>
-            </div>
-        </nav>`;
-    const { provider: pSpa } = makeYani(htmlSpa, 'https://ru.yummyani.me/catalog');
-    const anchorSpa = pSpa.getNavAnchor();
-    assert.ok(anchorSpa);
-    assert.equal(anchorSpa.tagName, 'DIV');
-    assert.equal(anchorSpa.getAttribute('data-variant'), 'top');
-
-    const htmlOld = '<ul><li><a href="/catalog/top">Топ 100</a></li></ul>';
-    const { provider: pOld } = makeYani(htmlOld, 'https://old.yummyani.me/catalog');
-    const anchorOld = pOld.getNavAnchor();
-    assert.ok(anchorOld);
-    assert.equal(anchorOld.tagName, 'LI');
-});
-
-
 // Меню сайта (react-select): пункты появляются, только пока оно открыто
 function playerMenu(w, names, current) {
     const box = w.document.createElement('div');

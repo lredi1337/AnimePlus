@@ -3,7 +3,7 @@
 // AnimeGO.me и Jut-Su пока работают на собственных модулях (modules/animego, modules/jutsu) — см. AI_OVERVIEW.md.
 //
 // Жизненный цикл страницы:
-//   runtime создаёт Scope → provider.mount(scope) → фичи (трекер, мост плеера, виджеты, Топ) работают через
+//   runtime создаёт Scope → provider.mount(scope) → фичи (трекер, мост плеера, значок) работают через
 //   методы провайдера → при SPA-переходе scope.dispose() снимает ВСЕ наблюдатели/слушатели/таймеры
 //   и удаляет вставленные элементы → для нового URL создаётся новый Scope.
 
@@ -111,18 +111,6 @@
         /** Таймкоды опенинга/эндинга с самого сайта (если сайт их отдаёт) */
         async getSkipData(episode) { return null; }
 
-        /** Куда вставлять кнопки «Shikimori ★» / «Смотреть на…» */
-        getTitleAnchor() { return null; }
-
-        /** Пункт меню сайта, рядом с которым добавить «Топ Shikimori» */
-        getNavAnchor() { return null; }
-
-        /** Пункты «Топ 100» в остальных копиях меню сайта (например, мобильной) */
-        getExtraNavAnchors() { return []; }
-
-        /** Ссылка выпадающего меню — образец для «Топ Shikimori», когда в шапке нет места под новый пункт */
-        getTopMenuSample() { return null; }
-
         /** Ссылки поиска, открытые расширением (ag_from), — автопереход на тайтл */
         isSearchPage() { return false; }
         collectSearchCards() { return []; }
@@ -139,7 +127,6 @@
     window.AgProviders.BaseProvider = BaseProvider;
 
     /** Регистрация реализации провайдера для платформы ('dle', 'yani', ...) */
-    /** Раньше у AnimeGO и Jut-Su был свой адрес Топа: старые ссылки ведут в общее окно */
     /** Сезон из названия страницы: «(2 сезон)», «Сезон 2», «Season 2», «Название 2». Без номера это первый сезон */
     window.AgProviders.seasonFromTitle = function (title) {
         const text = String(title || '');
@@ -147,6 +134,7 @@
         return match ? Number(match[1]) : 1;
     };
 
+    /** Раньше у AnimeGO и Jut-Su был свой адрес Топа: старые ссылки ведут во вкладку Топа через значок */
     window.AgProviders.redirectOldTopLink = function () {
         if (location.pathname !== '/top-shikimori' && !new URLSearchParams(location.search).has('show_ag_top')) return false;
         location.replace('/#ag-top-shikimori');

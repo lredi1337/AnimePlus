@@ -8,6 +8,9 @@ const { read } = require('./helpers');
 const FILES = [
     'config.js',
     'modules/shared/sites.js',
+    'modules/shared/ui-kit.js',
+    'modules/shared/guide.js',
+    'modules/shared/guide-fox.js',
     'modules/shared/title-match.js',
     'modules/shared/native-fs.js',
     'modules/shared/player-choice.js',
@@ -18,10 +21,8 @@ const FILES = [
     'providers/dle.js',
     'providers/yani.js',
     'features/player-bridge.js',
-    'features/title-widgets.js',
-    'features/top-overlay.js',
+    'features/fox-dock.js',
     'features/search-redirect.js',
-    'features/random-anime.js',
     'providers/runtime.js'
 ];
 
@@ -79,7 +80,19 @@ async function startRuntime({ url, html, settings = {} }) {
 
 const tick = (ms = 400) => new Promise(r => setTimeout(r, ms));
 
-test('runtime на yammyanime.club: Kodik, виджеты, Топ, мост плеера, выключение сайта', async () => {
+// Значок Anime+ живёт в собственном Shadow DOM, прикреплён к <html>
+const dockOf = (doc) => doc.querySelector('ag-fox-dock');
+const shadowOf = (doc) => dockOf(doc) && dockOf(doc).shadowRoot;
+const openMenu = async (w) => {
+    const fab = shadowOf(w.document).querySelector('.fab');
+    fab.dispatchEvent(new w.PointerEvent('pointerdown', { button: 0, clientX: 10, clientY: 10, bubbles: true }));
+    fab.dispatchEvent(new w.PointerEvent('pointerup', { button: 0, clientX: 10, clientY: 10, bubbles: true }));
+    await tick(100);
+    return shadowOf(w.document).querySelector('.menu');
+};
+const menuItem = (menu, re) => [...menu.querySelectorAll('.item')].find(i => !i.hidden && re.test(i.textContent));
+
+test('runtime на yammyanime.club: Kodik, значок, Топ, мост плеера, выключение сайта', async () => {
     const tabsClicked = [];
     const { w, sent } = await startRuntime({
         url: 'https://yammyanime.club/catalog/item/monolog-farmacevta-3-sezon-c1',
@@ -92,36 +105,43 @@ test('runtime на yammyanime.club: Kodik, виджеты, Топ, мост пл
     // 1. Kodik: при старте вкладка уже была нажата (до подписки теста) — проверяем, что повторных кликов нет
     assert.ok(tabsClicked.length <= 1);
 
-    // 2. Панель тайтла: Shikimori ★ и «Смотреть на…»
-    const bar = doc.querySelector('.ag-tw');
-    assert.ok(bar, 'панель вставлена');
-    assert.match(bar.textContent, /Shikimori ★ 8\.92/);
-    const toggle = [...bar.querySelectorAll('button')].find(b => /Смотреть на/.test(b.textContent));
-    toggle.click();
-    await tick();
-    const items = [...bar.querySelectorAll('.ag-tw__item')];
-    assert.ok(items.length >= 5, 'все остальные сайты в меню');
-    const jutsuItem = items.find(i => /Jut-Su/.test(i.textContent));
-    assert.equal(jutsuItem.getAttribute('href'), 'https://jut-su.net/1-x.html');
-    assert.ok(items.filter(i => i.classList.contains('is-missing')).length >= 1, 'ненайденные помечены');
-    assert.ok(!items.some(i => /YummyAnime\.Club/.test(i.textContent)), 'текущий сайт не предлагается');
+    // 2. В вёрстку сайта ничего не встроено: ни панели под заголовком, ни пункта меню, ни стилей меню
+    assert.equal(doc.querySelector('.ag-tw, .ag-top-nav-link, .ag-top-nav-wrapper'), null);
+    assert.ok(!Array.from(doc.querySelectorAll('style')).some(s => /header__menu/.test(s.textContent)), 'меню сайта не перестраивается');
+    assert.equal(dockOf(doc).parentElement, doc.documentElement, 'значок прикреплён к <html>, а не к разметке сайта');
 
-    // 3. Пункт «Топ Shikimori» в меню сайта + оверлей с карточками и постерами
-    const navLink = doc.querySelector('.ag-top-nav-link');
-    assert.ok(navLink, 'пункт меню добавлен');
-    navLink.click();
+    // 3. Меню значка: оценка Shikimori тайтла, Топ и случайный тайтл, без «Смотреть на…»
+    const menu = await openMenu(w);
+    assert.equal(menu.hidden, false);
     await tick();
-    const cards = doc.querySelectorAll('.ag-top-ov__card');
-    assert.equal(cards.length, 3);
-    const firstImg = cards[0].querySelector('img');
-    assert.equal(firstImg.getAttribute('referrerpolicy'), 'no-referrer');
-    assert.equal(firstImg.src, 'https://shikimori.io/uploads/poster/animes/100/main.webp', 'заглушка «missing» заменена постером из GraphQL');
-    doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    assert.equal(doc.querySelector('.ag-top-ov'), null, 'Esc закрывает оверлей');
+    const rating = menuItem(menu, /★\s*Shikimori/);
+    assert.match(rating.textContent, /★\s*Shikimori 8\.92/);
+    assert.equal(rating.getAttribute('href'), 'https://shikimori.io/animes/61987');
+    assert.ok(!/Смотреть на/.test(menu.textContent));
+    assert.ok(!sent.some(m => m.action === 'resolve_all_sites'), 'другие сайты не ищутся');
 
-    // 3.1. Оформление меню сайта
-    const injectedStyles = Array.from(doc.querySelectorAll('style')).map(s => s.textContent);
-    assert.ok(injectedStyles.some(s => s.includes('.header__menu { flex-wrap: nowrap !important; }')), 'navCss с flex-wrap: nowrap применён');
+    menuItem(menu, /Топ Shikimori/).click();
+    assert.equal(menu.hidden, true, 'меню закрылось');
+    const frame = shadowOf(doc).querySelector('.top-frame');
+    assert.ok(frame, 'Топ открыт поверх страницы, в кадре внутри значка');
+    const src = new URL(frame.getAttribute('src'));
+    assert.equal(src.pathname, '/top/frame.html');
+    assert.deepEqual(Object.fromEntries(src.searchParams), { embed: '1', site: 'yammy_club', origin: 'https://yammyanime.club' });
+    assert.equal(w.location.pathname, '/catalog/item/monolog-farmacevta-3-sezon-c1', 'страница сайта осталась открытой');
+    assert.equal(doc.documentElement.style.overflow, 'hidden', 'страница под Топом не прокручивается');
+
+    // Кадр Топа просит открыть тайтл: чужой адрес и чужой отправитель не принимаются
+    const fromFrame = (data, source = frame.contentWindow) => w.dispatchEvent(new w.MessageEvent('message', { data: { source: 'anime-plus-top', ...data }, source }));
+    fromFrame({ type: 'open', url: 'https://evil.example/x' });
+    fromFrame({ type: 'open', url: 'https://yammyanime.club/catalog/item/monolog-farmacevta-3-sezon-c1#chuzhoy' }, w);
+    await tick(50);
+    assert.equal(w.location.hash, '', 'адрес не изменился');
+    fromFrame({ type: 'open', url: 'https://yammyanime.club/catalog/item/monolog-farmacevta-3-sezon-c1#svoy' });
+    await tick(50);
+    assert.equal(w.location.hash, '#svoy', 'тайтл этого сайта открыт');
+    fromFrame({ type: 'close' });
+    assert.equal(shadowOf(doc).querySelector('.top-frame'), null, 'Топ закрыт');
+    assert.equal(doc.documentElement.style.overflow, '', 'прокрутка страницы вернулась');
 
     // 4. Мост плеера: AG_GET_DATA от Kodik → AG_DATA + FS-состояние
     const replies = [];
@@ -139,28 +159,27 @@ test('runtime на yammyanime.club: Kodik, виджеты, Топ, мост пл
     await tick(100);
     assert.equal(replies.length, before);
 
-    // Псевдо-фуллскрин контейнера плеера
+    // Псевдо-фуллскрин контейнера плеера: значок не лежит поверх видео
     w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'AG_PSEUDO_FS', action: 'enable' }, origin: 'https://kodikplayer.com', source: kodikWin }));
     await tick(50);
     assert.ok(doc.querySelector('.ag-pfs-active'));
     assert.ok(sent.some(m => m.action === 'fullscreen_on'));
+    assert.equal(dockOf(doc).hidden, true, 'значок спрятан в полноэкранном режиме');
 
     // 5. Выключение сайта из popup: всё вставленное убирается, фуллскрин снимается, без перезагрузки
     await w.chrome.storage.local.set({ ag_settings: { sites_enabled: { yammy_club: false } } });
     await tick(100);
-    assert.equal(doc.querySelector('.ag-tw'), null, 'панель убрана');
-    assert.equal(doc.querySelector('.ag-top-nav-link'), null, 'пункт меню убран');
+    assert.equal(dockOf(doc), null, 'значок убран');
     assert.equal(doc.querySelector('.ag-pfs-active'), null, 'фуллскрин снят');
     assert.ok(!doc.body.classList.contains('ag-no-scroll'));
 
     // Включение обратно — всё монтируется снова
     await w.chrome.storage.local.set({ ag_settings: { sites_enabled: {} } });
     await tick(600);
-    assert.ok(doc.querySelector('.ag-tw'), 'панель вернулась');
+    assert.ok(dockOf(doc), 'значок вернулся');
+    assert.equal(doc.querySelectorAll('ag-fox-dock').length, 1);
     w.close();
 });
-
-
 
 test('runtime: выключенный сайт не монтируется вовсе', async () => {
     const { w } = await startRuntime({
@@ -169,178 +188,112 @@ test('runtime: выключенный сайт не монтируется во�
         settings: { sites_enabled: { animego_online: false } }
     });
     await tick(400);
-    assert.equal(w.document.querySelector('.ag-tw'), null);
-    assert.equal(w.document.querySelector('.ag-top-nav-link'), null);
+    assert.equal(dockOf(w.document), null);
     w.close();
 });
-
-
 
 test('runtime: AnimeGO.me и Jut-Su остаются на собственных модулях', async () => {
     const { w, sent } = await startRuntime({ url: 'https://jut-su.net/67-x.html', html: '<h1>x</h1><div data-player-anime-id="1"></div>' });
     await tick(200);
-    assert.equal(w.document.querySelector('.ag-tw'), null);
+    assert.equal(dockOf(w.document), null);
     assert.equal(sent.length, 0);
     w.close();
 });
 
-
-
-test('runtime SPA (ru.yummyani.me): переход на тайтл монтирует фичи, уход — демонтирует', async () => {
+test('runtime SPA (ru.yummyani.me): оценка только на странице тайтла, значок не дублируется', async () => {
     const { w } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: '<header><ul><li><a href="/catalog/top">Топ</a></li></ul></header><main id="root"></main>' });
     const api = read('tests/fixtures/yani-api-anime.json');
     w.fetch = async () => ({ ok: true, json: async () => JSON.parse(api) });
     const doc = w.document;
     await tick(300);
-    assert.equal(doc.querySelector('.ag-tw'), null, 'на каталоге панели нет');
-    assert.ok(doc.querySelector('.ag-top-nav-link'), 'пункт «Топ Shikimori» есть на любой странице');
+    let menu = await openMenu(w);
+    assert.equal(menuItem(menu, /★\s*Shikimori/), undefined, 'на каталоге оценки нет');
+    assert.ok(menuItem(menu, /Топ Shikimori/), 'Топ есть на любой странице');
 
     // Клиентский переход: React меняет DOM и адрес через history.pushState
     doc.getElementById('root').innerHTML = '<div><h1>Монолог фармацевта 3</h1></div>';
     w.history.pushState({}, '', '/catalog/item/monolog-farmacevta-3');
     await tick(1800); // опрос адреса раз в секунду + монтирование
-    const bar = doc.querySelector('.ag-tw');
-    assert.ok(bar, 'панель появилась после SPA-перехода');
-    assert.match(bar.textContent, /Shikimori/);
+    menu = await openMenu(w);
+    await tick();
+    assert.match(menuItem(menu, /Shikimori/).textContent, /★\s*Shikimori/, 'оценка появилась после SPA-перехода');
 
     doc.getElementById('root').innerHTML = '<div>Каталог</div>';
     w.history.pushState({}, '', '/catalog');
     await tick(1500);
-    assert.equal(doc.querySelector('.ag-tw'), null, 'панель убрана при уходе со страницы тайтла');
-    assert.equal(doc.querySelectorAll('.ag-top-nav-link').length, 1, 'пункт меню не дублируется после перемонтирования');
+    assert.equal(doc.querySelectorAll('ag-fox-dock').length, 1, 'значок не дублируется после перемонтирования');
+    menu = await openMenu(w);
+    assert.equal(menuItem(menu, /★\s*Shikimori/), undefined, 'оценка убрана при уходе со страницы тайтла');
     w.close();
 });
 
-
-
-test('runtime: Топ Shikimori на ru.yummyani.me вставляется отдельным элементом меню div, а не внутрь ТОП 100', async () => {
-    const html = `
-        <nav class="bo">
-            <div data-variant="top" class="fM dm" id="top-item">
-                <a href="/catalog/top" class="fO"><svg width="12" height="12" fill="var(--main-permanent)" viewBox="0 0 20 20"><path d="M0 0h20v20H0z"></path></svg><span class="fP">ТОП 100</span></a>
-            </div>
-            <div data-variant="top" class="fM dm" id="random-item">
-                <a href="/catalog/random" class="fO"><svg width="12" height="12" viewBox="0 0 20 20"><path d="M0 0h20v20H0z"></path></svg><span class="fP">СЛУЧАЙНОЕ</span></a>
-            </div>
-        </nav>`;
-    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html });
-    const doc = w.document;
+test('runtime: «Случайное аниме» в значке подбирает тайтл для этого сайта и переходит на него', async () => {
+    const html = '<nav class="bo"><a href="/catalog/random" class="fO" data-hotkey-id="random"><span class="fP">СЛУЧАЙНОЕ</span></a></nav>';
+    const { w, sent } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html, settings: { random_min_score: '8.0', random_kinds: ['tv', 'movie'] } });
     await tick(300);
 
-    const topItem = doc.getElementById('top-item');
-    const randomItem = doc.getElementById('random-item');
-    assert.equal(topItem.querySelectorAll('a').length, 1, 'внутри исходного пункта осталась только одна ссылка');
-
-    const injectedWrapper = topItem.nextElementSibling;
-    assert.ok(injectedWrapper, 'рядом с исходным пунктом появился сиблинг');
-    assert.equal(injectedWrapper.tagName, 'DIV');
-    assert.equal(injectedWrapper.getAttribute('data-variant'), 'top');
-    assert.equal(injectedWrapper.id, '');
-    assert.equal(injectedWrapper.nextElementSibling, randomItem, 'сиблинг расположен перед СЛУЧАЙНОЕ');
-
-    const link = injectedWrapper.querySelector('.ag-top-nav-link');
-    assert.ok(link, 'внутри сиблинга ссылка на Топ Shikimori');
-    assert.ok(link.classList.contains('fO'));
-    assert.equal(link.getAttribute('href'), '#ag-top-shikimori');
-
-    const span = link.querySelector('span');
-    assert.ok(span, 'текст обёрнут в span');
-    assert.ok(span.classList.contains('fP'));
-    assert.equal(span.textContent, 'ТОП SHIKIMORI', 'регистр совпадает с нативным верхним регистром');
-
-    const svg = link.querySelector('svg');
-    assert.ok(svg, 'добавлена иконка');
-    assert.equal(svg.getAttribute('width'), '12');
-    assert.equal(svg.getAttribute('fill'), 'var(--main-permanent)');
-
-    // Клик по ссылке открывает оверлей
-    link.click();
-    await tick();
-    assert.ok(doc.querySelector('.ag-top-ov'), 'оверлей открыт по клику');
-    w.close();
-});
-
-
-
-test('runtime: кнопка СЛУЧАЙНОЕ на ru.yummyani.me перехватывается и запрашивает случайное аниме с siteId', async () => {
-    const html = `
-        <header>
-            <nav class="bo">
-                <div data-variant="top" class="fM dm">
-                    <a href="/catalog/top" class="fO" itemprop="url" data-hotkey-id="top100"><span class="fP">ТОП 100</span></a>
-                </div>
-                <div data-variant="top" class="fM dm">
-                    <a href="/catalog/random" class="fO" itemprop="url" data-hotkey-id="random" data-hotkey="g r, shift+r">
-                        <svg width="16" height="16" viewBox="0 0 20 20"><path d="M0 0h20v20H0z"></path></svg>
-                        <span class="fP">СЛУЧАЙНОЕ</span>
-                    </a>
-                </div>
-            </nav>
-        </header>`;
-    const { w, sent } = await startRuntime({
-        url: 'https://ru.yummyani.me/catalog',
-        html,
-        settings: { random_min_score: '8.0', random_kinds: ['tv', 'movie'] }
-    });
-    const doc = w.document;
-    await tick(300);
-
-    const randomLink = doc.querySelector('a[href="/catalog/random"]');
-    assert.ok(randomLink, 'кнопка случайного аниме найдена');
-
-    const clickEvt = new w.MouseEvent('click', { bubbles: true, cancelable: true });
-    randomLink.dispatchEvent(clickEvt);
-    assert.equal(clickEvt.defaultPrevented, true, 'нативное действие предотвращено');
-
+    // Кнопку сайта расширение больше не перехватывает
+    const siteLink = w.document.querySelector('a[href="/catalog/random"]');
+    siteLink.addEventListener('click', (e) => e.preventDefault());
+    siteLink.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
     await tick(50);
+    assert.ok(!sent.some(m => m.action === 'get_random_shikimori_anime'), 'нажатие на кнопку сайта не перехвачено');
 
+    const menu = await openMenu(w);
+    menuItem(menu, /Случайное аниме/).click();
+    await tick(50);
     const randomMsg = sent.find(m => m.action === 'get_random_shikimori_anime');
     assert.ok(randomMsg, 'сообщение get_random_shikimori_anime отправлено');
     assert.equal(randomMsg.siteId, 'yummy_ru', 'передан siteId yummy_ru');
     assert.equal(w.location.hash, '#naruto-tv-1', 'выполнен переход по подобранному URL');
-
     w.close();
 });
 
-
-
-test('runtime: кнопка СЛУЧАЙНОЕ показывает alert если критерии не совпали', async () => {
-    const html = `
-        <nav class="bo">
-            <a href="/catalog/random" class="fO" data-hotkey-id="random">
-                <span class="fP">СЛУЧАЙНОЕ</span>
-            </a>
-        </nav>`;
-    const { w } = await startRuntime({
-        url: 'https://ru.yummyani.me/',
-        html,
-        settings: { random_min_score: '9.0' }
-    });
-    const doc = w.document;
+test('runtime: «Случайное аниме» без подходящих тайтлов пишет причину в меню и остаётся на странице', async () => {
+    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/', html: '<main></main>', settings: { random_min_score: '9.0' } });
     await tick(300);
-
-    let alertMessage = null;
-    w.alert = (msg) => { alertMessage = msg; };
-
-    // Подменяем ответ background на no_match
+    let alerted = false;
+    w.alert = () => { alerted = true; };
     w.chrome.runtime.sendMessage = (msg, cb) => {
-        if (msg.action === 'get_random_shikimori_anime') {
-            cb({ url: null, reason: 'no_match', minScore: 9 });
-        }
+        if (msg.action === 'get_random_shikimori_anime') cb({ url: null, reason: 'no_match', minScore: 9 });
     };
-
-    const randomLink = doc.querySelector('a[data-hotkey-id="random"]');
-    randomLink.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
-
+    const menu = await openMenu(w);
+    menuItem(menu, /Случайное аниме/).click();
     await tick(50);
-
-    assert.ok(alertMessage, 'alert вызван');
-    assert.match(alertMessage, /9/);
+    assert.match(menu.querySelector('.note').textContent, /9/);
+    assert.equal(alerted, false, 'без всплывающих окон браузера');
     assert.equal(w.location.href, 'https://ru.yummyani.me/', 'страница осталась прежней');
-
     w.close();
 });
 
+test('runtime: значок перетаскивается в ближайший угол и запоминает его', async () => {
+    const { w, store } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: '<main></main>' });
+    await tick(300);
+    const dock = dockOf(w.document);
+    const fab = shadowOf(w.document).querySelector('.fab');
+    assert.equal(dock.dataset.corner, 'br', 'по умолчанию правый нижний угол');
+    fab.dispatchEvent(new w.PointerEvent('pointerdown', { button: 0, clientX: 1000, clientY: 700, bubbles: true }));
+    fab.dispatchEvent(new w.PointerEvent('pointermove', { clientX: 400, clientY: 300, bubbles: true }));
+    fab.dispatchEvent(new w.PointerEvent('pointermove', { clientX: 20, clientY: 30, bubbles: true }));
+    fab.dispatchEvent(new w.PointerEvent('pointerup', { button: 0, clientX: 20, clientY: 30, bubbles: true }));
+    await tick(50);
+    assert.equal(dock.dataset.corner, 'tl');
+    assert.equal(store.ag_fox_corner, 'tl');
+    assert.equal(shadowOf(w.document).querySelector('.menu').hidden, true, 'перетаскивание не открывает меню');
+    w.close();
+});
+
+test('runtime: старая ссылка …#ag-top-shikimori открывает Топ поверх страницы, Esc закрывает', async () => {
+    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/#ag-top-shikimori', html: '<main></main>' });
+    await tick(300);
+    const frame = shadowOf(w.document).querySelector('.top-frame');
+    assert.ok(frame);
+    assert.equal(new URL(frame.getAttribute('src')).searchParams.get('site'), 'yummy_ru');
+    assert.equal(w.location.hash, '', 'метка убрана из адреса');
+    w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(shadowOf(w.document).querySelector('.top-frame'), null);
+    w.close();
+});
 
 
 test('runtime: псевдофулскрин на old.yummyani.me изолирует предков через ag-pfs-ancestor и восстанавливает при закрытии', async () => {
@@ -410,51 +363,16 @@ test('runtime: псевдофулскрин на old.yummyani.me изолиру�
     w.close();
 });
 
-
-
-test('runtime: Топ Shikimori на yummyanime.tv изолирован от глобальных стилей button и рендерит карточки div', async () => {
-    const html = `
-        <header>
-            <ul class="header__menu">
-                <li><a href="/top-100/" title="Топ 100 лучших аниме">Топ 100</a></li>
-            </ul>
-        </header>
-        <main>
-            <h1>Аниме</h1>
-            <div data-player-anime-id="1"></div>
-        </main>`;
-    const { w } = await startRuntime({
-        url: 'https://yummyanime.tv/1-naruto.html',
-        html
-    });
-    const doc = w.document;
+test('runtime: значок изолирован от стилей сайта (yummyanime.tv)', async () => {
+    const html = '<style>button { height: 40px; background: purple; }</style><main><h1>Аниме</h1><div data-player-anime-id="1"></div></main>';
+    const { w } = await startRuntime({ url: 'https://yummyanime.tv/1-naruto.html', html });
     await tick(300);
-
-    const topNavLink = doc.querySelector('.ag-top-nav-link');
-    assert.ok(topNavLink, 'пункт Топ Shikimori добавлен в навигацию yummyanime.tv');
-
-    // Кликаем по пункту Топ Shikimori для открытия оверлея
-    topNavLink.click();
-    await tick(100);
-
-    const overlay = doc.querySelector('.ag-top-ov');
-    assert.ok(overlay, 'оверлей открыт');
-
-    const cards = doc.querySelectorAll('.ag-top-ov__card');
-    assert.ok(cards.length > 0, 'карточки отрендерены');
-    // Карточки должны быть DIV с role="button", чтобы глобальные button-стили сайта (height: 40px, purple bg) не ломали их
-    assert.equal(cards[0].tagName, 'DIV', 'карточка создана как DIV, а не native button');
-    assert.equal(cards[0].getAttribute('role'), 'button', 'карточка имеет role="button"');
-    assert.equal(cards[0].getAttribute('tabindex'), '0', 'карточка доступна для фокуса через tabindex');
-
-    // Проверяем наличие стилей изоляции
-    const styleEl = doc.getElementById('ag-top-overlay-style');
-    assert.ok(styleEl, 'стили оверлея инжектированы');
-    assert.match(styleEl.textContent, /all:\s*unset/i, 'присутствует CSS-сброс all: unset');
-
+    const root = shadowOf(w.document);
+    assert.ok(root, 'у значка свой Shadow DOM');
+    assert.match(root.querySelector('style').textContent, /:host \{ all: initial/, 'наследуемые стили сайта сброшены');
+    assert.equal(w.document.querySelectorAll('[class^="ag-top"], .ag-tw').length, 0);
     w.close();
 });
-
 
 
 test('runtime: псевдофулскрин на yummyanime.tv находит активный слот с Kodik и разворачивает его на весь экран', async () => {
@@ -561,7 +479,6 @@ test('runtime: переключение серии (AG_NAV) на yummyanime.tv �
 
     w.close();
 });
-
 // Разметка шапки снята с живого ru.yummyani.me (сокращена)
 const RU_HEADER = `
     <header><nav class="bo">
@@ -571,64 +488,58 @@ const RU_HEADER = `
             </div></div>
         </div>
         <div data-variant="top" class="fM dm" id="top-item"><a href="/catalog/top" class="fO"><span class="fP">ТОП 100</span></a></div>
-        <div data-variant="top" class="fM fN dm" id="profile"><a href="#login" class="fO" aria-label="Войти" data-hotkey-id="profile" data-hotkey="g p"><div class="bq"></div></a>
-            <div style="display:none"><div class="db" id="profile-menu"><a href="#settings" data-hotkey-id="settings" class="hO dm"><span itemprop="name">Настройки</span></a></div></div>
-        </div>
     </nav></header>`;
 
-test('ru.yummyani.me: «Топ Shikimori» в меню «АНИМЕ», шапка не получает лишних пунктов', async () => {
-    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: RU_HEADER });
-    const doc = w.document;
+test('меню сайтов не меняются: ru.yummyani.me и animego.online', async () => {
+    const ru = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: RU_HEADER });
+    const before = new JSDOM(RU_HEADER).window.document.querySelector('header').outerHTML;
     await tick(300);
+    assert.equal(ru.w.document.querySelector('header').outerHTML, before, 'шапка ru.yummyani.me как у сайта');
+    ru.w.close();
 
-    const link = doc.querySelector('#anime-menu .ag-top-nav-link');
-    assert.ok(link, 'пункт в выпадающем меню');
-    assert.equal(link.getAttribute('href'), '#ag-top-shikimori');
-    assert.equal(link.querySelector('span').textContent, 'Топ Shikimori');
-    assert.ok(link.classList.contains('hO'), 'нативный класс');
-    assert.equal(link.hasAttribute('data-hotkey'), false, 'горячая клавиша сайта не скопирована');
-    assert.equal(doc.querySelectorAll('.ag-top-nav-link').length, 1);
-    assert.equal(doc.querySelector('.ag-top-nav-wrapper'), null);
-    assert.equal(doc.getElementById('top-item').nextElementSibling, doc.getElementById('profile'), 'в шапке рядом с «ТОП 100» ничего не добавлено');
+    const fixture = read('tests/fixtures/animego_online-title.html');
+    const ao = await startRuntime({ url: 'https://animego.online/6003-monolog-farmacevta-3-sezon-o1.html', html: fixture });
+    await tick(600);
+    const menuNow = ao.w.document.querySelector('.animego-online-header__menu--bothead > ul').outerHTML;
+    const menuWas = new JSDOM(fixture).window.document.querySelector('.animego-online-header__menu--bothead > ul').outerHTML;
+    assert.equal(menuNow, menuWas, 'меню animego.online как у сайта');
+    const css = [...ao.w.document.querySelectorAll('style')].map(s => s.textContent).join('\n');
+    assert.doesNotMatch(css, /bothead/, 'отступы меню не трогаем');
+    assert.ok(dockOf(ao.w.document), 'значок есть');
+    ao.w.close();
+});
 
-    link.click();
-    await tick();
-    assert.ok(doc.querySelector('.ag-top-ov'), 'открывается Топ');
+test('runtime: лиса один раз рассказывает о значке, ответ запоминается, открытие меню отмечает задание', async () => {
+    const { w, store } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: '<main></main>' });
+    const tip = () => shadowOf(w.document).querySelector('.tip');
+    await tick(300);
+    assert.equal(tip().hidden, true, 'не сразу');
+    await tick(1500);
+    assert.equal(tip().hidden, false, 'подсказка показана');
+    assert.match(tip().textContent, /Топ Shikimori/);
+    [...tip().querySelectorAll('button')].find(b => /Понятно/.test(b.textContent)).click();
+    await tick(50);
+    assert.equal(tip().hidden, true);
+    assert.equal(store.ag_guide.dockTipDone, true, 'больше не покажется');
+
+    const menu = await openMenu(w);
+    await tick(50);
+    assert.equal(menu.hidden, false);
+    assert.equal(store.ag_guide.tasks.dock, true, 'задание «Нажмите на лису» выполнено');
     w.close();
 });
 
-test('animego.online: «Топ Shikimori» в меню вне <header>, рядом с «Топ 100», в обеих копиях меню', async () => {
-    const { JSDOM: Parser } = require('jsdom');
-    const fixture = new Parser(read('tests/fixtures/animego_online-title.html')).window.document;
-    // Сайт копирует меню в мобильную панель своим скриптом — в снимке копии нет, добавляем её как на живой странице
-    const nativeMenu = fixture.querySelector('.animego-online-header__menu--bothead > ul');
-    assert.ok(nativeMenu, 'в снимке есть меню вне <header>');
-    const mobile = fixture.createElement('div');
-    mobile.className = 'mobile-menu';
-    mobile.appendChild(nativeMenu.cloneNode(true));
-    fixture.body.appendChild(mobile);
+test('runtime: подсказка уже была — не показывается; «Показать» открывает меню', async () => {
+    const seen = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: '<main></main>', settings: {} });
+    await seen.w.chrome.storage.local.set({ ag_guide: { dockTipDone: true } });
+    seen.w.close();
 
-    const { w } = await startRuntime({
-        url: 'https://animego.online/6003-monolog-farmacevta-3-sezon-o1.html',
-        html: fixture.documentElement.outerHTML
-    });
-    const doc = w.document;
-    await tick(600);
-
-    const menu = doc.querySelector('.animego-online-header__menu--bothead > ul');
-    const link = menu.querySelector('.ag-top-nav-link');
-    assert.ok(link, 'пункт есть в основном меню');
-    assert.equal(link.textContent.trim(), 'Топ Shikimori');
-    assert.match(link.closest('li').previousElementSibling.textContent, /Топ 100/, 'стоит сразу после «Топ 100»');
-
-    assert.ok(doc.querySelector('.mobile-menu .ag-top-nav-link'), 'пункт есть в мобильном меню');
-    assert.equal(doc.querySelectorAll('.ag-top-nav-link').length, 2, 'без дублей');
-
-    const css = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
-    assert.match(css, /--bothead > ul > li \{ margin-right: 28px/, 'отступы меню ужаты, чтобы всё встало в одну строку');
-
-    doc.querySelector('.mobile-menu .ag-top-nav-link').click();
-    await tick();
-    assert.ok(doc.querySelector('.ag-top-ov'), 'открывается окно Топа');
+    const { w } = await startRuntime({ url: 'https://ru.yummyani.me/catalog', html: '<main></main>' });
+    await tick(1900);
+    const root = shadowOf(w.document);
+    [...root.querySelectorAll('.tip button')].find(b => /Показать/.test(b.textContent)).click();
+    await tick(50);
+    assert.equal(root.querySelector('.menu').hidden, false, '«Показать» открывает меню');
+    assert.equal(root.querySelector('.tip').hidden, true);
     w.close();
 });

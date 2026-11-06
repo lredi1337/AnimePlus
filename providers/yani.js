@@ -344,21 +344,6 @@
             return { op: toRange(video.skips.opening), ed: toRange(video.skips.ending) };
         }
 
-        getTitleAnchor() {
-            return document.querySelector('h1')?.parentElement || null;
-        }
-
-        getNavAnchor() {
-            const top = document.querySelector('nav a[href="/catalog/top"], a[href="/catalog/top"]');
-            return top ? (top.closest('li, [data-variant], nav > div, .fM') || top) : null;
-        }
-
-        // ru.yummyani.me: пункты шапки сжимаются (flex-shrink:1, min-width:0), а подписи не переносятся —
-        // лишний пункт наезжает на соседние. Поэтому «Топ Shikimori» живёт в выпадающем меню «АНИМЕ»
-        getTopMenuSample() {
-            return document.querySelector('header .db a[href="/catalog/schedule"]');
-        }
-
         requiredSelectors() {
             return [['title', ['h1']]];
         }

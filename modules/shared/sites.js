@@ -22,7 +22,9 @@
         {
             id: 'animego', name: 'AnimeGO', short: 'AG', color: '#ef4444',
             hosts: ['animego.me', 'animego.org'], home: 'https://animego.me',
-            platform: 'animego'
+            platform: 'animego',
+            // Тайтла нет в каталоге: страница из данных Shikimori (modules/animego/ag-synthetic.js)
+            shikiPage: '/anime/shiki-{id}'
         },
         {
             id: 'jutsu', name: 'Jut-Su', short: 'JS', color: '#3b82f6',
@@ -52,9 +54,7 @@
             platform: 'dle',
             dle: {
                 titlePath: /^\/\d+-[^/]+\.html$/,
-                searchPath: '/index.php?do=search&subaction=search&story=',
-                // Меню заполнено до края: с «Топ Shikimori» при штатных 40px последний пункт уходит на вторую строку
-                navCss: '.animego-online-header__menu--bothead > ul > li { margin-right: 28px !important; }'
+                searchPath: '/index.php?do=search&subaction=search&story='
             }
         },
         {
@@ -63,16 +63,13 @@
             platform: 'dle',
             dle: {
                 titlePath: /^\/catalog\/item\/[^/?#]+$/,
-                searchPath: '/index.php?do=search&subaction=search&story=',
-                navCss: '.header__menu { flex-wrap: nowrap !important; } .header__menu > li > a { padding: 0 clamp(7px, 0.75vw, 12px) !important; font-size: 15px !important; white-space: nowrap !important; } .header__menu > li.has-child > a { padding-right: clamp(18px, 1.2vw, 24px) !important; } .header__menu > li.ag-settings-menu-wrapper > a { padding: 0 clamp(8px, 0.7vw, 12px) !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; } .header__menu > li.ag-settings-menu-wrapper > a svg { width: 18px !important; height: 18px !important; display: block !important; fill: currentColor !important; transition: transform 0.3s ease, color 0.25s ease !important; } .header__menu > li.ag-settings-menu-wrapper > a:hover svg { transform: rotate(45deg); }'
+                searchPath: '/index.php?do=search&subaction=search&story='
             }
         },
         {
             id: 'animevost', name: 'AnimeVost', short: 'AV', color: '#0ea5e9',
             hosts: ['animevost.org', 'vost.pw'], home: 'https://animevost.org',
             platform: 'vost', mirrors: true,
-            // Поиск тайтла по сайту ещё не сделан: в «Смотреть на…» сайт не показывается
-            noSearch: true,
             detect: 'link[href*="/templates/AnimeVost"], script[src*="/templates/AnimeVost"], a[href*="vost.pw/user/animevost"]'
         }
     ];
@@ -147,6 +144,12 @@
         // Абсолютный адрес страницы тайтла по относительному пути
         absolute(site, path) {
             return new URL(path, site.home).href;
+        },
+
+        /** Страница «Топ Shikimori» (top/top.html) с параметрами: embed, pick, site, origin (см. top/top.js) */
+        topPageUrl(params = {}) {
+            const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
+            return chrome.runtime.getURL(`top/top.html?${query}`);
         }
     };
 

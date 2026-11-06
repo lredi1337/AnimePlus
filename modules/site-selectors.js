@@ -31,8 +31,7 @@
             main: ['main.content', 'main', '.wrapper[data-dynamic-content]']
         },
         jutsu: {
-            content: ['.jutsu-content', '.jutsu-wrapper__main'],
-            navTop100: ['a[href*="/top100/"]']
+            content: ['.jutsu-content', '.jutsu-wrapper__main']
         }
     };
 
@@ -45,7 +44,7 @@
             any: ['headerNav', 'main']
         },
         jutsu: {
-            any: ['content', 'navTop100']
+            any: ['content']
         }
     };
 
