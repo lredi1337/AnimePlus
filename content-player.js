@@ -8,7 +8,9 @@
     // (список сайтов — modules/shared/sites.js; позволяет безопасно использовать широкие разрешения манифеста)
     if (window === window.top) return;
 
-    // Плеер определяем по адресу кадра: всё, что зависит от него, находится в адаптере
+    // Плеер определяем по адресу кадра: всё, что зависит от него, находится в адаптере.
+    // Адреса переехавших сайтов, добавленные зрителем, нужны раньше: по ним отличаются кадры сайта от плеера
+    if (globalThis.AgSites && globalThis.AgSites.ready) await globalThis.AgSites.ready;
     const player = globalThis.AgPlayerAdapters.current();
     if (!player) return;
     const isKodik = player.id === 'kodik';

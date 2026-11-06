@@ -114,6 +114,7 @@
         let seen = new Set();
         let seenMarked = false;
         let episodeGroup = null;
+        let rangeGridOpen = false;
         let fullShown = false;
         let resumeAfterGate = false;
         let siteData = null;
@@ -263,9 +264,15 @@
             return h;
         }
 
+        // Ряд кнопок прокручивается вбок, а полоса прокрутки скрыта: колесо мыши крутит его вбок
         function chips(items, onPick) {
             const box = document.createElement('div');
             box.className = 'chips';
+            box.addEventListener('wheel', (e) => {
+                if (box.scrollWidth <= box.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+                box.scrollLeft += e.deltaY;
+                e.preventDefault();
+            }, { passive: false });
             for (const it of items) {
                 const b = document.createElement('button');
                 b.className = `chip${it.on ? ' on' : ''}`;
@@ -294,10 +301,45 @@
             const nowIndex = list.findIndex(o => o.selected);
             if (groups.length) {
                 if (episodeGroup === null) episodeGroup = Math.max(0, groups.findIndex(g => nowIndex >= g.from && nowIndex < g.to));
+                // Одна строка: поиск по номеру и «‹ сотня ›». Нажатие на сотню раскрывает сетку всех сотен
+                const row = document.createElement('div');
+                row.className = 'find-row';
                 const field = document.createElement('label');
                 field.className = 'field';
                 field.innerHTML = `${icon('search')}<input inputmode="numeric" placeholder="Номер серии" aria-label="Номер серии">`;
-                panel.appendChild(field);
+                const step = document.createElement('div');
+                step.className = 'range-step';
+                step.innerHTML = `<button class="range-prev" aria-label="Предыдущие серии">${icon('chevronLeft')}</button><button class="range-now" aria-expanded="${rangeGridOpen}" aria-label="Все серии по сотням"></button><button class="range-next" aria-label="Следующие серии">${icon('chevronRight')}</button>`;
+                step.querySelector('.range-now').textContent = groups[episodeGroup].label;
+                const prev = step.querySelector('.range-prev');
+                const next = step.querySelector('.range-next');
+                prev.disabled = episodeGroup === 0;
+                next.disabled = episodeGroup === groups.length - 1;
+                const goGroup = (g) => {
+                    episodeGroup = g;
+                    rangeGridOpen = false;
+                    renderEpisodes();
+                };
+                prev.addEventListener('click', () => goGroup(Math.max(0, episodeGroup - 1)));
+                next.addEventListener('click', () => goGroup(Math.min(groups.length - 1, episodeGroup + 1)));
+                step.querySelector('.range-now').addEventListener('click', () => {
+                    rangeGridOpen = !rangeGridOpen;
+                    renderEpisodes();
+                });
+                row.append(field, step);
+                panel.appendChild(row);
+                if (rangeGridOpen) {
+                    const grid = document.createElement('div');
+                    grid.className = 'range-grid';
+                    groups.forEach((g, i) => {
+                        const b = document.createElement('button');
+                        b.className = i === episodeGroup ? 'on' : '';
+                        b.textContent = g.label;
+                        b.addEventListener('click', () => goGroup(i));
+                        grid.appendChild(b);
+                    });
+                    panel.appendChild(grid);
+                }
                 const input = field.querySelector('input');
                 input.addEventListener('keydown', (e) => {
                     e.stopPropagation();
@@ -310,18 +352,13 @@
                     if (i < 0) return;
                     const g = groups.findIndex(x => i >= x.from && i < x.to);
                     if (g !== episodeGroup) {
-                        episodeGroup = g;
                         const value = input.value;
-                        renderEpisodes();
-                        const again = panel.querySelector('input');
+                        goGroup(g);
+                        const again = panel.querySelector('.find-row input');
                         again.value = value;
                         again.focus();
                     }
                 });
-                panel.appendChild(chips(groups.map((g, i) => ({ label: g.label, on: i === episodeGroup, i })), (it) => {
-                    episodeGroup = it.i;
-                    renderEpisodes();
-                }));
             }
             const scroll = document.createElement('div');
             scroll.className = 'scroll';
@@ -510,6 +547,7 @@
             if (openPanel === name) return closePanel();
             openPanel = name;
             episodeGroup = null;
+            rangeGridOpen = false;
             // Зритель мог сменить плеер на сайте: у каждой вкладки свой кадр, и список плееров в нём мог устареть
             if (options.refreshSite) options.refreshSite();
             if (name !== 'settings' && name !== 'players' && options.guide && !byGuide) options.guide.mark('panel');

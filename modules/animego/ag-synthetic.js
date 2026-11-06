@@ -193,7 +193,7 @@
         box.className = 'ag-wc';
 
         const settings = await window.getSettings();
-        const sites = window.AgSites.list.filter(s => s.id !== 'animego' && window.AgSites.isEnabled(settings, s.id));
+        const sites = window.AgSites.searchable().filter(s => s.id !== 'animego' && window.AgSites.isEnabled(settings, s.id));
         if (sites.length === 0) {
             note.textContent = 'Все остальные сайты выключены в настройках Anime+.';
             box.replaceChildren(note);

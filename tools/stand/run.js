@@ -125,7 +125,7 @@ async function smoke(opts) {
 
         const popup = await b.openPage(`chrome-extension://${extId}/popup/popup.html`);
         await wait(2500);
-        r.check('окно расширения показывает сайты', (await b.ev(popup.session, "document.querySelectorAll('[class*=site-item]').length")) > 0);
+        r.check('окно расширения показывает сайты', (await b.ev(popup.session, "document.querySelectorAll('.site-tile').length")) > 0);
         const clientId = fs.readFileSync(path.join(ROOT, 'credentials.js'), 'utf8').match(/client_id: "([^"]+)"/)[1];
         r.check('кнопка входа разрешена окну расширения', (await b.ev(popup.session, `chrome.runtime.sendMessage({ action: 'shiki_auth_begin', clientId: ${JSON.stringify(clientId)} })`)).success === true);
         await wait(4000);
@@ -357,8 +357,26 @@ async function accuracy(opts) {
     const skipFile = path.join(dir, 'modules/audio/audio-skip.js');
     const code = fs.readFileSync(skipFile, 'utf8');
     const WANTED = 'wanted: (part) => !found[part] && !repeat[part] && !resolved(part, video),';
-    if (!code.includes(WANTED)) throw new Error('в audio-skip.js изменилось условие анализа');
-    fs.writeFileSync(skipFile, code.replace(WANTED, 'wanted: (part) => !repeat[part],'));
+    const PATCHES = [
+        [WANTED, 'wanted: (part) => !repeat[part],'],
+        // Метки Kodik остаются эталоном, но выбор времени их не видит: замер того, что видит зритель там, где их нет
+        ['        const nativeFor = (part, video) => {\n', '        const nativeFor = (part, video) => {\n            if (part) return null;\n'],
+        // Варианты для замера: без метки сайта, без сравнения серий, без песни из базы (новый тайтл), без метки AniSkip
+        ['        const timingsFor = (part, video) => {', '        const timingsFor = (part, video, off = {}) => {'],
+        ['            const site = siteFor(part, video);', '            const site = off.site ? null : siteFor(part, video);'],
+        ['                hit: found[part],', '                hit: off.song ? null : found[part],'],
+        ['                repeat: repeat[part],', '                repeat: off.repeat ? null : repeat[part],'],
+        ['                mark: aniskip[part],', '                mark: off.mark ? { start: 0, end: 0 } : aniskip[part],'],
+        ['                hasSong: hasSongs(part.toUpperCase()),', '                hasSong: !off.song && hasSongs(part.toUpperCase()),'],
+        ['                    timings\n                });', '                    timings,\n                    variants: Object.fromEntries(Object.entries(VARIANTS).map(([k, off]) => [k, { op: timingsFor(\'op\', video, off), ed: timingsFor(\'ed\', video, off) }]))\n                });'],
+        ['    function create(options) {', 'const VARIANTS = { полный_без: { repeat: true }, полный_с: {}, песня_без: { site: true, repeat: true }, песня_с: { site: true }, новый_без: { site: true, song: true, repeat: true }, новый_с: { site: true, song: true }, голый_без: { site: true, song: true, mark: true, repeat: true }, голый_с: { site: true, song: true, mark: true } };\n    function create(options) {']
+    ];
+    let patched = code.replace(/\r\n/g, '\n');
+    for (const [from, to] of PATCHES) {
+        if (!patched.includes(from)) throw new Error(`в audio-skip.js изменилось: ${from.trim().slice(0, 50)}`);
+        patched = patched.replace(from, to);
+    }
+    fs.writeFileSync(skipFile, patched);
     const b = launch({ proxy: opts.proxy });
     const summary = [];
     try {
@@ -415,12 +433,23 @@ async function accuracy(opts) {
                 line.метки = marks;
                 for (const part of ['op', 'ed']) {
                     const mark = marks && marks[part] && marks[part].end > 0 ? marks[part] : null;
-                    const truth = mark || (a.timings && a.timings[part] && /kodik|site/.test(String(a.timings[part].source)) ? a.timings[part] : null);
+                    const truth = mark;
                     const found = a.repeat && a.repeat[part];
+                    const judge = (t) => {
+                        if (!t || !(t.end > 0)) return 'нет';
+                        const out = { источник: t.source, время: [Math.round(t.start), Math.round(t.end)], кнопка: !!t.manual };
+                        if (!truth) return `${t.source}${t.manual ? ' кнопка' : ''} ${out.время.join('-')}`;
+                        out.ошибка = [+(t.start - truth.start).toFixed(1), +(t.end - truth.end).toFixed(1)];
+                        // Эндинг у самого конца серии тянется до конца: так задумано, хвост после него не нужен
+                        const toEnd = part === 'ed' && t.end >= line.длина - 1 && line.длина - truth.end <= 20;
+                        const close = Math.abs(out.ошибка[0]) <= 3 && (Math.abs(out.ошибка[1]) <= 5 || toEnd);
+                        return `${!close ? 'неверно' : t.manual ? 'кнопка' : 'сам'} ${t.source} ${out.ошибка.join('/')}`;
+                    };
                     line[part] = {
                         эталон: truth ? [Math.round(truth.start), Math.round(truth.end)] : null,
                         найдено: found ? [Math.round(found.start), Math.round(found.end), found.manual ? 'кнопка' : 'авто'] : null,
-                        ошибка: truth && found ? [+(found.start - truth.start).toFixed(1), +(found.end - truth.end).toFixed(1)] : null
+                        ошибка: truth && found ? [+(found.start - truth.start).toFixed(1), +(found.end - truth.end).toFixed(1)] : null,
+                        ...Object.fromEntries(Object.entries(a.variants || {}).map(([k, v]) => [k, judge(v[part])]))
                     };
                 }
                 summary.push(line);
@@ -441,6 +470,14 @@ async function accuracy(opts) {
         const compared = summary.filter(x => x.серия > 1).flatMap(x => [x.op, x.ed]).filter(p => p.эталон);
         const hits = compared.filter(p => p.найдено);
         r.info('сводка', { 'со второй серии с эталоном': compared.length, найдено: hits.length, 'ошибка начала': hits.map(p => p.ошибка[0]), 'ошибка конца': hits.map(p => p.ошибка[1]) });
+        const tally = {};
+        for (const p of summary.flatMap(x => [x.op, x.ed]).filter(p => p.эталон)) {
+            for (const k of Object.keys(p).filter(k => k.includes('_'))) {
+                const t = tally[k] || (tally[k] = { сам: 0, кнопка: 0, неверно: 0, нет: 0 });
+                t[String(p[k]).split(' ')[0]]++;
+            }
+        }
+        r.info('варианты', tally);
         r.check('в первой серии сравнивать не с чем', summary.length > 0 && summary.filter(x => x.серия === 1).every(x => !x.op.найдено && !x.ed.найдено));
     } finally {
         await b.close();

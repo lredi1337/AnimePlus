@@ -278,7 +278,7 @@
             if (fallbackUrl) { location.href = fallbackUrl; return; }
 
             busy.textContent = 'Ищем на других сайтах…';
-            const others = window.AgSites.list.filter(s => s.id !== site.id && window.AgSites.isEnabled(settings, s.id)).map(s => s.id);
+            const others = window.AgSites.searchable().filter(s => s.id !== site.id && window.AgSites.isEnabled(settings, s.id)).map(s => s.id);
             const res = await window.agSendMessage({ action: 'resolve_all_sites', siteIds: others, titles, year, shikimoriId: item.id });
             busy.remove();
             const found = ((res && res.results) || []).filter(r => r.url);

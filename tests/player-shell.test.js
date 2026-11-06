@@ -241,3 +241,44 @@ test('снятие оболочки возвращает родной интер
     assert.equal(w.document.getElementById('ag-shell'), null);
     assert.equal(w.document.getElementById('ag-shell-native'), null);
 });
+
+test('длинный сериал: сотни переключаются в одной строке с поиском, все сотни открываются сеткой', () => {
+    const options = Array.from({ length: 250 }, (_, i) => `<option value="${i + 1}"${i === 119 ? ' selected' : ''}>${i + 1} серия</option>`).join('');
+    const dom = new JSDOM(PLAYER.replace(/<div class="serial-series-box"><select>[\s\S]*?<\/select>/,`<div class="serial-series-box"><select>${options}</select>`), { url: 'https://kodikplayer.com/serial/1/a/720p', runScripts: 'outside-only', pretendToBeVisual: true });
+    const w = dom.window;
+    w.chrome = { storage: { local: { get: async () => ({}), set: async () => {} } } };
+    for (const f of ['modules/player/adapters.js', 'modules/player/shell-view.js', 'modules/player/shell.js']) w.eval(read(f));
+    const shell = w.AgPlayerShell.create({ getSettings: () => ({}), patchSettings: async () => {}, getTimings: () => ({ op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } }), nav() {}, toggleFs() {}, onVoicePicked() {} });
+    const sh = w.document.getElementById('ag-shell').shadowRoot;
+    const q = (sel) => sh.querySelector(sel);
+    const eps = () => [...sh.querySelectorAll('.panel .ep')].map(e => e.textContent);
+    q('[data-act="episodes"]').click();
+    // Поиск и переключатель сотен в одной строке, рядов кнопок-диапазонов больше нет
+    assert.ok(q('.panel .find-row .field input'));
+    assert.equal(q('.panel .chips.ranges'), null);
+    assert.equal(q('.panel .range-now').textContent.trim(), '101–200');
+    assert.equal(q('.panel .range-grid'), null);
+    assert.equal(eps()[0], '101');
+    q('.panel .range-next').click();
+    assert.equal(q('.panel .range-now').textContent.trim(), '201–250');
+    assert.equal(eps().length, 50);
+    assert.ok(q('.panel .range-next').disabled);
+    q('.panel .range-prev').click();
+    q('.panel .range-prev').click();
+    assert.equal(eps()[0], '1');
+    assert.ok(q('.panel .range-prev').disabled);
+    // Нажатие на сотню открывает сетку всех сотен, выбор закрывает её
+    q('.panel .range-now').click();
+    const cells = [...sh.querySelectorAll('.panel .range-grid button')];
+    assert.deepEqual(cells.map(c => c.textContent), ['1–100', '101–200', '201–250']);
+    assert.ok(cells[0].classList.contains('on'));
+    cells[2].click();
+    assert.equal(q('.panel .range-grid'), null);
+    assert.equal(eps()[0], '201');
+    // Номер из другой сотни в поиске переключает сотню
+    const input = q('.panel .find-row input');
+    input.value = '42';
+    input.dispatchEvent(new w.Event('input'));
+    assert.equal(q('.panel .range-now').textContent.trim(), '1–100');
+    shell.destroy();
+});

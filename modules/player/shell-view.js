@@ -10,6 +10,8 @@
     const ICON = {
         play: '<path d="M7 4v16l13-8z" fill="currentColor" stroke="none"/>',
         pause: '<path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" stroke="none"/>',
+        chevronLeft: '<path d="m15 6-6 6 6 6"/>',
+        chevronRight: '<path d="m9 6 6 6-6 6"/>',
         prev: '<path d="M20 5v14l-12-7zM5 5v14"/>',
         next: '<path d="M4 5v14l12-7zM19 5v14"/>',
         back5: '<path d="M4 12a8 8 0 1 0 3-6.2M7 2v4h4"/><text x="12" y="16" font-size="8" text-anchor="middle" fill="currentColor" stroke="none" font-family="Arial">5</text>',
@@ -74,7 +76,7 @@
         .bar { display: flex; align-items: center; gap: 16px; height: 36px; }
         .bar button { opacity: .92; }
         .bar button:hover { opacity: 1; }
-        .clock { font-variant-numeric: tabular-nums; }
+        .clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
         .jump { height: 28px; padding: 0 10px 0 6px; gap: 2px; border-radius: 7px; background: rgba(255,255,255,.14); font-weight: 600; font-variant-numeric: tabular-nums; }
         .jump:hover { background: rgba(255,255,255,.24); }
         .jump svg { width: 18px; height: 18px; }
@@ -92,6 +94,19 @@
         .panel h3 { all: unset; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; margin-bottom: 14px; }
         .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; margin-bottom: 12px; border-radius: 7px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); flex: none; }
         .field svg { width: 16px; height: 16px; }
+        .find-row { display: flex; gap: 8px; margin-bottom: 12px; flex: none; }
+        .find-row .field { flex: 1; min-width: 0; margin-bottom: 0; }
+        .range-step { display: flex; align-items: center; height: 36px; border-radius: 7px; background: rgba(255,255,255,.08); flex: none; }
+        .range-step button { height: 36px; padding: 0 7px; opacity: .85; }
+        .range-step button:hover:not(:disabled) { opacity: 1; }
+        .range-step button:disabled { opacity: .25; cursor: default; }
+        .range-step svg { width: 16px; height: 16px; }
+        .range-now { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .range-now::after { content: '▾'; margin-left: 5px; font-size: 11px; opacity: .6; }
+        .range-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 6px; margin: -6px 0 12px; border-radius: 8px; background: rgba(255,255,255,.05); flex: none; }
+        .range-grid button { padding: 7px 4px; border-radius: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .range-grid button:hover { background: rgba(255,255,255,.1); }
+        .range-grid button.on { background: #fff; color: #111; font-weight: 600; }
         .field input { all: unset; flex: 1; min-width: 0; color: #fff; user-select: text; -webkit-user-select: text; }
         .chips { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; flex: none; scrollbar-width: none; padding-bottom: 1px; }
         .chips::-webkit-scrollbar { display: none; }
@@ -141,6 +156,8 @@
         .loading .spinner { display: block; }
         .loading .center, .loading .bottom, .loading .pip { display: none; }
         .start .jump, .start .chrome .center button:not(.big), .start .bottom .track, .start .vol, .start .clock, .start .pip, .start [data-act="settings"], .start [data-act="full"] { display: none; }
+        /* С открытой панелью управлению остаётся около 60% ширины: подписи кнопок не помещаются раньше */
+        @container (max-width: 1040px) { .with-panel .label { display: none; } }
         @container (max-width: 620px) { .label { display: none; } .center { gap: 18px; } .head { left: 14px; top: 12px; } .bottom { left: 14px; right: 14px; } }
     `;
 

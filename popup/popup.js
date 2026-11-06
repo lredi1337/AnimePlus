@@ -56,6 +56,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const statusBox = document.getElementById('status-box');
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
+    const STATUS_ON = 'Anime+ работает на этом сайте';
+    const STATUS_OFF = 'Anime+ выключен на этом сайте';
 
     const siteToast = document.getElementById('siteToast');
     const playToast = document.getElementById('playToast');
@@ -130,17 +132,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Active Tab Check & Portal State ---
     let activeTab = null;
     let currentSite = null; // запись из AgSites для активной вкладки
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
         activeTab = tabs[0];
+        // Новые адреса переехавших сайтов, которые зритель уже разрешил
+        await AgSites.ready;
 
         currentSite = activeTab && activeTab.url ? AgSites.byUrl(activeTab.url) : null;
         applySiteTheme(currentSite);
         renderSitesList();
+        if (!currentSite) offerMirror(activeTab);
 
         if (currentSite && AgSites.isEnabled(settings, currentSite.id)) {
             if (statusBox) statusBox.classList.add('active');
             if (statusDot) statusDot.className = 'dot';
-            if (statusText) statusText.textContent = 'активно';
+            if (statusText) statusText.textContent = STATUS_ON;
 
 
             // Ask for page info
@@ -174,25 +179,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         } else {
             if (statusBox) statusBox.classList.remove('active');
-            if (statusText) statusText.textContent = currentSite ? 'выключено для этого сайта' : 'откройте поддерживаемый сайт';
+            if (statusText) statusText.textContent = currentSite ? STATUS_OFF : 'откройте сайт с аниме';
             const musicLoading = document.getElementById('music-loading');
             if (musicLoading) musicLoading.textContent = 'Откройте страницу аниме...';
         }
     });
 
-    // --- Сайты: тема по текущему сайту, список с поиском и переключателями ---
+    // --- Сайты: кнопка в шапке раскрывает плитки ---
     // Источник списка — modules/shared/sites.js; новый сайт появляется здесь автоматически
     const sitesToggle = document.getElementById('sitesToggle');
     const sitesPanel = document.getElementById('sitesPanel');
-    const sitesFilter = document.getElementById('sitesFilter');
     const sitesList = document.getElementById('sitesList');
-    const sitesEmpty = document.getElementById('sitesEmpty');
-    const sitesCount = document.getElementById('sitesCount');
+    // Пока список ни разу не открывали, кнопка подсвечена: новичок не догадывался, что сайты за ней
+    const SITES_SEEN_KEY = 'ag_sites_seen';
+    const sitesSeen = () => { try { return localStorage.getItem(SITES_SEEN_KEY) === '1'; } catch (e) { return true; } };
 
-    // Цвет окна один на все сайты: красный цвет бренда из tokens.css, цветом сайта отмечен только его значок в списке
+    // Цвет окна один на все сайты: красный цвет бренда из tokens.css, цветом сайта отмечен только его значок
     function applySiteTheme(site) {
         const name = document.getElementById('siteCurrentName');
-        if (name) name.textContent = site ? site.name : 'Сайт не открыт';
+        if (name) name.textContent = site ? site.name : 'Выбрать сайт';
+        if (sitesToggle) {
+            sitesToggle.classList.toggle('is-hint', !sitesSeen());
+            sitesToggle.title = site ? 'Все сайты с аниме' : 'Выбрать сайт с аниме';
+        }
     }
 
     // Состояние переключателя без учёта глобального выключателя (он отображается отдельно)
@@ -208,42 +217,83 @@ document.addEventListener('DOMContentLoaded', async () => {
         showToast(siteToast, `${site.name}: ${enabled ? 'включено' : 'выключено'}`);
         renderSitesList();
         if (currentSite && currentSite.id === siteId) {
-            if (statusText) statusText.textContent = enabled ? 'активно' : 'выключено для этого сайта';
+            if (statusText) statusText.textContent = enabled ? STATUS_ON : STATUS_OFF;
             if (statusBox) statusBox.classList.toggle('active', enabled);
         }
     }
 
+    // Сайт переехал: страница похожа на сайт из списка, а адреса такого нет. Нужен activeTab: окно открыто зрителем на этой вкладке
+    const mirrorOrigins = (host) => [`https://${host}/*`, `https://*.${host}/*`];
+    async function detectMirrorSite(tab) {
+        const candidates = AgSites.list.filter(s => s.mirrors && s.detect);
+        if (!tab || !/^https:/.test(tab.url || '') || !candidates.length || !chrome.scripting) return null;
+        try {
+            const [res] = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: (pairs) => { const hit = pairs.find(([, sel]) => document.querySelector(sel)); return hit ? hit[0] : null; },
+                args: [candidates.map(s => [s.id, s.detect])]
+            });
+            return res && res.result ? AgSites.byId(res.result) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function offerMirror(tab) {
+        const site = await detectMirrorSite(tab);
+        const card = document.getElementById('mirrorCard');
+        if (!site || !card) return;
+        const host = new URL(tab.url).hostname.replace(/^www\./, '');
+        const badge = document.getElementById('mirrorBadge');
+        badge.textContent = site.short;
+        badge.style.background = site.color;
+        badge.style.color = AgUI.onAccent(site.color);
+        document.getElementById('mirrorTitle').textContent = `Это ${site.name} на новом адресе ${host}?`;
+        card.hidden = false;
+        document.getElementById('mirrorAdd').addEventListener('click', () => {
+            // Запрос разрешения должен идти прямо из нажатия, без ожиданий перед ним
+            chrome.permissions.request({ origins: mirrorOrigins(host) }, (granted) => {
+                if (!granted) return showToast(siteToast, 'Без разрешения Anime+ здесь не заработает');
+                chrome.runtime.sendMessage({ action: 'site_mirror_add', host, siteId: site.id }, (res) => {
+                    if (chrome.runtime.lastError || !res || !res.success) return showToast(siteToast, 'Не получилось добавить адрес');
+                    chrome.tabs.reload(tab.id);
+                    window.close();
+                    return undefined;
+                });
+                return undefined;
+            });
+        });
+    }
+
+    // Последний рабочий адрес переезжающего сайта: старый домен может быть уже заблокирован
+    let siteHomes = {};
+    chrome.storage.local.get(['ag_site_home']).then((res) => { siteHomes = (res && res.ag_site_home) || {}; }).catch(() => {});
+    const homeOf = (site) => (site.mirrors && siteHomes[site.id]) || site.home;
+
     function renderSitesList() {
         if (!sitesList) return;
-        const query = ((sitesFilter && sitesFilter.value) || '').trim().toLowerCase();
-        const enabledCount = AgSites.list.filter(s => isSiteOn(s.id)).length;
-        if (sitesCount) sitesCount.textContent = `${enabledCount}/${AgSites.list.length}`;
-
         const isCurrent = (s) => !!currentSite && currentSite.id === s.id;
         const ordered = [...AgSites.list].sort((a, b) => Number(isCurrent(b)) - Number(isCurrent(a)));
-        const visible = ordered.filter(s => !query || s.name.toLowerCase().includes(query) || s.hosts.some(h => h.includes(query)));
-
-        sitesList.replaceChildren(...visible.map(site => {
+        sitesList.replaceChildren(...ordered.map(site => {
             const enabled = isSiteOn(site.id);
             const li = document.createElement('li');
-            li.className = 'site-item' + (isCurrent(site) ? ' is-current' : '') + (enabled ? '' : ' is-disabled');
+            li.className = 'site-tile' + (isCurrent(site) ? ' is-current' : '') + (enabled ? '' : ' is-off');
+            li.dataset.site = site.id;
             li.innerHTML = `
-                <span class="site-badge" style="background:${site.color}; color:${AgUI.onAccent(site.color)}">${escapeHtml(site.short)}</span>
-                <div class="site-item-text">
-                    <div class="site-item-name">${escapeHtml(site.name)}${isCurrent(site) ? '<span class="site-item-tag">открыт</span>' : ''}</div>
-                    <div class="site-item-host">${escapeHtml(site.hosts[0])}</div>
-                </div>
-                <button type="button" class="site-open" title="Открыть ${escapeHtml(site.name)}" aria-label="Открыть ${escapeHtml(site.name)}">${AgUI.icon('external', 14)}</button>
-                <label class="site-switch" title="${enabled ? 'Выключить' : 'Включить'} на ${escapeHtml(site.name)}">
+                <button type="button" class="site-tile-open" title="Открыть ${escapeHtml(site.hosts[0])}">
+                    <span class="site-badge" style="background:${site.color}; color:${AgUI.onAccent(site.color)}">${escapeHtml(site.short)}</span>
+                    <span class="site-tile-name">${escapeHtml(site.name)}</span>
+                    <span class="site-tile-host">${isCurrent(site) ? 'открыт сейчас' : escapeHtml(site.hosts[0])}</span>
+                </button>
+                <label class="site-switch" title="${enabled ? 'Выключить' : 'Включить'} Anime+ на ${escapeHtml(site.name)}">
                     <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Anime+ на ${escapeHtml(site.name)}">
                     <span></span>
                 </label>
             `;
-            li.querySelector('.site-open').addEventListener('click', () => chrome.tabs.create({ url: site.home }));
+            li.querySelector('.site-tile-open').addEventListener('click', () => chrome.tabs.create({ url: homeOf(site) }));
             li.querySelector('input').addEventListener('change', (e) => setSiteEnabled(site.id, e.target.checked));
             return li;
         }));
-        if (sitesEmpty) sitesEmpty.hidden = visible.length > 0;
     }
 
     if (sitesToggle && sitesPanel) {
@@ -251,10 +301,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const open = sitesPanel.hidden;
             sitesPanel.hidden = !open;
             sitesToggle.setAttribute('aria-expanded', String(open));
-            if (open && sitesFilter) sitesFilter.focus();
+            try { localStorage.setItem(SITES_SEEN_KEY, '1'); } catch (e) {}
+            sitesToggle.classList.remove('is-hint');
         });
     }
-    if (sitesFilter) sitesFilter.addEventListener('input', renderSitesList);
+    applySiteTheme(null);
     renderSitesList();
 
     // --- Player Manual Activation ---
@@ -484,7 +535,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         watchBtn.disabled = true;
 
         // Все включённые сайты; текущий открытый сайт — первым
-        const siteIds = AgSites.list
+        const siteIds = AgSites.searchable()
             .filter(s => AgSites.isEnabled(settings, s.id))
             .sort((a, b) => Number(!!currentSite && b.id === currentSite.id) - Number(!!currentSite && a.id === currentSite.id))
             .map(s => s.id);

@@ -152,7 +152,7 @@ async function resolveSiteUrl(siteId, query) {
 
 /** Ссылки на тайтл сразу на нескольких сайтах (параллельно, с общим таймаутом) */
 async function resolveAllSites(query, { siteIds, timeoutMs = 12000 } = {}) {
-    const ids = siteIds && siteIds.length ? siteIds : AgSites.list.map(s => s.id);
+    const ids = siteIds && siteIds.length ? siteIds : AgSites.searchable().map(s => s.id);
     const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), timeoutMs));
     const results = await Promise.all(ids.map(async (id) => {
         const url = await Promise.race([resolveSiteUrl(id, query).catch(() => 'timeout'), timeout]);

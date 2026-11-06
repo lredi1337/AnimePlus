@@ -205,6 +205,19 @@ test('повтор между сериями: после узнанной пес
     assert.match(chooseTimings({ repeat, hit: { start: 4, song: { len: 90 } } }).source, /^audio/);
 });
 
+test('повтор и AniSkip начинаются вместе: конец из AniSkip, тихий край песни повтор теряет', () => {
+    // Замер на «Поднятии уровня»: повтор 81-166, AniSkip 81,7-171,7, эталон Kodik 80-170
+    const repeat = { start: 81, end: 166, manual: false };
+    const t = chooseTimings({ repeat, mark: { start: 81.7, end: 171.7 } });
+    assert.deepEqual([t.start, t.end, t.source], [81, 171.7, 'repeat+aniskip']);
+    // Начало AniSkip другое: его конец тоже не верим
+    assert.equal(chooseTimings({ repeat, mark: { start: 88, end: 178 } }).end, 166);
+    // Конец AniSkip слишком далеко: это уже не та же песня
+    assert.equal(chooseTimings({ repeat, mark: { start: 81, end: 200 } }).end, 166);
+    // Кнопка остаётся кнопкой
+    assert.equal(chooseTimings({ repeat: { ...repeat, manual: true }, mark: { start: 81.7, end: 171.7 } }).manual, true);
+});
+
 // ---------- Хранение ----------
 
 function fakeBackground() {

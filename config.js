@@ -67,7 +67,9 @@
         'animego.me', 'animego.org', 'jut-su.net',
         'kodik.info', 'kodikplayer.com', 'kodikres.com', 'kodik.biz', 'kodik.cc', 'kodik-storage.com',
         'dbcode.info', 'tube-storage.com', 'anivod.com', 'aniqizm.com', 'aniboom.one', 'anifilm.top', 'kombik.info',
-        'alloha.yani.tv', 'thealloha.club', 'player.aksor.tv', 'player.cdnvideohub.com', 'ceramet.net'
+        'alloha.yani.tv', 'thealloha.club', 'player.aksor.tv', 'player.cdnvideohub.com', 'ceramet.net',
+        // Плеер AnimeVost стоит на домене самого сайта
+        'animevost.org', 'vost.pw'
     ];
     window.isValidOrigin = function (origin) {
         try {

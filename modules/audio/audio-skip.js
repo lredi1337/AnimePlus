@@ -15,6 +15,8 @@
     const END_TRIM_SEC = 1;
     // Если метка AniSkip начинается там же, что и песня, её конец точнее: песня в серии бывает короче образца
     const SAME_START_SEC = 3;
+    // Насколько конец AniSkip может расходиться с концом повтора, чтобы это была та же песня
+    const REPEAT_END_GAP_SEC = 10;
     const MAIN_VIDEO_MIN_SEC = 300;
     const CHUNK = 4096;
     const CAPTURE_TRIES = 15;
@@ -206,7 +208,14 @@
             return { start: hit.start, end, source: 'audio' };
         }
         // Кусок, повторяющийся в сериях тайтла. Точнее метки AniSkip, потому что найден в этом самом файле
-        if (repeat) return { start: repeat.start, end: repeat.end, source: 'repeat', ...(repeat.manual ? { manual: true } : {}) };
+        // Тихий край песни совпадает хуже, и повтор кончается на несколько секунд раньше: если AniSkip начинается там же, конец берём у него
+        if (repeat) {
+            const button = repeat.manual ? { manual: true } : {};
+            if (m.end > 0 && Math.abs(m.start - repeat.start) <= SAME_START_SEC && Math.abs(m.end - repeat.end) <= REPEAT_END_GAP_SEC) {
+                return { start: repeat.start, end: m.end, source: 'repeat+aniskip', ...button };
+            }
+            return { start: repeat.start, end: repeat.end, source: 'repeat', ...button };
+        }
         // Метка сайта не похожа на песню: автопрыжок съел бы серию, поэтому только кнопка
         if (site) return { start: site.start, end: site.end, source: 'site', manual: true };
         if (m.end <= 0) return { start: 0, end: 0 };

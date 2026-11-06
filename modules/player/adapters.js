@@ -516,6 +516,54 @@
         }))
     };
 
+    // ---------- AnimeVost (свой плеер сайта в кадре /frame5.php) ----------
+
+    // Плеер №1: видео собирается из торрента и вставляется в #play, когда придут первые данные.
+    // Плеер №2 (&old=1, и сам сайт переходит на него, если торрент не пошёл): Playerjs в #player.
+    // Полоса #knpki (выбор плеера, скачивание) лежит поверх видео и просвечивала бы сквозь оболочку. Серии переключает сам сайт
+    const vost = {
+        ...COMMON,
+        id: 'vost',
+        name: 'AnimeVost',
+        css: `
+            body.ag-shell-on :is(#knpki, #controls, #cover, #state, #stplay, #stpause, #player pjsdiv:not(:has(video))) { opacity: 0 !important; pointer-events: none !important; }
+        `,
+        video: () => q('video#aniland') || qa('video').sort((a, b) => (b.duration || 0) - (a.duration || 0))[0] || null,
+        videos: () => qa('video'),
+        // Своего выбора качества у плееров нет: №1 играет 720p (пункт «Качество» сайт закомментировал), №2 по умолчанию 480p.
+        // Поэтому качество — это выбор плеера, а место в серии переносится через sessionStorage кадра
+        quality() {
+            const old = vostParams().has('old');
+            return [
+                { label: '720p', current: !old, pick: () => vostSwitch(false) },
+                { label: '480p', current: old, pick: () => vostSwitch(true) }
+            ];
+        },
+        onBind(v) {
+            let saved = null;
+            try { saved = JSON.parse(sessionStorage.getItem(VOST_RESUME_KEY) || 'null'); } catch (e) {}
+            if (!saved || saved.id !== vostParams().get('play') || Date.now() - saved.at > VOST_RESUME_MS) return;
+            sessionStorage.removeItem(VOST_RESUME_KEY);
+            const resume = () => { v.currentTime = saved.t; v.play().catch(() => {}); };
+            if (v.readyState >= 1) resume();
+            else v.addEventListener('loadedmetadata', resume, { once: true });
+        }
+    };
+
+    const VOST_RESUME_KEY = 'ag_vost_resume';
+    const VOST_RESUME_MS = 60000;
+    const vostParams = () => new URLSearchParams(location.search);
+    function vostSwitch(toOld) {
+        const params = vostParams();
+        if (params.has('old') === toOld) return;
+        const v = vost.video();
+        try { sessionStorage.setItem(VOST_RESUME_KEY, JSON.stringify({ id: params.get('play'), t: v ? v.currentTime : 0, at: Date.now() })); } catch (e) {}
+        const url = new URL(location.href);
+        url.searchParams.delete('error');
+        if (toOld) url.searchParams.set('old', '1'); else url.searchParams.delete('old');
+        location.replace(url.href);
+    }
+
     // ---------- Серия, выбранная зрителем ----------
 
     const HOLD_STEP_MS = 100;
@@ -565,7 +613,19 @@
         return hit ? hit.adapter : kodik;
     }
 
-    const api = { byHost, current: () => byHost(location.hostname), holdPickedEpisode };
+    // Свои плееры сайтов узнаются по пути кадра: домен у таких сайтов меняется
+    const BY_PATH = [
+        { path: /^\/frame5\.php$/, adapter: vost }
+    ];
+    function byLocation(loc) {
+        const hit = BY_PATH.find(p => p.path.test(loc.pathname || ''));
+        if (hit) return hit.adapter;
+        // Остальные кадры на домене самого сайта (реклама, баннеры) не плееры
+        if (root.AgSites && root.AgSites.byHost(loc.hostname)) return null;
+        return byHost(loc.hostname);
+    }
+
+    const api = { byHost, byLocation, current: () => byLocation(location), holdPickedEpisode };
     root.AgPlayerAdapters = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

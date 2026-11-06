@@ -13,7 +13,8 @@ const CONTENT_FILES = [
     'providers/dle.js',
     'providers/jutsu.js',
     'providers/animego.js',
-    'providers/yani.js'
+    'providers/yani.js',
+    'providers/vost.js'
 ];
 
 /**

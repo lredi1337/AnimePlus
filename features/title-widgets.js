@@ -66,7 +66,7 @@
         }
 
         // «Смотреть на…» — только включённые сайты, кроме текущего
-        const others = window.AgSites.list.filter(s => s.id !== site.id && window.AgSites.isEnabled(settings, s.id));
+        const others = window.AgSites.searchable().filter(s => s.id !== site.id && window.AgSites.isEnabled(settings, s.id));
         if (others.length === 0) return;
 
         const toggle = el('button', { class: 'ag-tw__btn', type: 'button', 'aria-expanded': 'false', 'aria-haspopup': 'true' }, 'Смотреть на… ▾');

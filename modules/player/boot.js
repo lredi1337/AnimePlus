@@ -6,6 +6,10 @@
 (function () {
     'use strict';
 
+    // На доменах самих сайтов (AnimeVost) загрузчик нужен только в кадре их плеера: страницу сайта и баннеры не трогаем
+    const SITE_PLAYER_PATH = /^[/]frame5[.]php$/;
+    if (globalThis.AgSites && globalThis.AgSites.byHost(location.hostname) && !SITE_PLAYER_PATH.test(location.pathname)) return;
+
     // ceramet.net сам пропускает песни и уводит на следующую серию за полминуты до конца, а прочитать настройку успевает при запуске.
     // Пропуском и переходом управляют только настройки зрителя, поэтому выключаем это раньше самого плеера
     function disableCerametSkips() {

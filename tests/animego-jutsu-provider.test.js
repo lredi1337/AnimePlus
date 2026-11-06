@@ -150,3 +150,34 @@ test('старые модули не подключены, у всех сайт�
         assert.strictEqual(site.legacy, undefined);
     }
 });
+
+// Длинный сериал на AnimeGO: сайт держит в разметке одну сотню серий, остальные описаны в атрибутах плеера
+const PAGES = JSON.stringify([{ page: 0, firstNumber: 1, lastNumber: 100, count: 100 }, { page: 1, firstNumber: 101, lastNumber: 200, count: 100 }, { page: 2, firstNumber: 201, lastNumber: 250, count: 50 }]).replace(/"/g, '&quot;');
+const DOM_EPISODES = Array.from({ length: 100 }, (_, i) => `<div class="${i === 49 ? 'active' : ''}" data-anime-player-episodes-target="episode" data-episode-number="${i + 101}"><button></button></div>`).join('');
+const LONG = `<div class="entity__title"><h1>Ван-Пис</h1></div><div class="player__video"><div class="player-video" data-anime-player-episodes-total-value="250" data-anime-player-episodes-pages-value="${PAGES}">
+<input data-anime-player-episodes-target="searchInput">${DOM_EPISODES}</div></div>`;
+
+test('AnimeGO: длинный сериал — в панели все серии, а не только загруженная сотня', async () => {
+    const { provider } = animego('https://animego.me/anime/van-pis-s1-65', LONG);
+    const eps = (await provider.getShellSite()).episodes;
+    assert.strictEqual(eps.length, 250);
+    assert.deepStrictEqual([eps[0].label, eps[249].label], ['1', '250']);
+    assert.deepStrictEqual([...eps].filter(e => e.selected).map(e => e.label), ['150']);
+    assert.strictEqual(provider.getEpisode(), '150');
+});
+
+test('AnimeGO: серия из незагруженной сотни выбирается полем номера самого сайта', async () => {
+    const { w, doc, provider } = animego('https://animego.me/anime/van-pis-s1-65', LONG);
+    const input = doc.querySelector('[data-anime-player-episodes-target="searchInput"]');
+    const events = [];
+    input.addEventListener('input', () => events.push(['input', input.value]));
+    input.addEventListener('keydown', (e) => events.push(['key', e.key, input.value]));
+    const clicks = [];
+    doc.addEventListener('click', (e) => clicks.push(e.target.parentElement.dataset.episodeNumber));
+    const eps = (await provider.getShellSite()).episodes;
+    await provider.shellPick('episodes', eps.find(e => e.label === '7').index);
+    assert.deepStrictEqual(events, [['input', '7'], ['key', 'Enter', '7']]);
+    await provider.shellPick('episodes', eps.find(e => e.label === '120').index);
+    assert.deepStrictEqual(clicks, ['120']);
+    assert.ok(w);
+});

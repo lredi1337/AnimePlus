@@ -10,6 +10,10 @@
 //   'animego' — AnimeGO.me (providers/animego.js и то, что есть только у него: modules/animego/*)
 //   'dle'     — DLE-движок с плеерами в обёртке xfp (Jut-Su и его «семейство»), provider — свой класс поверх общего
 //   'yani'    — платформа YummyAnime с JSON API (/api/anime/{slug}, /api/search)
+//   'vost'    — AnimeVost: свой плеер в кадре /frame5.php, серии переключает сам сайт
+//
+// mirrors: сайт часто переезжает. hosts покрывают известные зеркала, detect узнаёт страницу на новом домене,
+// а адрес, который зритель разрешил в окне расширения, хранится в ag_site_aliases и подключается через applyAliases
 
 (function (root) {
     'use strict';
@@ -62,13 +66,53 @@
                 searchPath: '/index.php?do=search&subaction=search&story=',
                 navCss: '.header__menu { flex-wrap: nowrap !important; } .header__menu > li > a { padding: 0 clamp(7px, 0.75vw, 12px) !important; font-size: 15px !important; white-space: nowrap !important; } .header__menu > li.has-child > a { padding-right: clamp(18px, 1.2vw, 24px) !important; } .header__menu > li.ag-settings-menu-wrapper > a { padding: 0 clamp(8px, 0.7vw, 12px) !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; } .header__menu > li.ag-settings-menu-wrapper > a svg { width: 18px !important; height: 18px !important; display: block !important; fill: currentColor !important; transition: transform 0.3s ease, color 0.25s ease !important; } .header__menu > li.ag-settings-menu-wrapper > a:hover svg { transform: rotate(45deg); }'
             }
+        },
+        {
+            id: 'animevost', name: 'AnimeVost', short: 'AV', color: '#0ea5e9',
+            hosts: ['animevost.org', 'vost.pw'], home: 'https://animevost.org',
+            platform: 'vost', mirrors: true,
+            // Поиск тайтла по сайту ещё не сделан: в «Смотреть на…» сайт не показывается
+            noSearch: true,
+            detect: 'link[href*="/templates/AnimeVost"], script[src*="/templates/AnimeVost"], a[href*="vost.pw/user/animevost"]'
         }
     ];
 
     const hostMatches = (hostname, host) => hostname === host || hostname.endsWith('.' + host);
 
+    // Адреса, добавленные зрителем для переехавших сайтов: { 'animevost.xyz': 'animevost' }
+    let aliases = {};
+    const aliasFor = (h) => {
+        const host = Object.keys(aliases).find(a => hostMatches(h, a));
+        return host ? SITES.find(s => s.id === aliases[host]) || null : null;
+    };
+
     const AgSites = {
         list: SITES,
+        ALIASES_KEY: 'ag_site_aliases',
+
+        /** Новые адреса сайтов из хранилища. Только для сайтов с mirrors: чужой сайт так не подменить */
+        applyAliases(map) {
+            aliases = {};
+            for (const [host, id] of Object.entries(map || {})) {
+                const site = SITES.find(s => s.id === id);
+                if (site && site.mirrors && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) aliases[host.toLowerCase()] = id;
+            }
+        },
+
+        /** Сайты, на которых фон умеет искать тайтл («Смотреть на…», кнопка на Shikimori, Топ) */
+        searchable() {
+            return SITES.filter(s => !s.noSearch);
+        },
+
+        aliasHosts(id) {
+            return Object.keys(aliases).filter(h => !id || aliases[h] === id);
+        },
+
+        /** Сайт по признакам страницы: для адреса, которого ещё нет в списке */
+        detect(doc) {
+            if (!doc || !doc.querySelector) return null;
+            return SITES.find(s => s.detect && doc.querySelector(s.detect)) || null;
+        },
 
         byId(id) {
             return SITES.find(s => s.id === id) || null;
@@ -76,7 +120,7 @@
 
         byHost(hostname) {
             const h = String(hostname || '').toLowerCase();
-            return SITES.find(s => s.hosts.some(host => hostMatches(h, host))) || null;
+            return SITES.find(s => s.hosts.some(host => hostMatches(h, host))) || aliasFor(h);
         },
 
         byUrl(url) {
@@ -84,7 +128,7 @@
         },
 
         allHosts() {
-            return SITES.flatMap(s => s.hosts);
+            return SITES.flatMap(s => s.hosts).concat(Object.keys(aliases));
         },
 
         // Сайт включён, если глобальный переключатель не выключен и нет явного false в sites_enabled
@@ -105,6 +149,15 @@
             return new URL(path, site.home).href;
         }
     };
+
+    // Content-скрипты ждут этого, прежде чем решать, на каком они сайте
+    AgSites.ready = (async () => {
+        try {
+            if (!root.chrome || !root.chrome.storage || !root.chrome.storage.local) return;
+            const res = await root.chrome.storage.local.get([AgSites.ALIASES_KEY]);
+            AgSites.applyAliases(res && res[AgSites.ALIASES_KEY]);
+        } catch (e) {}
+    })();
 
     root.AgSites = AgSites;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

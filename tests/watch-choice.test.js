@@ -59,7 +59,7 @@ test('клик не считается просмотром: «Продолжи�
 });
 
 test('все остальные сайты выключены: без поиска', async () => {
-    const sites_enabled = Object.fromEntries(['jutsu', 'yummy_ru', 'yummy_old', 'yummyanime_tv', 'animego_online', 'yammy_club'].map(id => [id, false]));
+    const sites_enabled = Object.fromEntries(['jutsu', 'yummy_ru', 'yummy_old', 'yummyanime_tv', 'animego_online', 'yammy_club', 'animevost'].map(id => [id, false]));
     const { sent, rows, box } = await render([], { sites_enabled });
     assert.strictEqual(rows.length, 0);
     assert.ok(!sent.some(m => m.action === 'resolve_all_sites'));

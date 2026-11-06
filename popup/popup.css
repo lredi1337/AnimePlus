@@ -228,7 +228,7 @@ a { color: var(--ap-accent); }
 .toggle.off { background: var(--ap-raised); }
 .toggle.off .toggle-knob { right: 18px; background: var(--ap-text-3); }
 
-/* ===== Текущий сайт и список сайтов ===== */
+/* ===== Сайты: текущий карточкой, остальные плитками ===== */
 .site-badge {
     display: grid;
     place-items: center;
@@ -264,29 +264,45 @@ a { color: var(--ap-accent); }
 
 .status-dot-row.active .dot { background: var(--ap-success); }
 
+/* Кнопка сайтов: видно, что это кнопка, а не надпись */
 .sites-toggle {
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
-    gap: 5px;
-    height: 28px;
-    padding: 0 8px;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
     font-size: var(--ap-fs-sm);
     font-weight: 600;
-    color: var(--ap-text-2);
+    color: var(--ap-text);
     background: var(--ap-raised);
-    border-color: transparent;
+    border: 1px solid var(--ap-line-strong);
+    cursor: pointer;
 }
 
 .sites-toggle:hover,
 .sites-toggle[aria-expanded="true"] {
-    color: var(--ap-text);
-    border-color: var(--ap-line-strong);
+    border-color: var(--ap-accent-line);
+    background: var(--ap-hover);
 }
 
-.sites-count {
-    font-size: var(--ap-fs-xs);
-    color: var(--ap-text-3);
+/* Пока список ни разу не открывали: акцентная кнопка с мягкой пульсацией */
+.sites-toggle.is-hint {
+    color: var(--ap-on-accent);
+    background: var(--ap-accent);
+    border-color: var(--ap-accent);
+    animation: ag-sites-hint 2s ease-in-out infinite;
+}
+
+.sites-toggle.is-hint .dot { background: var(--ap-on-accent); }
+
+@keyframes ag-sites-hint {
+    0%, 100% { box-shadow: 0 0 0 0 var(--ap-accent-line); }
+    50% { box-shadow: 0 0 0 5px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sites-toggle.is-hint { animation: none; }
 }
 
 .sites-chevron {
@@ -296,90 +312,93 @@ a { color: var(--ap-accent); }
 
 .sites-toggle[aria-expanded="true"] .sites-chevron { transform: rotate(180deg); }
 
-.sites-panel {
+.sites {
     flex: none;
-    padding: 10px 14px;
+    padding: 4px 14px 10px;
     border-bottom: 1px solid var(--ap-line);
-    background: var(--ap-bg);
 }
 
-.sites-filter {
-    width: 100%;
+.sites[hidden] { display: none; }
+
+.sites-hint {
     margin-bottom: 8px;
-    background: var(--ap-surface);
+    font-size: var(--ap-fs-xs);
+    color: var(--ap-text-3);
 }
 
-.sites-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+.sites-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
     margin: 0;
     padding: 0;
-    max-height: 214px;
-    overflow-y: auto;
     list-style: none;
-    scrollbar-width: thin;
-    scrollbar-color: var(--ap-line-strong) transparent;
 }
 
-.site-item {
+.sites-grid[hidden] { display: none; }
+
+.site-tile {
+    position: relative;
+    min-width: 0;
+}
+
+/* Вся плитка — кнопка «открыть сайт»; переключатель лежит поверх в углу и сайт не открывает */
+.site-tile-open {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px;
-    border-radius: var(--ap-radius);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+    padding: 8px;
+    text-align: left;
+    color: var(--ap-text);
+    background: var(--ap-raised);
+    border: 1px solid transparent;
+    border-radius: var(--ap-radius-lg);
+    cursor: pointer;
 }
 
-.site-item:hover { background: var(--ap-hover); }
-.site-item.is-current { background: var(--ap-accent-soft); }
-.site-item.is-disabled .site-item-text,
-.site-item.is-disabled .site-badge { opacity: 0.5; }
+.site-tile-open:hover {
+    border-color: var(--ap-line-strong);
+    background: var(--ap-hover);
+}
 
-.site-item .site-badge {
+.site-tile-open .site-badge {
     width: 26px;
     height: 26px;
+    margin-bottom: 4px;
     font-size: var(--ap-fs-xs);
     border-radius: var(--ap-radius-sm);
 }
 
-.site-item-text {
-    flex: 1;
-    min-width: 0;
-}
-
-.site-item-name {
+.site-tile-name {
+    max-width: 100%;
     font-size: var(--ap-fs-md);
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
 
-.site-item-host {
-    font-size: var(--ap-fs-sm);
+.site-tile-host {
+    max-width: 100%;
+    font-size: var(--ap-fs-xs);
     color: var(--ap-text-3);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.site-item-tag {
-    margin-left: 6px;
-    font-size: var(--ap-fs-xs);
-    font-weight: 600;
-    color: var(--ap-accent);
-}
+.site-tile.is-current .site-tile-open { border-color: var(--ap-accent-line); background: var(--ap-accent-soft); }
+.site-tile.is-current .site-tile-host { color: var(--ap-accent); }
 
-.site-open {
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    width: 26px;
-    height: 26px;
-    padding: 0;
-    color: var(--ap-text-3);
-    border-color: transparent;
-    border-radius: var(--ap-radius-sm);
-}
+.site-tile.is-off .site-badge,
+.site-tile.is-off .site-tile-name { opacity: 0.45; }
 
-.site-open:hover { color: var(--ap-text); }
+.site-tile .site-switch {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+}
 
 .site-switch {
     position: relative;
@@ -403,7 +422,7 @@ a { color: var(--ap-accent); }
     position: absolute;
     inset: 0;
     border-radius: 999px;
-    background: var(--ap-raised);
+    background: var(--ap-line-strong);
     transition: background var(--ap-ease);
     pointer-events: none;
 }
@@ -424,12 +443,31 @@ a { color: var(--ap-accent); }
 .site-switch input:checked + span::after { transform: translateX(14px); background: #fff; }
 .site-switch input:focus-visible + span { outline: 2px solid var(--ap-accent); outline-offset: 2px; }
 
-.sites-empty {
-    padding: 10px 0 4px;
-    text-align: center;
-    font-size: var(--ap-fs-sm);
-    color: var(--ap-text-3);
+/* Сайт на новом адресе: предложение включить Anime+ здесь */
+.mirror {
+    display: flex;
+    flex: none;
+    gap: 10px;
+    margin: 8px 14px;
+    padding: 10px;
+    border: 1px solid var(--ap-accent-line);
+    border-radius: var(--ap-radius-lg);
+    background: var(--ap-accent-soft);
 }
+
+.mirror[hidden] { display: none; }
+
+.mirror-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
+
+.mirror-text b { font-size: var(--ap-fs-md); overflow-wrap: anywhere; }
+.mirror-text small { font-size: var(--ap-fs-sm); color: var(--ap-text-2); }
+.mirror-text .tour-next { margin-top: 4px; }
 
 /* Короткие сообщения */
 .toast {
@@ -457,8 +495,8 @@ a { color: var(--ap-accent); }
     background: var(--ap-raised);
 }
 
-/* Открытый список сайтов занимает место карточки: иначе окну пришлось бы прокручиваться целиком */
-.sites-panel:not([hidden]) ~ .continue { display: none; }
+/* Раскрытый список сайтов занимает место карточки: иначе окну пришлось бы прокручиваться целиком */
+.sites:not([hidden]) ~ .continue { display: none; }
 
 .continue-bg {
     position: absolute;

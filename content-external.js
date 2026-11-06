@@ -29,7 +29,7 @@
     // Прямые ссылки на всех сайтах, включённых в настройках
     async function findOnSites(titles) {
         const { ag_settings: settings = {} } = await chrome.storage.local.get(['ag_settings']);
-        const siteIds = AgSites.list.filter(s => AgSites.isEnabled(settings, s.id)).map(s => s.id);
+        const siteIds = AgSites.searchable().filter(s => AgSites.isEnabled(settings, s.id)).map(s => s.id);
         if (siteIds.length === 0) return { siteIds, found: [] };
 
         const res = await new Promise((resolve) => {

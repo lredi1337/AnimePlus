@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "11.0.4",
+  "version": "11.1.0",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
     "storage",
     "scripting",
-    "alarms"
+    "alarms",
+    "activeTab"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -80,7 +81,9 @@
     "https://ru.yummyani.me/*",
     "https://yummyanime.tv/*",
     "https://animego.online/*",
-    "https://yammyanime.club/*"
+    "https://yammyanime.club/*",
+    "https://animevost.org/*",
+    "https://*.vost.pw/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -144,7 +147,9 @@
         "https://ru.yummyani.me/*",
         "https://yummyanime.tv/*",
         "https://animego.online/*",
-        "https://yammyanime.club/*"
+        "https://yammyanime.club/*",
+        "https://animevost.org/*",
+        "https://*.vost.pw/*"
       ],
       "js": [
         "config.js",
@@ -162,6 +167,7 @@
         "providers/dle.js",
         "providers/jutsu.js",
         "providers/yani.js",
+        "providers/vost.js",
         "features/player-bridge.js",
         "features/title-widgets.js",
         "features/top-overlay.js",
@@ -224,7 +230,9 @@
         "https://player.aksor.tv/*",
         "https://player.cdnvideohub.com/*",
         "https://ceramet.net/*",
-        "https://*.ceramet.net/*"
+        "https://*.ceramet.net/*",
+        "https://animevost.org/*",
+        "https://*.vost.pw/*"
       ],
       "js": [
         "modules/shared/sites.js",
@@ -266,7 +274,9 @@
         "https://player.aksor.tv/*",
         "https://player.cdnvideohub.com/*",
         "https://ceramet.net/*",
-        "https://*.ceramet.net/*"
+        "https://*.ceramet.net/*",
+        "https://animevost.org/*",
+        "https://*.vost.pw/*"
       ],
       "js": [
         "config.js",
@@ -351,5 +361,8 @@
         "https://yammyanime.club/*"
       ]
     }
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
   ]
 }

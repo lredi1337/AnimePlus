@@ -23,6 +23,22 @@
     `;
 
     const items = (selector) => Array.from(document.querySelectorAll(selector));
+    const EPISODE_SEARCH = '[data-anime-player-episodes-target="searchInput"]';
+
+    // Длинный сериал сайт отдаёт сотнями: в разметке одна сотня, а все страницы описаны в атрибуте плеера
+    function allEpisodeNumbers() {
+        const box = document.querySelector('[data-anime-player-episodes-pages-value]');
+        let pages = [];
+        try { pages = JSON.parse(box ? box.dataset.animePlayerEpisodesPagesValue : '[]'); } catch (e) {}
+        const numbers = [];
+        for (const p of Array.isArray(pages) ? pages : []) {
+            const from = Number(p.firstNumber);
+            const to = Number(p.lastNumber);
+            if (!(from >= 0 && to >= from && to - from < 2000)) return null;
+            for (let n = from; n <= to; n++) numbers.push(String(n));
+        }
+        return numbers.length ? numbers : null;
+    }
     const isActive = (el) => el.classList.contains('active');
     const label = (el) => (el.querySelector('.text-truncate') || el).textContent.trim().split('\n')[0].trim();
 
@@ -145,15 +161,18 @@
             const voice = items(VOICES).find(isActive);
             const key = voice ? voice.dataset.translation : null;
             const heading = document.querySelector('.player__title, h1');
+            const loaded = items(EPISODES);
+            const byNumber = new Map(loaded.map(el => [el.dataset.episodeNumber, el]));
+            const all = allEpisodeNumbers();
+            // Незагруженные сотни есть только номерами: просмотр о них сайт не сообщает
+            const numbers = all && all.length > loaded.length && loaded.every(el => all.includes(el.dataset.episodeNumber)) ? all : loaded.map(el => el.dataset.episodeNumber);
+            this.shellEpisodes = numbers;
             return {
                 title: heading ? heading.textContent.trim() : '',
-                episodes: items(EPISODES).map((el, index) => ({
-                    index,
-                    selected: isActive(el),
-                    label: el.dataset.episodeNumber,
-                    seen: el.dataset.episodeWatched === 'true',
-                    title: el.dataset.episodeNumber
-                })),
+                episodes: numbers.map((number, index) => {
+                    const el = byNumber.get(number);
+                    return { index, selected: !!el && isActive(el), label: number, seen: !!el && el.dataset.episodeWatched === 'true', title: number };
+                }),
                 voices: items(VOICES).filter(el => !el.classList.contains('player-error')).map(el => ({
                     index: items(VOICES).indexOf(el),
                     selected: isActive(el),
@@ -173,8 +192,18 @@
         // Нажимаем кнопки самого сайта, поэтому всё переключается как обычно, без выхода из полного экрана
         async shellPick(kind, index) {
             if (kind === 'episodes') {
-                const el = items(EPISODES)[index];
-                if (el) (el.querySelector('button') || el).click();
+                const number = (this.shellEpisodes || items(EPISODES).map(el => el.dataset.episodeNumber))[index];
+                const el = items(EPISODES).find(x => x.dataset.episodeNumber === number);
+                if (el) {
+                    (el.querySelector('button') || el).click();
+                    return;
+                }
+                // Серия из другой сотни: поле номера самого сайта загружает её страницу и включает серию
+                const input = document.querySelector(EPISODE_SEARCH);
+                if (!input || !number) return;
+                input.value = number;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
             } else if (kind === 'voices') {
                 const el = items(VOICES)[index];
                 if (!el) return;

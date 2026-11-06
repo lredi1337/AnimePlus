@@ -24,10 +24,10 @@
                 <img src="../icons/icon48.png" alt="">
                 <div class="logo" id="popup-brand">Anime<span>+</span></div>
             </div>
+
             <button type="button" class="sites-toggle" id="sitesToggle" aria-expanded="false" aria-controls="sitesPanel">
-                <span class="status-dot-row" id="status-box"><span class="dot" id="status-dot"></span><span class="visually-hidden" id="status-text">откройте поддерживаемый сайт</span></span>
-                <span class="site-current-name" id="siteCurrentName">Сайт не открыт</span>
-                <span class="sites-count" id="sitesCount"></span>
+                <span class="status-dot-row" id="status-box"><span class="dot" id="status-dot"></span><span class="visually-hidden" id="status-text"></span></span>
+                <span class="site-current-name" id="siteCurrentName">Выбрать сайт</span>
                 <span class="sites-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m2 3.5 3 3 3-3"/></svg></span>
             </button>
             <button type="button" class="icon-btn" id="btnSettings" title="Настройки" aria-label="Настройки"><span class="ap-inline-icon" data-ap-icon="gear" data-ap-size="17"></span></button>
@@ -38,11 +38,19 @@
 
         <div id="extBody">
 
-            <!-- Список всех сайтов (масштабируется на любое число сайтов) -->
-            <div class="sites-panel" id="sitesPanel" hidden>
-                <input type="search" class="sites-filter" id="sitesFilter" placeholder="Найти сайт…" aria-label="Поиск сайта" autocomplete="off">
-                <ul class="sites-list" id="sitesList"></ul>
-                <div class="sites-empty" id="sitesEmpty" hidden>Ничего не найдено</div>
+            <!-- Сайты плитками: открываются кнопкой в шапке. Нажатие на плитку открывает сайт -->
+            <section class="sites" id="sitesPanel" hidden>
+                <div class="sites-hint">Нажмите на сайт, чтобы открыть его. Переключатель выключает Anime+ на сайте</div>
+                <ul class="sites-grid" id="sitesList"></ul>
+            </section>
+            <!-- Сайт переехал на адрес, которого нет в списке: зритель разрешает его одним нажатием -->
+            <div class="mirror" id="mirrorCard" hidden>
+                <span class="site-badge" id="mirrorBadge"></span>
+                <div class="mirror-text">
+                    <b id="mirrorTitle"></b>
+                    <small>Похоже, сайт переехал. Разрешите Anime+ работать на этом адресе.</small>
+                    <button type="button" class="tour-next" id="mirrorAdd">Включить Anime+ здесь</button>
+                </div>
             </div>
             <div class="toast" id="siteToast"></div>
             <div class="selector-health" id="selectorHealth" hidden></div>

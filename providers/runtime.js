@@ -8,6 +8,8 @@
     const FEATURES = ['playerBridge', 'titleWidgets', 'topOverlay', 'searchRedirect', 'randomAnime'];
 
     window.AgProviders.start = async function () {
+        // Адреса переехавших сайтов, которые зритель добавил сам, читаются из хранилища
+        await window.AgSites.ready;
         const site = window.AgSites.byHost(location.hostname);
         if (!site) return;
 
