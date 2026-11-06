@@ -45,9 +45,11 @@
 
     window.getSettings = async function () {
         const res = await chrome.storage.local.get(['ag_settings']);
-        if (!res.ag_settings) return window.DEFAULT_SETTINGS;
-        const merged = { ...window.DEFAULT_SETTINGS, ...res.ag_settings };
-        merged.keys = { ...window.DEFAULT_SETTINGS.keys, ...(res.ag_settings.keys || {}) };
+        // Всегда новая копия значений по умолчанию: правка результата не должна менять их для всей вкладки
+        const defaults = JSON.parse(JSON.stringify(window.DEFAULT_SETTINGS));
+        if (!res.ag_settings) return defaults;
+        const merged = { ...defaults, ...res.ag_settings };
+        merged.keys = { ...defaults.keys, ...(res.ag_settings.keys || {}) };
         // Плеер сравнивает клавиши в нижнем регистре, а старое окно настроек сохраняло их заглавными
         for (const action of Object.keys(merged.keys)) merged.keys[action] = String(merged.keys[action]).toLowerCase();
         merged.sites_enabled = { ...(res.ag_settings.sites_enabled || {}) };

@@ -36,3 +36,14 @@ test('agPatchSettings работает, когда настроек ещё не�
     await w.agPatchSettings({ autoNext: false });
     assert.deepEqual(JSON.parse(JSON.stringify(store.ag_settings)), { autoNext: false });
 });
+
+test('getSettings без сохранённых настроек отдаёт копию: правка результата не меняет значения по умолчанию', async () => {
+    const { w } = makePage([], undefined);
+    const first = await w.getSettings();
+    first.global_enabled = false;
+    first.keys.forward = 'x';
+    const again = await w.getSettings();
+    assert.notEqual(again.global_enabled, false);
+    assert.equal(again.keys.forward, w.DEFAULT_SETTINGS.keys.forward);
+    assert.notEqual(w.DEFAULT_SETTINGS.keys.forward, 'x');
+});

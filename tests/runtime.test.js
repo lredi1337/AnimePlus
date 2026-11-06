@@ -543,3 +543,28 @@ test('runtime: подсказка уже была — не показывает�
     assert.equal(root.querySelector('.tip').hidden, true);
     w.close();
 });
+
+test('мост плеера: рекламный кадр с чужого адреса не управляет страницей', async () => {
+    const { w } = await startRuntime({
+        url: 'https://yummyanime.tv/8522-monolog-farmacevta-3-sezon-r1.html',
+        html: read('tests/fixtures/yummyanime_tv-title.html')
+    });
+    const doc = w.document;
+    await tick(300);
+
+    // Рекламный кадр на странице сайта
+    const replies = [];
+    const adFrame = doc.createElement('iframe');
+    const adWin = { postMessage: (m) => replies.push(m) };
+    Object.defineProperty(adFrame, 'contentWindow', { value: adWin, configurable: true });
+    doc.body.appendChild(adFrame);
+    const fromAd = (data) => w.dispatchEvent(new w.MessageEvent('message', { data, origin: 'https://ads.example', source: adWin }));
+
+    fromAd({ type: 'AG_GET_DATA' });
+    fromAd({ type: 'AG_PSEUDO_FS', action: 'enable' });
+    await tick(100);
+    assert.equal(replies.length, 0, 'чужому кадру страница не отвечает');
+    assert.equal(doc.querySelector('.ag-pfs-active'), null, 'чужой кадр не включил полный экран');
+
+    w.close();
+});

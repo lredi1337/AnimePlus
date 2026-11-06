@@ -277,10 +277,8 @@
             broadcast({ type: 'AS_DATA_UPDATE', data: skipCache.data, malId: skipCache.malId, episode }, target);
         };
 
-        const fromPlayer = (e) => {
-            if (window.isValidOrigin && window.isValidOrigin(e.origin)) return true;
-            return Array.from(document.querySelectorAll('iframe')).some(f => f.contentWindow === e.source);
-        };
+        // Команды принимаются только от плееров и сайтов из списка: любой кадр страницы не годится, реклама тоже кадр
+        const fromPlayer = (e) => !!(window.isValidOrigin && window.isValidOrigin(e.origin));
 
         scope.listen(window, 'message', async (e) => {
             const data = e.data;

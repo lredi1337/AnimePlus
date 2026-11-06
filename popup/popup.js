@@ -86,10 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const filterNote = document.getElementById('filterNote');
 
     const btnMusic = document.getElementById('btnMusic');
-    const btnPlayer = document.getElementById('btnPlayer');
     const panelMusic = document.getElementById('panelMusic');
-    const panelPlayer = document.getElementById('panelPlayer');
-    const activateBtn = document.getElementById('btn-activate-player');
 
     const btnShiki = document.getElementById('btn-shiki');
 
@@ -308,25 +305,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     applySiteTheme(null);
     renderSitesList();
 
-    // --- Player Manual Activation ---
-    if (activateBtn) {
-        activateBtn.onclick = async () => {
-            if (!activeTab) return;
-            activateBtn.textContent = 'Активация…';
-            try {
-                await chrome.scripting.executeScript({
-                    target: { tabId: activeTab.id, allFrames: true },
-                    files: ["config.js", "modules/shared/sites.js", "modules/shared/ui-kit.js", "modules/player/skip-memory.js", "content-player.js"]
-                });
-                activateBtn.textContent = 'Плеер активирован';
-                setTimeout(() => window.close(), 1500);
-            } catch (e) {
-                console.error("Activation failed", e);
-                activateBtn.textContent = 'Нет прав на эту вкладку';
-            }
-        };
-    }
-
     // Топ Shikimori в новой вкладке с выбором сайта. Выбор запоминает сама вкладка; без него — сайт, открытый сейчас
     const btnTop = document.getElementById('btnTop');
     if (btnTop) {
@@ -340,8 +318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const panelsList = [
-        { btn: btnMusic, panel: panelMusic },
-        { btn: btnPlayer, panel: panelPlayer }
+        { btn: btnMusic, panel: panelMusic }
     ];
 
     panelsList.forEach(item => {
