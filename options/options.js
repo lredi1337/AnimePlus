@@ -36,14 +36,77 @@
     const moveVoice = (from, to) => {
         const list = [...settings.voice_priority_list];
         list.splice(to, 0, list.splice(from, 1)[0]);
-        save({ voice_priority_list: list }).then(renderVoices);
+        return save({ voice_priority_list: list }).then(renderVoices);
     };
+
+    // Перетаскивание: строка встаёт на новое место прямо во время движения, порядок сохраняется при отпускании.
+    // Тянуть можно за всю строку, кроме кнопки удаления; короткое нажатие без движения ничего не двигает
+    const DRAG_START_PX = 4;
+    const voiceRows = () => [...$('voiceList').children];
+    const renumber = () => voiceRows().forEach((li, i) => { li.querySelector('.rank').textContent = i + 1; });
+
+    function startVoiceDrag(li, down) {
+        const list = $('voiceList');
+        const startY = down.clientY;
+        let dragging = false;
+        const move = (e) => {
+            if (!dragging) {
+                if (Math.abs(e.clientY - startY) < DRAG_START_PX) return;
+                dragging = true;
+                li.classList.add('dragging');
+                list.classList.add('sorting');
+            }
+            e.preventDefault();
+            // Строка встаёт перед первой соседней, чья середина ниже указателя, иначе в конец
+            const before = voiceRows().filter(r => r !== li).find(r => {
+                const rect = r.getBoundingClientRect();
+                return e.clientY < rect.top + rect.height / 2;
+            });
+            if (before ? li.nextElementSibling !== before : list.lastElementChild !== li) {
+                list.insertBefore(li, before || null);
+                renumber();
+            }
+        };
+        const up = () => {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', up);
+            document.removeEventListener('pointercancel', up);
+            if (!dragging) return;
+            li.classList.remove('dragging');
+            list.classList.remove('sorting');
+            const order = voiceRows().map(r => r.dataset.name);
+            if (order.join('\n') !== settings.voice_priority_list.join('\n')) save({ voice_priority_list: order }).then(renderVoices);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up);
+        document.addEventListener('pointercancel', up);
+    }
 
     function renderVoices() {
         const list = settings.voice_priority_list;
         $('voiceList').replaceChildren(...list.map((name, i) => {
             const li = document.createElement('li');
             li.className = 'voice';
+            li.dataset.name = name;
+            li.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || e.target.closest('.icon-btn')) return;
+                e.preventDefault();
+                startVoiceDrag(li, e);
+            });
+            // Ручка: за неё видно, что строку можно тянуть, а с клавиатуры стрелки двигают озвучку на одно место
+            const grip = document.createElement('span');
+            grip.className = 'grip';
+            grip.tabIndex = 0;
+            grip.setAttribute('role', 'button');
+            grip.setAttribute('aria-label', `Перетащить: ${name}. Стрелки вверх и вниз меняют место`);
+            grip.title = 'Перетащите, чтобы поменять место';
+            grip.innerHTML = '<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="7" r="1.4"/><circle cx="7.5" cy="7" r="1.4"/><circle cx="2.5" cy="11.5" r="1.4"/><circle cx="7.5" cy="11.5" r="1.4"/></svg>';
+            grip.addEventListener('keydown', (e) => {
+                const to = e.key === 'ArrowUp' ? i - 1 : e.key === 'ArrowDown' ? i + 1 : -1;
+                if (to < 0 || to >= list.length) return;
+                e.preventDefault();
+                moveVoice(i, to).then(() => voiceRows()[to].querySelector('.grip').focus());
+            });
             const rank = document.createElement('span');
             rank.className = 'rank';
             rank.textContent = i + 1;
@@ -61,12 +124,10 @@
                 b.addEventListener('click', onClick);
                 return b;
             };
-            const arrow = (d) => `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
             li.append(
+                grip,
                 rank,
                 title,
-                button('Выше', arrow('m2.5 7.5 3.5-3.5 3.5 3.5'), i === 0, () => moveVoice(i, i - 1)),
-                button('Ниже', arrow('m2.5 4.5 3.5 3.5 3.5-3.5'), i === list.length - 1, () => moveVoice(i, i + 1)),
                 button('Удалить', window.AgUI.icon('close', 13), false, () => {
                     save({ voice_priority_list: list.filter((_, n) => n !== i) }).then(renderVoices);
                 })
@@ -233,37 +294,5 @@
         await window.AgGuide.reset();
         await window.AgGuide.mark('settings');
         showStatus('Откройте окно расширения, лиса уже ждёт');
-    });
-
-    // ---------- Настройки целиком ----------
-    $('exportBtn').addEventListener('click', async () => {
-        const blob = new Blob([JSON.stringify(await window.getSettings(), null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `animeplus_settings_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showStatus('Настройки выгружены');
-    });
-
-    $('importBtn').addEventListener('click', () => $('importFile').click());
-    $('importFile').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-            const imported = JSON.parse(await file.text());
-            if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) throw new Error('format');
-            await chrome.storage.local.set({ ag_settings: imported });
-            location.reload();
-        } catch (err) {
-            showStatus('Не удалось прочитать файл настроек');
-        }
-    });
-
-    $('resetBtn').addEventListener('click', async () => {
-        if (!window.confirm('Сбросить все настройки Anime+? Вход в Shikimori останется.')) return;
-        await chrome.storage.local.set({ ag_settings: JSON.parse(JSON.stringify(window.DEFAULT_SETTINGS)) });
-        location.reload();
     });
 })();

@@ -534,6 +534,8 @@
             more.addEventListener('click', () => options.openSettings());
             scroll.appendChild(more);
             panel.appendChild(scroll);
+            // Список качества приходит позже и перерисовывает панель: подсветка лисы не должна пропасть
+            if (guideTip && guideTip.panel === 'settings') spotGuideTarget();
         }
 
         // Звук выключил сам зритель: плееры, которые глушат себя при запуске, отличаются от этого только такой отметкой
@@ -879,9 +881,14 @@
             const other = list.find(o => !o.selected);
             return on && other ? [on.title, other.title] : null;
         };
+        // Панель лиса раскрывает только после того, как показала её кнопку: иначе непонятно, куда потом нажимать
+        const hasVoices = () => listOf('voices').length > 1;
+        const hasPlayers = () => sitePlayers().length > 1;
         const SWITCH_TIPS = [
-            { panel: 'voices', target: '.row:not(.on)', anchor: '[data-act="voices"]', pose: 'right', when: () => listOf('voices').length > 1, demo: () => otherPair('voices'), text: 'Озвучка меняется без перерыва: выберите другую, и видео само продолжится с этого же места. Ваш выбор запомнится для тайтла.' },
-            { panel: 'players', target: '.player-row:not(.on)', anchor: '[data-act="players"]', pose: 'right', when: () => sitePlayers().length > 1, demo: () => {
+            { target: '[data-act="voices"]', pose: 'down', when: hasVoices, text: 'Эта кнопка открывает список озвучек. Сейчас покажу, что внутри.' },
+            { panel: 'voices', target: '.row:not(.on)', anchor: '[data-act="voices"]', pose: 'right', when: hasVoices, demo: () => otherPair('voices'), text: 'Озвучка меняется без перерыва: выберите другую, и видео само продолжится с этого же места. Ваш выбор запомнится для тайтла.' },
+            { target: '[data-act="players"]', pose: 'down', when: hasPlayers, text: 'А эта кнопка открывает список плееров сайта.' },
+            { panel: 'players', target: '.player-row:not(.on)', anchor: '[data-act="players"]', pose: 'right', when: hasPlayers, demo: () => {
                 const on = sitePlayers().find(p => p.selected);
                 const other = sitePlayers().find(p => !p.selected);
                 return on && other ? [on.title, other.title] : null;
@@ -890,9 +897,11 @@
         const GUIDE_TIPS = [
             { target: '.rail', pose: 'down', text: 'Опенинг и эндинг отмечены на шкале. Если автопропуск включён, они пропускаются сами.' },
             { target: '.jump', pose: 'down', text: 'Меток нет или песня не пропустилась? Эта кнопка перематывает на 89 секунд.' },
-            { target: '[data-act="episodes"]', pose: 'right', text: 'Серии меняются прямо здесь, даже в полном экране.' },
+            { target: '[data-act="episodes"]', pose: 'down', text: 'Эта кнопка открывает список серий. Серии меняются прямо здесь, даже в полном экране.' },
+            { panel: 'episodes', target: '.grid', anchor: '[data-act="episodes"]', pose: 'right', text: 'Нажмите на номер, и серия сменится. Текущая серия выделена, просмотренные отмечены.' },
             ...SWITCH_TIPS,
-            { target: '[data-act="settings"]', pose: 'wink', text: 'А тут настройки просмотра: качество, скорость и автопропуск. На этом всё, приятного просмотра!' }
+            { target: '[data-act="settings"]', pose: 'down', text: 'Шестерёнка открывает настройки просмотра.' },
+            { panel: 'settings', target: '.scroll', anchor: '[data-act="settings"]', pose: 'wink', text: 'Здесь качество, скорость и автопропуск. На этом всё, приятного просмотра!' }
         ];
         let guideOpen = false;
         let guideStarted = false;
@@ -962,7 +971,9 @@
                 list = SWITCH_TIPS;
             }
             // Кнопка панели может быть ещё скрыта, пока сайт не прислал списки: такие подсказки проверяются перед показом
-            const tips = list.filter(t => t.when || ($(t.target) && getComputedStyle($(t.target)).display !== 'none'));
+            // У шага с панелью цель появляется только в открытой панели, поэтому проверяется её кнопка
+            const shownEl = (t) => $(t.anchor || t.target);
+            const tips = list.filter(t => t.when || (shownEl(t) && getComputedStyle(shownEl(t)).display !== 'none'));
             const first = tips.find(guideTipFits);
             if (destroyed || mode !== 'play' || !first) return;
             guideOpen = true;

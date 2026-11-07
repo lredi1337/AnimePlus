@@ -5,6 +5,11 @@ const { JSDOM } = require('jsdom');
 const { read } = require('./helpers');
 
 const tick = (ms = 40) => new Promise(r => setTimeout(r, ms));
+// Под нагрузкой полного прогона ответы приходят позже: ждём результата, а не фиксированное время
+const until = async (check) => {
+    for (let i = 0; i < 100 && !check(); i++) await tick(20);
+    return check();
+};
 
 async function openPopup({ url, store = {}, pageSite = null, grant = true }) {
     const body = read('popup/popup.html').match(/<body[^>]*>([\s\S]*)<\/body>/)[1].replace(/<script[^>]*><\/script>/g, '');
@@ -111,13 +116,12 @@ test('выключение текущего сайта меняет его со�
 
 test('AnimeVost на новом адресе: окно предлагает включить Anime+ и просит разрешение только на этот адрес', async () => {
     const { w, d, sent, reloaded, requested } = await openPopup({ url: 'https://www.animevost.xyz/tip/tv/4008-x.html', pageSite: 'animevost' });
-    await tick();
     const card = d.getElementById('mirrorCard');
-    assert.ok(visible(card));
+    assert.ok(await until(() => visible(card)));
     assert.match(d.getElementById('mirrorTitle').textContent, /AnimeVost на новом адресе animevost.xyz/);
     w.close = () => {};
     d.getElementById('mirrorAdd').click();
-    await tick();
+    await until(() => reloaded.length > 0);
     assert.deepEqual(JSON.parse(JSON.stringify(requested)), [['https://animevost.xyz/*', 'https://*.animevost.xyz/*']]);
     assert.deepEqual({ ...sent.find(m => m.action === 'site_mirror_add') }, { action: 'site_mirror_add', host: 'animevost.xyz', siteId: 'animevost' });
     assert.deepEqual(reloaded, [1]);
@@ -128,7 +132,7 @@ test('обычный незнакомый сайт: предложения не�
     await tick();
     assert.ok(!visible(plain.d.getElementById('mirrorCard')));
     const refused = await openPopup({ url: 'https://animevost.xyz/', pageSite: 'animevost', grant: false });
-    await tick();
+    assert.ok(await until(() => visible(refused.d.getElementById('mirrorCard'))));
     refused.d.getElementById('mirrorAdd').click();
     await tick();
     assert.ok(!refused.sent.some(m => m.action === 'site_mirror_add'));

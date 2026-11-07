@@ -37,7 +37,7 @@
                 <span><b>Автовыбор озвучки</b><small>Плеер сам включает первую доступную озвучку из списка. Озвучка, которую вы выбрали вручную, запоминается для тайтла и важнее списка.</small></span>
                 <span class="switch"><input type="checkbox" id="autoVoice"><i></i></span>
             </label>
-            <div class="list-head"><b>Приоритет</b><small>выше — важнее</small></div>
+            <div class="list-head"><b>Приоритет</b><small>перетащите строку: выше — важнее</small></div>
             <ul class="voices" id="voiceList"></ul>
             <form class="add" id="voiceForm">
                 <input type="text" id="voiceInput" placeholder="Добавить озвучку, например HDRezka" aria-label="Название озвучки" autocomplete="off">
@@ -70,16 +70,6 @@
             <h2 id="keys-title">Горячие клавиши</h2>
             <p class="hint">Нажмите на кнопку, затем на нужную клавишу. Esc отменяет назначение.</p>
             <div id="keyList"></div>
-        </section>
-
-        <section class="card" aria-labelledby="data-title">
-            <h2 id="data-title">Настройки целиком</h2>
-            <div class="actions">
-                <button type="button" class="btn ghost" id="exportBtn">Экспорт</button>
-                <button type="button" class="btn ghost" id="importBtn">Импорт</button>
-                <input type="file" id="importFile" accept=".json" hidden>
-                <button type="button" class="btn ghost danger" id="resetBtn">Сбросить всё</button>
-            </div>
         </section>
 
         <section class="card" id="guide" aria-labelledby="guide-title">

@@ -28,11 +28,63 @@ async function openPage(initial) {
 
 const names = (doc) => [...doc.querySelectorAll('.voice .name')].map(e => e.textContent);
 
+// В jsdom нет раскладки: строка высотой 36 px, шаг 40 px, место строки — её место в списке
+function layoutVoices(w, doc) {
+    const list = doc.getElementById('voiceList');
+    for (const li of list.children) {
+        li.getBoundingClientRect = () => {
+            const top = [...list.children].indexOf(li) * 40;
+            return { top, bottom: top + 36, height: 36, left: 0, right: 600, width: 600, x: 0, y: top };
+        };
+    }
+}
+const pointer = (w, el, type, y) => el.dispatchEvent(new w.PointerEvent(type, { bubbles: true, cancelable: true, clientX: 300, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1 }));
+
+test('озвучку можно перетащить мышью на любое место: зажал, протянул, отпустил', async () => {
+    const { w, doc, store } = await openPage({ voice_priority_list: ['A', 'B', 'C', 'D', 'Новая'] });
+    layoutVoices(w, doc);
+    const row = doc.querySelectorAll('.voice')[4];
+    pointer(w, row.querySelector('.grip'), 'pointerdown', 178);
+    // Протягиваем вверх через весь список: строки расступаются на лету
+    for (const y of [160, 120, 80, 40, 10]) pointer(w, doc, 'pointermove', y);
+    assert.deepEqual(names(doc), ['Новая', 'A', 'B', 'C', 'D'], 'строка уже стоит на новом месте');
+    assert.ok(row.classList.contains('dragging'));
+    assert.deepEqual([...store.ag_settings.voice_priority_list], ['A', 'B', 'C', 'D', 'Новая'], 'пока не отпустили, ничего не сохранено');
+    pointer(w, doc, 'pointerup', 10);
+    await tick();
+    assert.deepEqual([...store.ag_settings.voice_priority_list], ['Новая', 'A', 'B', 'C', 'D']);
+    assert.deepEqual([...doc.querySelectorAll('.voice .rank')].map(e => e.textContent), ['1', '2', '3', '4', '5']);
+    assert.equal(doc.querySelectorAll('.voice.dragging').length, 0);
+
+    // Тянуть можно за всю строку, кроме кнопки удаления; короткое нажатие ничего не двигает
+    layoutVoices(w, doc);
+    const second = doc.querySelectorAll('.voice')[1];
+    pointer(w, second.querySelector('.name'), 'pointerdown', 58);
+    pointer(w, doc, 'pointermove', 60);
+    pointer(w, doc, 'pointerup', 60);
+    await tick();
+    assert.deepEqual(names(doc), ['Новая', 'A', 'B', 'C', 'D']);
+    pointer(w, second.querySelector('.name'), 'pointerdown', 58);
+    for (const y of [80, 120, 150, 200]) pointer(w, doc, 'pointermove', y);
+    pointer(w, doc, 'pointerup', 200);
+    await tick();
+    assert.deepEqual([...store.ag_settings.voice_priority_list], ['Новая', 'B', 'C', 'D', 'A']);
+    assert.equal(doc.querySelectorAll('[title="Выше"], [title="Ниже"]').length, 0, 'стрелок больше нет');
+    w.close();
+});
+
+test('блока «Настройки целиком» больше нет', async () => {
+    const { w, doc } = await openPage({});
+    for (const id of ['exportBtn', 'importBtn', 'importFile', 'resetBtn', 'data-title']) assert.equal(doc.getElementById(id), null, id);
+    w.close();
+});
+
 test('список озвучек: порядок, удаление и добавление сохраняются сразу', async () => {
     const { w, doc, store } = await openPage({ voice_priority_list: ['A', 'B', 'C'] });
     assert.deepEqual(names(doc), ['A', 'B', 'C']);
 
-    doc.querySelectorAll('.voice')[0].querySelector('[title="Ниже"]').click();
+    // Ручка строки на клавиатуре: стрелка вниз опускает озвучку на одно место
+    doc.querySelectorAll('.voice')[0].querySelector('.grip').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
     await tick();
     assert.deepEqual(names(doc), ['B', 'A', 'C']);
     assert.deepEqual([...store.ag_settings.voice_priority_list], ['B', 'A', 'C']);

@@ -161,6 +161,13 @@ html, body {
     border-radius: var(--ap-radius-sm);
 }
 
+.voice { cursor: grab; touch-action: none; user-select: none; transition: background .12s, box-shadow .12s; }
+.voice .icon-btn { cursor: pointer; }
+.voice .grip { display: grid; place-items: center; width: 14px; height: 26px; color: var(--ap-text-3, var(--ap-text-2)); border-radius: 4px; }
+.voice:hover .grip, .voice .grip:focus-visible { color: var(--ap-text); }
+.voice.dragging { position: relative; z-index: 1; cursor: grabbing; background: var(--ap-hover); box-shadow: 0 0 0 1px var(--ap-accent), 0 8px 20px rgba(0, 0, 0, .35); }
+.sorting, .sorting * { cursor: grabbing !important; }
+
 .voice .rank {
     min-width: 18px;
     color: var(--ap-accent);
@@ -290,7 +297,6 @@ a.btn {
 }
 
 .btn.ghost:hover { background: var(--ap-hover); border-color: var(--ap-line-strong); }
-.btn.danger { margin-left: auto; color: var(--ap-danger); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -364,7 +370,6 @@ button:focus-visible, select:focus-visible, a:focus-visible {
 @media (max-width: 520px) {
     .row { flex-wrap: wrap; }
     select { width: 100%; }
-    .btn.danger { margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -25,7 +25,11 @@ async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 
             onMessage: { addListener() {} },
             sendMessage(msg, cb) {
                 const replies = { resolve_shikimori_id: { id: 7 }, shiki_get_status: { isLoggedIn: false, clientId: 'c' } };
-                if (cb) setTimeout(() => cb(replies[msg.action] || null), 0);
+                if (cb) setTimeout(() => {
+                    cb(replies[msg.action] || null);
+                    // Под нагрузкой полного прогона ответ о статусе приходит позже: тесты ждут этой отметки
+                    if (msg.action === 'shiki_get_status') w.statusAnswered = true;
+                }, 0);
             }
         },
         tabs: {
@@ -70,6 +74,7 @@ test('запасная строка с названием тайтла тоже 
 
 test('«Войти» просит фон открыть вкладку', async () => {
     const w = await openPopup({});
+    assert.ok(await waitFor(() => w.statusAnswered), 'окно получило статус Shikimori');
     const sent = [];
     const original = w.chrome.runtime.sendMessage;
     w.chrome.runtime.sendMessage = (msg, cb) => { sent.push(msg); original(msg, cb); };

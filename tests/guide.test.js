@@ -151,8 +151,11 @@ test('подсказки показываются один раз, задани�
 test('бесшовная смена: новичок видит её в подсказках, панель открывается, задание не засчитано заранее', async () => {
     const { sh, shell, marks } = await mountShell();
     const box = sh.querySelector('.guide');
-    box.querySelector('.go').click();
-    box.querySelector('.go').click();
+    // Шкала, +89, кнопка серий, список серий
+    for (let i = 0; i < 4; i++) box.querySelector('.go').click();
+    // Сначала подсвечена сама кнопка, панель ещё закрыта: видно, куда нажимать
+    assert.ok(sh.querySelector('[data-act="voices"]').classList.contains('guide-spot'));
+    assert.ok(!sh.querySelector('.panel').classList.contains('on'));
     box.querySelector('.go').click();
     assert.match(box.querySelector('p').textContent, /без перерыва/);
     assert.ok(sh.querySelector('.panel').classList.contains('on'));
@@ -205,4 +208,50 @@ test('плеер выбирается своей кнопкой, а лиса р�
     sh.querySelector('[data-act="players"]').click();
     assert.equal(sh.querySelectorAll('.player-row').length, 2);
     shell.destroy();
+});
+
+test('лиса сначала показывает кнопку, потом раскрывает её панель: серии, озвучка, плеер и настройки', async () => {
+    const { sh, shell } = await mountShell();
+    shell.setSite({ title: 'Тайтл', episodes: [], voices: [], players: [{ index: 0, title: 'Kodik', selected: true }, { index: 1, title: 'Alloha', selected: false }] });
+    const box = sh.querySelector('.guide');
+    const steps = [];
+    while (!box.hidden && steps.length < 15) {
+        const spot = sh.querySelector('.guide-spot');
+        const panelOn = sh.querySelector('.panel').classList.contains('on');
+        const act = spot && spot.dataset.act;
+        const head = panelOn ? sh.querySelector('.panel').textContent : '';
+        steps.push(act ? `кнопка ${act}${panelOn ? ' + панель' : ''}` : panelOn ? `панель ${/Настройки/.test(head) ? 'settings' : /Плеер/.test(head) ? 'players' : /Серии/.test(head) ? 'episodes' : 'voices'}` : spot.className.replace(' guide-spot', ''));
+        box.querySelector('.go').click();
+    }
+    assert.deepEqual(steps, [
+        'rail', 'кнопка skip', 'кнопка episodes', 'панель episodes',
+        'кнопка voices', 'панель voices',
+        'кнопка players', 'панель players',
+        'кнопка settings', 'панель settings'
+    ]);
+    shell.destroy();
+});
+
+test('панель настроек перерисовалась во время подсказки: подсветка остаётся', async () => {
+    const { sh, shell } = await mountShell();
+    const box = sh.querySelector('.guide');
+    for (let i = 0; i < 15 && !/приятного просмотра/.test(box.querySelector('p').textContent); i++) box.querySelector('.go').click();
+    assert.ok(sh.querySelector('.panel .scroll').classList.contains('guide-spot'));
+    // Перерисовка панели, как после прихода списка качества: скорость меняется нажатием
+    sh.querySelector('.panel .scroll .chip, .panel .scroll button').click();
+    assert.ok(sh.querySelector('.panel .scroll').classList.contains('guide-spot'));
+    shell.destroy();
+});
+
+test('экскурсия по окну расширения показывает только то, что в окне есть', () => {
+    const tour = read('popup/guide-tour.js');
+    const html = read('popup/popup.html');
+    const doc = new JSDOM(html).window.document;
+    const targets = [...tour.matchAll(/target: '([^']+)'/g)].map(m => m[1]);
+    assert.ok(targets.length > 3);
+    for (const sel of targets) assert.ok(doc.querySelector(sel), `${sel} есть в popup.html`);
+    // Каждая нижняя кнопка, названная в тексте, есть в окне
+    const tabs = [...doc.querySelectorAll('.bottom-tab')].map(b => b.textContent.trim());
+    const named = [...tour.matchAll(/«([^»]+)»/g)].map(m => m[1]).filter(n => ['Музыка', 'Плеер', 'Топ'].includes(n));
+    for (const name of named) assert.ok(tabs.includes(name), `кнопка «${name}» есть в окне`);
 });
