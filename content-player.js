@@ -591,51 +591,28 @@
     // Метка Kodik без известных таймингов: примерная длина песни для запоминания возврата к ней
     const NATIVE_SKIP_RANGE_SEC = 120;
 
-    let skipBtn = null;
-    let skipUndoBtn = null;
-    function createSkipButtons() {
-        const style = document.createElement('style');
-        style.textContent = `
-            #ag-smart-skip, #ag-skip-undo {
-                position: fixed; right: 24px; bottom: 76px; z-index: 2147483647; display: none; padding: 10px 18px;
-                font-family: ${window.AG_FONT || 'sans-serif'}; font-size: 14px; font-weight: 600; border-radius: 7px;
-                cursor: pointer; pointer-events: auto; user-select: none;
-            }
-            #ag-smart-skip { background: #fff; color: #111; }
-            #ag-skip-undo { background: #101319; color: #fff; }
-        `;
-        document.head.appendChild(style);
-
-        skipBtn = document.createElement('div');
-        skipBtn.id = 'ag-smart-skip';
-        document.body.appendChild(skipBtn);
-
-        // Кнопка «Вернуться» после автопропуска: ошибка исправляется одним нажатием
-        skipUndoBtn = document.createElement('div');
-        skipUndoBtn.id = 'ag-skip-undo';
-        skipUndoBtn.innerText = '↩ Вернуться';
-        document.body.appendChild(skipUndoBtn);
-    }
+    // Кнопки «Пропустить» и «Вернуться» живут только в оболочке плеера и выглядят по её теме.
+    // Без оболочки их нет: пропуск работает сам и клавишей, у Kodik остаётся родная кнопка. Пустышки не попадают на страницу
+    const offPage = { skip: document.createElement('button'), undo: document.createElement('button') };
+    const skipUi = () => (playerShell && playerShell.skipButtons && playerShell.skipButtons()) || offPage;
 
     function setupSmartSkip(v) {
-        if (!skipBtn) createSkipButtons();
-        const btn = skipBtn;
-        const undoBtn = skipUndoBtn;
+        // Оболочка может появиться позже видео: кнопки берутся при каждом обращении
         let undoTimer = null;
         const showUndo = (part, startOfSong) => {
-            undoBtn.style.display = 'block';
-            undoBtn.onclick = (e) => {
+            skipUi().undo.style.display = 'block';
+            skipUi().undo.onclick = (e) => {
                 e.stopPropagation();
                 skipMemory.keepWatching(part);
-                undoBtn.style.display = 'none';
+                skipUi().undo.style.display = 'none';
                 v.currentTime = startOfSong;
             };
             clearTimeout(undoTimer);
-            undoTimer = setTimeout(() => { undoBtn.style.display = 'none'; }, 6000);
+            undoTimer = setTimeout(() => { skipUi().undo.style.display = 'none'; }, 6000);
         };
         v.addEventListener('loadstart', () => {
             skipMemory.reset();
-            undoBtn.style.display = 'none';
+            skipUi().undo.style.display = 'none';
         });
 
         let lastTimeUpdate = 0;
@@ -647,7 +624,7 @@
             // Элемент кнопки Kodik есть всегда, а настоящая метка только у активной: её обрабатывает блок авто-скипа ниже
             // В новом плеере родная кнопка скрыта: там всегда показываем свою
             if (!playerShell && document.querySelector('.fp-skip-button.active')) {
-                btn.style.display = "none";
+                skipUi().skip.style.display = "none";
                 currentSkipTarget = null;
                 return;
             }
@@ -664,10 +641,10 @@
             let skipTarget = null;
 
             if (isOpTarget) {
-                btn.innerText = "Пропустить опенинг";
+                skipUi().skip.textContent = "Пропустить опенинг";
                 skipTarget = skipData.op.end;
             } else if (isEdTarget) {
-                btn.innerText = "Пропустить эндинг";
+                skipUi().skip.textContent = "Пропустить эндинг";
                 skipTarget = skipData.ed.end;
                 // Прыжок в самый конец завершил бы серию, и плеер сам ушёл бы дальше
                 if (v.duration && atLastOwnEpisode()) skipTarget = Math.min(skipTarget, v.duration - STOP_BEFORE_END_SEC);
@@ -682,11 +659,17 @@
                     skipMemory.markSkipped(part, skipData[part]);
                     markSongSkipped();
                     v.currentTime = skipTarget;
-                    btn.style.display = "none";
+                    skipUi().skip.style.display = "none";
                     showUndo(part, startOfSong);
                 }
-                else { btn.style.display = "block"; btn.onclick = (e) => { e.stopPropagation(); markSongSkipped(); v.currentTime = skipTarget; }; }
-            } else { btn.style.display = "none"; }
+                else {
+                    // Зритель снова в песне: «Вернуться» уже не нужна и не должна закрывать «Пропустить» на том же месте
+                    clearTimeout(undoTimer);
+                    skipUi().undo.style.display = 'none';
+                    skipUi().skip.style.display = "block";
+                    skipUi().skip.onclick = (e) => { e.stopPropagation(); markSongSkipped(); v.currentTime = skipTarget; };
+                }
+            } else { skipUi().skip.style.display = "none"; }
         });
     }
 

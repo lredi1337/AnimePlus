@@ -79,7 +79,8 @@ test('старого экрана нет: ни разметки, ни настр
     const { dom, frame } = await startPlayer();
     for (const id of ['ag-ui', 'ag-flash', 'ag-fs-patch', 'ag-p', 'ag-n', 'z-m']) assert.equal(frame.document.getElementById(id), null, id);
     for (const key of ['showNav', 'showSkipBtn', 'showPiP', 'showCenterBtn', 'hideTime']) assert.equal(frame.DEFAULT_SETTINGS[key], undefined, key);
-    assert.ok(frame.document.getElementById('ag-smart-skip'), 'кнопка пропуска осталась');
-    assert.ok(frame.document.getElementById('ag-skip-undo'), 'кнопка «Вернуться» осталась');
+    // Кнопки «Пропустить» и «Вернуться» живут только в оболочке: без неё их нет, а пропуск работает сам и клавишей
+    assert.equal(frame.document.getElementById('ag-smart-skip'), null);
+    assert.equal(frame.document.getElementById('ag-skip-undo'), null);
     dom.window.close();
 });

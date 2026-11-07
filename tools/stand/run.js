@@ -29,6 +29,7 @@ function parseArgs(argv) {
         else if (rest[i] === '--sites') opts.sites = value.split(',');
         else if (rest[i] === '--url') opts.url = value;
         else if (rest[i] === '--count') opts.count = Number(value);
+        else if (rest[i] === '--out') opts.out = value;
         else if (rest[i] === '--no-extension') { opts.noExtension = true; i -= 1; }
         else throw new Error(`неизвестный параметр ${rest[i]}`);
     }
@@ -633,7 +634,185 @@ async function dock(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, dock, kodik, episodes, quality, perf, accuracy };
+/**
+ * Темы оформления: тема выбирается нажатием на странице настроек, открытый плеер перекрашивается без перезагрузки.
+ * Для каждой темы снимок с закрытой и открытой панелью, кнопки панели управления не уходят под панель
+ */
+async function skins(opts) {
+    const r = reporter();
+    const { b, extId } = await startBrowser(opts);
+    const out = opts.out || fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'anime-plus-skins-'));
+    fs.mkdirSync(out, { recursive: true });
+    try {
+        const settingsPage = await b.openPage(`chrome-extension://${extId}/options/options.html`);
+        await wait(1500);
+        const ids = await b.ev(settingsPage.session, "[...document.querySelectorAll('#skinList [data-skin]')].map(x => x.dataset.skin)");
+        r.check('на странице настроек пять тем', ids.length === 5, ids);
+
+        const title = await openTitle(b, opts.url || 'https://jut-su.net/47-ataka-titanov-p7.html');
+        let frame = null;
+        for (const candidate of (await b.targets('iframe')).filter(t => /kodikplayer|kodik\.|thealloha|cdnvideohub|aksor|ceramet|aniboom/.test(t.url) && !/kodikres/.test(t.url))) {
+            const session = await b.attach(candidate.targetId);
+            if (await b.ev(session, "innerWidth > 0 && !!document.getElementById('ag-shell')")) {
+                frame = session;
+                r.info('плеер', new URL(candidate.url).hostname);
+                break;
+            }
+        }
+        if (!frame) {
+            r.check('оболочка плеера на экране', false);
+            return r.failed;
+        }
+        // Запуск серии: реклама может идти до полутора минут, оболочка в это время скрыта
+        for (let i = 0; i < 40; i++) {
+            const mode = await b.ev(frame, `(() => { const v = document.querySelector('video.fp-engine') || document.querySelector('video'); return { playing: !!v && !v.paused && v.currentTime > 2, shown: getComputedStyle(document.getElementById('ag-shell')).display !== 'none' }; })()`);
+            if (mode.playing && mode.shown) break;
+            if (i % 8 === 0) await pressShell(b, frame, '.big');
+            await wait(2500);
+        }
+
+        // Песня, которую видит расширение: её отметка на шкале оболочки. Тайминги приходят не сразу
+        // и потом уточняются (распознавание по звуку), поэтому границы читаются заново перед каждой перемоткой
+        const songNow = () => b.ev(frame, `(() => { const z = ${SHELL}.querySelector('.zones .zone'); const v = document.querySelector('video.fp-engine') || document.querySelector('video'); if (!z || !v || !v.duration) return null; return { start: Math.round(parseFloat(z.style.left) / 100 * v.duration), end: Math.round((parseFloat(z.style.left) + parseFloat(z.style.width)) / 100 * v.duration) }; })()`);
+        let song = null;
+        for (let i = 0; i < 20 && !song; i++) {
+            song = await songNow();
+            if (!song) await wait(1000);
+        }
+        r.info('песня на шкале оболочки', song);
+        const seekInto = (sec) => b.ev(frame, `(() => { const v = document.querySelector('video.fp-engine') || document.querySelector('video'); v.currentTime = ${sec}; if (v.paused) v.play(); })()`);
+        const shot = async (name) => {
+            const { data } = await b.send('Page.captureScreenshot', { format: 'jpeg', quality: 75 }, title.session);
+            fs.writeFileSync(path.join(out, `${name}.jpg`), Buffer.from(data, 'base64'));
+        };
+        const BAR_VS_PANEL = `(() => { const s = ${SHELL}; const p = s.querySelector('.panel').getBoundingClientRect(); return [...s.querySelectorAll('.bar > button, .bar .vol')].filter(e => e.getBoundingClientRect().width > 0 && getComputedStyle(e).display !== 'none').filter(e => e.getBoundingClientRect().right > p.left + 1).map(e => e.dataset.act || e.className); })()`;
+        for (const id of ids) {
+            await b.send('Target.activateTarget', { targetId: settingsPage.targetId });
+            const at = await b.ev(settingsPage.session, `(() => { const e = document.querySelector('#skinList [data-skin="${id}"]'); e.scrollIntoView({ block: 'center' }); const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+            await b.clickAt(settingsPage.session, at);
+            await wait(600);
+            const saved = await b.ev(settingsPage.session, "chrome.storage.local.get(['ag_settings']).then(s => s.ag_settings && s.ag_settings.playerSkin)");
+            const marked = await b.ev(settingsPage.session, "document.querySelector('#skinList [aria-checked=\"true\"]').dataset.skin");
+            // Нынешний вид отмечен и без сохранённой настройки: повторное нажатие ничего не пишет
+            r.check(`${id}: выбрана на странице настроек`, (saved === id || (!saved && id === ids[0])) && marked === id, { saved, marked });
+            await b.send('Page.captureScreenshot', { format: 'jpeg', quality: 75 }, settingsPage.session)
+                .then(({ data }) => fs.writeFileSync(path.join(out, `${id}-0-settings.jpg`), Buffer.from(data, 'base64')));
+            await b.send('Target.activateTarget', { targetId: title.targetId });
+            let applied = null;
+            for (let i = 0; i < 10 && applied !== id; i++) {
+                await wait(300);
+                applied = await b.ev(frame, `${SHELL}.querySelector('.root').dataset.skin`);
+            }
+            r.check(`${id}: плеер перекрасился без перезагрузки`, applied === id, applied);
+            // Перемотка в опенинг: «Пропустить» или «Вернуться» появляется внутри оболочки, на странице плеера кнопок нет
+            if (song) {
+                // Границы песни могут уточниться прямо во время ожидания: тогда перематываем ещё раз по новым
+                let shown = null;
+                for (let attempt = 0; attempt < 2 && !shown; attempt++) {
+                    song = (await songNow()) || song;
+                    await seekInto(song.start + 2);
+                    for (let i = 0; i < 20 && !shown; i++) {
+                        await wait(500);
+                        shown = await b.ev(frame, `(() => { const s = ${SHELL}; const e = [s.getElementById('ag-smart-skip'), s.getElementById('ag-skip-undo')].find(x => x && x.style.display === 'block'); if (!e) return null; const q = e.getBoundingClientRect(); return q.width ? { text: e.textContent, bg: getComputedStyle(e).backgroundColor } : null; })()`);
+                    }
+                }
+                const why = shown ? null : await b.ev(frame, `(() => { const s = ${SHELL}; const v = document.querySelector('video.fp-engine') || document.querySelector('video'); return { t: Math.round(v.currentTime), paused: v.paused, host: getComputedStyle(document.getElementById('ag-shell')).display, root: s.querySelector('.root').className, skip: s.getElementById('ag-smart-skip').style.display, undo: s.getElementById('ag-skip-undo').style.display, zones: [...s.querySelectorAll('.zones .zone')].map(z => [Math.round(parseFloat(z.style.left) / 100 * v.duration), Math.round((parseFloat(z.style.left) + parseFloat(z.style.width)) / 100 * v.duration)]) }; })()`);
+                r.check(`${id}: кнопка пропуска в оболочке по теме`, !!shown, shown || why);
+                r.check(`${id}: на странице плеера кнопок пропуска нет`, !(await b.ev(frame, "!!document.getElementById('ag-smart-skip') || !!document.getElementById('ag-skip-undo')")));
+                await shot(`${id}-0-skip`);
+            }
+            await wake(b, frame);
+            await shot(`${id}-1-panel-closed`);
+            await pressShell(b, frame, '[data-act="settings"]');
+            await wait(500);
+            r.check(`${id}: кнопки не уходят под открытую панель`, (await b.ev(frame, BAR_VS_PANEL)).length === 0, await b.ev(frame, BAR_VS_PANEL));
+            // Затемнение кадра не обрывается у панели: иначе в зазоре и скруглённых углах виден шов
+            const scrims = await b.ev(frame, `(() => { const s = ${SHELL}; const w = s.querySelector('.root').getBoundingClientRect().right; return [...s.querySelectorAll('.scrim-top, .scrim-bottom')].filter(e => getComputedStyle(e).display !== 'none').map(e => Math.round(w - e.getBoundingClientRect().right)); })()`);
+            r.check(`${id}: затемнение кадра до правого края под панелью`, scrims.every(gap => gap <= 0), scrims);
+            await wake(b, frame);
+            await shot(`${id}-2-panel-open`);
+            await pressShell(b, frame, '[data-act="settings"]');
+            await wait(400);
+        }
+        // Нажатие на «Пропустить» внутри оболочки перематывает за песню.
+        // Автопропуск опенинга на время проверки выключен: иначе вместо кнопки сработает он сам
+        if (song) {
+            await b.ev(settingsPage.session, "chrome.storage.local.get(['ag_settings']).then(s => chrome.storage.local.set({ ag_settings: { ...s.ag_settings, autoSkipOp: false } }))");
+            await b.send('Target.activateTarget', { targetId: title.targetId });
+            await wait(800);
+            let at = null;
+            for (let attempt = 0; attempt < 2 && !at; attempt++) {
+                song = (await songNow()) || song;
+                await seekInto(song.start + 2);
+                for (let i = 0; i < 20 && !at; i++) {
+                    await wait(500);
+                    at = await b.ev(frame, `(() => { const e = ${SHELL}.getElementById('ag-smart-skip'); if (e.style.display !== 'block') return null; const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+                }
+            }
+            const hit = at ? await b.ev(frame, `(() => { const e = ${SHELL}.elementFromPoint(${at.x}, ${at.y}); return e ? (e.id || e.className || e.tagName) : null; })()`) : null;
+            if (at) await b.clickAt(frame, at);
+            await wait(800);
+            const t = await b.ev(frame, "Math.round((document.querySelector('video.fp-engine') || document.querySelector('video')).currentTime)");
+            const state = await b.ev(frame, `(() => { const v = document.querySelector('video.fp-engine') || document.querySelector('video'); return { paused: v.paused, readyState: v.readyState, host: getComputedStyle(document.getElementById('ag-shell')).display, skip: ${SHELL}.getElementById('ag-smart-skip').style.display }; })()`);
+            r.check('нажатие на «Пропустить» в оболочке перематывает за песню', !!at && t >= song.end - 2, { t, end: song.end, found: !!at, hit, ...state });
+            await b.ev(settingsPage.session, "chrome.storage.local.get(['ag_settings']).then(s => { const { autoSkipOp, ...rest } = s.ag_settings; return chrome.storage.local.set({ ag_settings: rest }); })");
+        }
+
+        // Превью на странице настроек нажимается мышью и открывает те же панели, что в плеере
+        await b.send('Target.activateTarget', { targetId: settingsPage.targetId });
+        const PREVIEW = "document.querySelector('#skinPreview > div').shadowRoot";
+        await b.ev(settingsPage.session, "document.getElementById('skinPreview').scrollIntoView({ block: 'center' })");
+        await wait(300);
+        for (const act of ['episodes', 'voices', 'players', 'settings']) {
+            const at = await b.ev(settingsPage.session, `(() => { const q = ${PREVIEW}.querySelector('[data-act="${act}"]').getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+            await b.clickAt(settingsPage.session, at);
+            await wait(300);
+            const shown = await b.ev(settingsPage.session, `(() => { const s = ${PREVIEW}; return s.querySelector('.panel.on h3') ? s.querySelector('.panel h3').firstChild.textContent : null; })()`);
+            r.check(`превью: нажатие открывает панель ${act}`, !!shown, shown);
+            await b.send('Page.captureScreenshot', { format: 'jpeg', quality: 80 }, settingsPage.session)
+                .then(({ data }) => fs.writeFileSync(path.join(out, `preview-${act}.jpg`), Buffer.from(data, 'base64')));
+        }
+        // Редактор: своя тема создаётся нажатиями, сохраняется отдельно, открытый плеер перекрашивается без перезагрузки.
+        // Окно выбора цвета системное, поэтому цвет и ползунок стенд ставит скриптом с тем же событием input
+        const press = async (sel) => {
+            const at = await b.ev(settingsPage.session, `(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.scrollIntoView({ block: 'center' }); const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+            await b.clickAt(settingsPage.session, at);
+            await wait(400);
+        };
+        const setField = (sel, value) => b.ev(settingsPage.session, `(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+        await press('#skinCreate');
+        r.check('редактор открылся', await b.ev(settingsPage.session, "!document.getElementById('skinEditor').hidden"));
+        await setField('#edName', 'Стенд');
+        await setField('#edAccent', '#3b82f6');
+        await setField('#edRadius', '0');
+        const draftVar = await b.ev(settingsPage.session, "document.querySelector('#skinPreview > div').shadowRoot.querySelector('.root').style.getPropertyValue('--rail-done')");
+        r.check('превью показывает правку до сохранения', draftVar === '#3b82f6', draftVar);
+        await b.send('Page.captureScreenshot', { format: 'jpeg', quality: 80 }, settingsPage.session).then(({ data }) => fs.writeFileSync(path.join(out, 'editor-open.jpg'), Buffer.from(data, 'base64')));
+        await press('#edSave');
+        const mine = await b.ev(settingsPage.session, "chrome.storage.local.get(['ag_settings']).then(s => ({ list: s.ag_settings.custom_skins, now: s.ag_settings.playerSkin }))");
+        r.check('своя тема сохранена отдельно и выбрана', mine.list.length === 1 && mine.list[0].name === 'Стенд' && mine.now === mine.list[0].id, mine);
+        await b.send('Target.activateTarget', { targetId: title.targetId });
+        let painted = null;
+        for (let i = 0; i < 10 && painted !== '#3b82f6'; i++) {
+            await wait(300);
+            painted = await b.ev(frame, `${SHELL}.querySelector('.root').style.getPropertyValue('--rail-done')`);
+        }
+        r.check('плеер перекрасился в свою тему без перезагрузки', painted === '#3b82f6', painted);
+        await wake(b, frame);
+        await shot('custom-1-player');
+        await b.send('Target.activateTarget', { targetId: settingsPage.targetId });
+        await press('#skinDelete');
+        await press('#skinDelete');
+        const left = await b.ev(settingsPage.session, "chrome.storage.local.get(['ag_settings']).then(s => ({ n: s.ag_settings.custom_skins.length, now: s.ag_settings.playerSkin }))");
+        r.check('удаление в два нажатия возвращает нынешний вид', left.n === 0 && left.now === 'compact', left);
+        r.info('снимки', out);
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, dock, kodik, episodes, quality, perf, accuracy, skins };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

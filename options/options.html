@@ -10,104 +10,200 @@
     <link rel="stylesheet" href="../modules/shared/tokens.css">
     <link rel="stylesheet" href="options.css">
     <script src="../config.js"></script>
+    <script src="../modules/player/shell-view.js"></script>
     <script src="../modules/shared/ui-kit.js"></script>
     <script src="../modules/shared/guide.js"></script>
     <script src="../modules/shared/guide-fox.js"></script>
 </head>
 
 <body>
-    <main class="page">
-        <header class="head">
-            <img src="../icons/icon128.png" alt="" width="48" height="48">
-            <div>
-                <h1>Настройки Anime<span>+</span></h1>
-                <p>Автопропуск, автопереход и остальное для просмотра находятся прямо в плеере: значок шестерёнки на панели управления.</p>
+    <div class="layout">
+        <!-- Меню разделов: открыт один раздел за раз, выбранный записан в адресе (#voice), ссылки на #support работают -->
+        <nav class="side" aria-label="Разделы настроек">
+            <header class="head">
+                <img src="../icons/icon128.png" alt="" width="36" height="36">
+                <h1>Anime<span>+</span></h1>
+            </header>
+            <a class="nav-item" href="#player" data-pane="player">Вид плеера</a>
+            <a class="nav-item" href="#voice" data-pane="voice">Озвучка</a>
+            <a class="nav-item" href="#keys" data-pane="keys">Клавиши</a>
+            <a class="nav-item" href="#random" data-pane="random">Случайное аниме</a>
+            <a class="nav-item" href="#help" data-pane="help">Помощь</a>
+            <a class="help-link" id="helpBanner" href="#support">
+                <span class="help-fox" id="helpFox"></span>
+                <span class="help-text"><b>Что-то не работает?</b><small>Напишите нам</small></span>
+            </a>
+            <p class="side-note">Автопропуск, автопереход, качество и скорость: шестерёнка в самом плеере.</p>
+        </nav>
+
+        <main class="page">
+            <div class="pane" data-pane="player">
+                <section class="card skin-card" aria-labelledby="skin-title">
+                    <h2 id="skin-title">Вид плеера</h2>
+                    <div class="skins" id="skinList" role="radiogroup" aria-labelledby="skin-title"></div>
+                    <div class="actions skin-create"><button type="button" class="btn ghost" id="skinCreate">+ Своя тема</button><small class="hint" id="skinLimit" hidden>Своих тем уже 12: удалите одну, чтобы создать новую.</small></div>
+
+                    <div class="skin-work">
+                        <div class="skin-stage">
+                            <div class="skin-now">
+                                <b id="skinName"></b><span id="skinTag"></span>
+                                <span class="skin-actions">
+                                    <button type="button" class="btn ghost" id="skinCopy">Изменить копию</button>
+                                    <button type="button" class="btn ghost" id="skinEdit" hidden>Изменить</button>
+                                    <button type="button" class="btn ghost" id="skinDelete" hidden>Удалить</button>
+                                </span>
+                            </div>
+                            <div class="preview" id="skinPreview"></div>
+                            <!-- Порядок кнопок во время правки: полоса повторяет нижнюю панель плеера -->
+                            <div class="ed-strip" id="edStrip" hidden>
+                                <div class="strip-head"><b>Кнопки нижней панели</b><small>Перетащите кнопку на новое место. Нажатие прячет её или возвращает.</small></div>
+                                <div class="strip" id="edOrder" role="list" aria-label="Порядок кнопок нижней панели"></div>
+                            </div>
+                            <p class="hint stage-hint">Превью нажимается: панели открываются как в плеере, но ничего не меняют. Открытые вкладки перекрасятся сразу.</p>
+                        </div>
+
+                        <form class="skin-editor" id="skinEditor" hidden>
+                            <div class="ed-head"><b id="edTitle">Своя тема</b></div>
+                            <label class="ed-row ed-name"><span>Название</span><input type="text" id="edName" maxlength="30" autocomplete="off"></label>
+                            <div class="ed-tabs" id="edTabs" role="tablist" aria-label="Части темы"></div>
+
+                            <fieldset class="ed-group" data-tab="Панель">
+                                <legend>Нижняя панель</legend>
+                                <label class="ed-row"><span>Вид</span><select id="edBar"><option value="full">На всю ширину, без подложки</option><option value="edge">Сплошная полоса у края</option><option value="floating">Парящая</option><option value="capsule">Капсула по центру</option><option value="plates">Каждая кнопка на плашке</option></select></label>
+                                <label class="ed-row"><span>Цвет подложки<small>И плашек: названия, центра</small></span><input type="color" id="edBarColor"></label>
+                                <label class="ed-row"><span>Плотность подложки<small id="edBarAlphaNote"></small></span><input type="range" id="edBarAlpha" min="0" max="100" step="1"></label>
+                            </fieldset>
+
+                            <fieldset class="ed-group" data-tab="Центр">
+                                <legend>Название и кнопки в центре</legend>
+                                <label class="ed-row"><span>Название тайтла</span><select id="edTitlePos"><option value="top">Сверху слева</option><option value="card">Сверху на плашке</option><option value="bottom">Крупно внизу</option><option value="hidden">Не показывать</option></select></label>
+                                <label class="ed-row"><span>Кнопки в центре</span><select id="edCenter"><option value="plain">Простые значки</option><option value="circles">В кругах</option><option value="plate">На общей плашке</option><option value="big">Только большая кнопка</option></select></label>
+                                <small class="ed-warn" id="edCenterWarn" hidden>Соседние серии и перемотка на 5 секунд останутся на клавишах и двойном щелчке по краям кадра.</small>
+                                <label class="ed-row"><span>Большая кнопка</span><select id="edBig"><option value="light">Белая</option><option value="accent">Цвета акцента</option><option value="ring">Прозрачная с кольцом</option><option value="glass">Стеклянная</option></select></label>
+                            </fieldset>
+
+                            <fieldset class="ed-group" data-tab="Боковые">
+                                <legend>Боковые панели</legend>
+                                <label class="ed-row"><span>Вид<small>«Серии», «Озвучка», «Плеер», настройки</small></span><select id="edPanel"><option value="flush">Вплотную к краю</option><option value="floating">Парящие</option></select></label>
+                                <label class="ed-row"><span>Цвет</span><input type="color" id="edPanelColor"></label>
+                                <label class="ed-row"><span>Плотность<small id="edPanelAlphaNote"></small></span><input type="range" id="edPanelAlpha" min="30" max="100" step="1"></label>
+                            </fieldset>
+
+                            <fieldset class="ed-group" data-tab="Кнопки">
+                                <legend>Кнопки и шкала</legend>
+                                <label class="ed-row"><span>Размер кнопок</span><select id="edSize"><option value="small">Мелкие</option><option value="normal">Обычные</option><option value="large">Крупные</option></select></label>
+                                <label class="ed-row"><span>Подписи у кнопок<small>«Серии», «Озвучка», «Плеер»</small></span><span class="switch"><input type="checkbox" id="edLabels"><i></i></span></label>
+                                <label class="ed-row"><span>Ползунок шкалы виден всегда</span><span class="switch"><input type="checkbox" id="edThumb"><i></i></span></label>
+                                <label class="ed-row"><span>Скругления<small id="edRadiusNote"></small></span><input type="range" id="edRadius" min="0" max="24" step="1"></label>
+                                <label class="ed-row"><span>Толщина шкалы<small id="edRailNote"></small></span><input type="range" id="edRail" min="2" max="8" step="1"></label>
+                                <label class="ed-row"><span>«Картинка в картинке»<small>Значок в правом верхнем углу</small></span><span class="switch"><input type="checkbox" id="edPip"><i></i></span></label>
+                                <label class="ed-row"><span>Шрифт</span><select id="edFont"><option value="system">Системный</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option><option value="wide">Широкий</option></select></label>
+                            </fieldset>
+
+                            <fieldset class="ed-group" data-tab="Цвета">
+                                <legend>Цвета</legend>
+                                <label class="ed-row"><span>Акцент<small>Шкала, текущая серия, пропуск</small></span><input type="color" id="edAccent"></label>
+                                <label class="ed-row"><span>Текст и значки</span><input type="color" id="edText"></label>
+                                <label class="ed-row"><span>Затемнение у краёв кадра<small id="edScrimNote"></small></span><input type="range" id="edScrim" min="0" max="100" step="1"></label>
+                                <label class="ed-row"><span>Размытие под подложками<small>Нагружает слабые ПК</small></span><span class="switch"><input type="checkbox" id="edBlur"><i></i></span></label>
+                            </fieldset>
+
+                            <div class="actions ed-actions">
+                                <button type="submit" class="btn" id="edSave">Сохранить</button>
+                                <button type="button" class="btn ghost" id="edCancel">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
             </div>
-        </header>
 
-        <a class="help-banner" id="helpBanner" href="#support">
-            <span class="help-fox" id="helpFox"></span>
-            <span class="help-text"><b>Что-то не работает или есть идея?</b><small>Напишите нам, мы разберёмся</small></span>
-            <span class="btn">Написать</span>
-        </a>
-
-        <section class="card" aria-labelledby="voice-title">
-            <h2 id="voice-title">Озвучка</h2>
-            <label class="row">
-                <span><b>Автовыбор озвучки</b><small>Плеер сам включает первую доступную озвучку из списка. Озвучка, которую вы выбрали вручную, запоминается для тайтла и важнее списка.</small></span>
-                <span class="switch"><input type="checkbox" id="autoVoice"><i></i></span>
-            </label>
-            <div class="list-head"><b>Приоритет</b><small>перетащите строку: выше — важнее</small></div>
-            <ul class="voices" id="voiceList"></ul>
-            <form class="add" id="voiceForm">
-                <input type="text" id="voiceInput" placeholder="Добавить озвучку, например HDRezka" aria-label="Название озвучки" autocomplete="off">
-                <button type="submit" class="btn">Добавить</button>
-            </form>
-        </section>
-
-        <section class="card" aria-labelledby="random-title">
-            <h2 id="random-title">Случайное аниме</h2>
-            <label class="row">
-                <span><b>Минимальная оценка</b><small>«Случайное аниме» в меню лисы на сайте предлагает тайтлы не ниже этой оценки на Shikimori.</small></span>
-                <select id="randomScore">
-                    <option value="any">Без ограничений</option>
-                    <option value="5">От 5.0</option>
-                    <option value="5.5">От 5.5</option>
-                    <option value="6">От 6.0</option>
-                    <option value="6.5">От 6.5</option>
-                    <option value="7">От 7.0</option>
-                    <option value="7.5">От 7.5</option>
-                    <option value="8">От 8.0</option>
-                    <option value="8.5">От 8.5</option>
-                    <option value="9">От 9.0</option>
-                </select>
-            </label>
-            <div class="list-head"><b>Типы</b></div>
-            <div class="chips" id="randomKinds"></div>
-        </section>
-
-        <section class="card" aria-labelledby="keys-title">
-            <h2 id="keys-title">Горячие клавиши</h2>
-            <p class="hint">Нажмите на кнопку, затем на нужную клавишу. Esc отменяет назначение.</p>
-            <div id="keyList"></div>
-        </section>
-
-        <section class="card" id="guide" aria-labelledby="guide-title">
-            <h2 id="guide-title">Экскурсия с лисой</h2>
-            <p class="hint">Лиса снова покажет окно расширения и подскажет, что есть в плеере, а задания начнутся заново.</p>
-            <div class="actions">
-                <button type="button" class="btn ghost" id="guideRestart">Пройти заново</button>
+            <div class="pane" data-pane="voice">
+                <section class="card" aria-labelledby="voice-title">
+                    <h2 id="voice-title">Озвучка</h2>
+                    <label class="row">
+                        <span><b>Автовыбор озвучки</b><small>Плеер включает первую доступную из списка. Выбранная вручную запоминается для тайтла и важнее списка.</small></span>
+                        <span class="switch"><input type="checkbox" id="autoVoice"><i></i></span>
+                    </label>
+                    <div class="list-head"><b>Приоритет</b><small>перетащите строку: выше — важнее</small></div>
+                    <ul class="voices" id="voiceList"></ul>
+                    <form class="add" id="voiceForm">
+                        <input type="text" id="voiceInput" placeholder="Добавить озвучку, например HDRezka" aria-label="Название озвучки" autocomplete="off">
+                        <button type="submit" class="btn">Добавить</button>
+                    </form>
+                </section>
             </div>
-        </section>
 
-        <section class="card" id="support" aria-labelledby="support-title">
-            <h2 id="support-title">Поддержка</h2>
-            <p class="hint">Нашли ошибку или есть идея? Напишите прямо здесь. Если что-то сломалось, укажите сайт, тайтл и номер серии: так разберёмся быстрее.</p>
-            <form class="feedback" id="feedbackForm">
-                <select id="feedbackKind" aria-label="Тип сообщения">
-                    <option value="bug">Ошибка</option>
-                    <option value="idea">Идея</option>
-                </select>
-                <textarea id="feedbackMessage" rows="5" minlength="10" maxlength="2000" required placeholder="Что случилось или что хотелось бы добавить" aria-label="Сообщение"></textarea>
-                <input type="text" id="feedbackContact" maxlength="120" placeholder="Почта или Telegram, если нужен ответ (необязательно)" aria-label="Контакт для ответа">
-                <div class="feedback-trap" aria-hidden="true">
-                    <input type="text" id="feedbackWebsite" tabindex="-1" autocomplete="off">
-                </div>
-                <label class="feedback-diag"><input type="checkbox" id="feedbackDiag" checked> Приложить сведения о работе расширения</label>
-                <details class="feedback-diag-text">
-                    <summary>Что будет отправлено</summary>
-                    <pre id="feedbackDiagText"></pre>
-                </details>
-                <small class="hint">Разработчик получит текст, контакт, версию расширения и, если отмечено выше, сведения о работе: браузер и список недавних сбоев, без адресов страниц и названий тайтлов. Больше ничего не передаётся.</small>
-                <div class="actions">
-                    <button type="submit" class="btn" id="feedbackSend">Отправить</button>
-                    <p class="feedback-result" id="feedbackResult" role="status"></p>
-                </div>
-            </form>
-        </section>
+            <div class="pane" data-pane="keys">
+                <section class="card" aria-labelledby="keys-title">
+                    <h2 id="keys-title">Клавиши</h2>
+                    <p class="hint">Нажмите на кнопку, затем на нужную клавишу. Esc отменяет.</p>
+                    <div class="keys" id="keyList"></div>
+                </section>
+            </div>
 
-        <p class="status" id="status" role="status"></p>
-    </main>
+            <div class="pane" data-pane="random">
+                <section class="card" aria-labelledby="random-title">
+                    <h2 id="random-title">Случайное аниме</h2>
+                    <p class="hint">Пункт «Случайное аниме» в меню лисы на сайте.</p>
+                    <label class="row">
+                        <span><b>Минимальная оценка</b><small>На Shikimori</small></span>
+                        <select id="randomScore">
+                            <option value="any">Без ограничений</option>
+                            <option value="5">От 5.0</option>
+                            <option value="5.5">От 5.5</option>
+                            <option value="6">От 6.0</option>
+                            <option value="6.5">От 6.5</option>
+                            <option value="7">От 7.0</option>
+                            <option value="7.5">От 7.5</option>
+                            <option value="8">От 8.0</option>
+                            <option value="8.5">От 8.5</option>
+                            <option value="9">От 9.0</option>
+                        </select>
+                    </label>
+                    <div class="list-head"><b>Типы</b></div>
+                    <div class="chips" id="randomKinds"></div>
+                </section>
+            </div>
+
+            <div class="pane" data-pane="help">
+                <section class="card" id="support" aria-labelledby="support-title">
+                    <h2 id="support-title">Написать нам</h2>
+                    <p class="hint">Ошибка или идея. Если что-то сломалось, укажите сайт, тайтл и серию.</p>
+                    <form class="feedback" id="feedbackForm">
+                        <select id="feedbackKind" aria-label="Тип сообщения">
+                            <option value="bug">Ошибка</option>
+                            <option value="idea">Идея</option>
+                        </select>
+                        <textarea id="feedbackMessage" rows="5" minlength="10" maxlength="2000" required placeholder="Что случилось или что хотелось бы добавить" aria-label="Сообщение"></textarea>
+                        <input type="text" id="feedbackContact" maxlength="120" placeholder="Почта или Telegram, если нужен ответ (необязательно)" aria-label="Контакт для ответа">
+                        <div class="feedback-trap" aria-hidden="true">
+                            <input type="text" id="feedbackWebsite" tabindex="-1" autocomplete="off">
+                        </div>
+                        <label class="feedback-diag"><input type="checkbox" id="feedbackDiag" checked> Приложить сведения о работе расширения</label>
+                        <details class="feedback-diag-text">
+                            <summary>Что будет отправлено</summary>
+                            <pre id="feedbackDiagText"></pre>
+                        </details>
+                        <small class="hint">Уйдут текст, контакт, версия расширения и, если отмечено, браузер и недавние сбои: без адресов страниц и названий тайтлов.</small>
+                        <div class="actions">
+                            <button type="submit" class="btn" id="feedbackSend">Отправить</button>
+                            <p class="feedback-result" id="feedbackResult" role="status"></p>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="card guide-card" id="guide" aria-labelledby="guide-title">
+                    <div>
+                        <h2 id="guide-title">Экскурсия с лисой</h2>
+                        <p class="hint">Лиса снова покажет окно расширения и плеер, задания начнутся заново.</p>
+                    </div>
+                    <button type="button" class="btn ghost" id="guideRestart">Пройти заново</button>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <p class="status" id="status" role="status"></p>
     <script src="options.js"></script>
 </body>
 

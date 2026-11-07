@@ -10,6 +10,10 @@
         sites_enabled: {},
         autoNext: true, autoSkip: true, autoPlay: true, audioSkip: true,
         showDBL: true,
+        // Тема оформления оболочки плеера: id из AgShellView.SKINS (modules/player/shell-view.js)
+        playerSkin: 'compact',
+        // Свои темы из редактора на странице настроек: [{ id, name, base, values }], проверяет AgShellView.cleanCustom
+        custom_skins: [],
         ongoing_enabled: true,
         ongoing_hide_chinese: true,
         ongoing_hide_long_running: false,

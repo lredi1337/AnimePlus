@@ -6,7 +6,7 @@
 (function (root) {
     'use strict';
 
-    const { MANUAL_SKIP_SEC, icon, STYLE, TEMPLATE } = root.AgShellView;
+    const { MANUAL_SKIP_SEC, icon, paintSkin, STYLE, TEMPLATE } = root.AgShellView;
     const EPISODE_GROUP = 100;
     const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
     const SEEN_KEY = 'ag_seen_eps';
@@ -75,7 +75,6 @@
     // Родной интерфейс скрыт, но остаётся в разметке: его логика продолжает работать
     const NATIVE_CSS = `
         body.ag-shell-on { background: #000 !important; }
-        body.ag-shell-panel #ag-smart-skip, body.ag-shell-panel #ag-skip-undo { right: calc(clamp(280px, 40%, 420px) + 24px) !important; }
     `;
 
     /**
@@ -122,6 +121,12 @@
         const titleKey = () => titleName().trim().toLowerCase();
 
         const settings = () => options.getSettings() || {};
+
+        // Тема меняется на странице настроек: открытая вкладка подхватывает её при следующей сверке
+        // Встроенная или своя тема (основа плюс переменные), неизвестная — нынешний вид
+        function applySkin() {
+            paintSkin(rootEl, settings());
+        }
 
         // ---------- Просмотренные серии ----------
 
@@ -545,6 +550,11 @@
 
         const PANELS = { episodes: renderEpisodes, voices: () => renderVoices(), players: renderPlayers, settings: renderSettings };
 
+        // Кнопка открытой панели отмечена: темы подсвечивают её
+        const markPanelButtons = () => {
+            for (const name of Object.keys(PANELS)) $(`[data-act="${name}"]`).setAttribute('aria-expanded', String(openPanel === name));
+        };
+
         function togglePanel(name, byGuide = false) {
             if (openPanel === name) return closePanel();
             openPanel = name;
@@ -556,6 +566,7 @@
             panel.classList.add('on');
             rootEl.classList.add('with-panel');
             document.body.classList.add('ag-shell-panel');
+            markPanelButtons();
             PANELS[name]();
             wake();
             if (name === 'settings' && player.openQuality && !player.quality().length) {
@@ -574,6 +585,7 @@
             panel.classList.remove('on');
             rootEl.classList.remove('with-panel');
             document.body.classList.remove('ag-shell-panel');
+            markPanelButtons();
             panel.replaceChildren();
             wake();
         }
@@ -827,6 +839,7 @@
         }
 
         function sync() {
+            applySkin();
             const v = player.video();
             if (v) bindVideo(v);
             if (player.tick) player.tick();
@@ -1038,11 +1051,14 @@
         window.addEventListener('keyup', onKeyUp, true);
         const safeSync = guarded(sync);
         const syncTimer = setInterval(safeSync, SYNC_MS);
+        applySkin();
         renderHead();
         safeSync();
 
         return {
             destroy,
+            /** Кнопки «Пропустить» и «Вернуться»: живут только в оболочке, после её снятия их нет */
+            skipButtons: () => (destroyed ? null : { skip: $('#ag-smart-skip'), undo: $('#ag-skip-undo') }),
             /** Выбранный пункт списка, откуда бы он ни был: со страницы сайта или из самого плеера */
             current: (kind) => listOf(kind).find(o => o.selected) || null,
             /** Списки со страницы сайта для плееров на одну серию */

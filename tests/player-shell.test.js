@@ -282,3 +282,103 @@ test('длинный сериал: сотни переключаются в од
     assert.equal(q('.panel .range-now').textContent.trim(), '1–100');
     shell.destroy();
 });
+
+const waitSync = () => new Promise(r => setTimeout(r, 450));
+
+test('темы оформления: пять, у каждой, кроме нынешнего вида, свой блок стилей', () => {
+    const view = require('../modules/player/shell-view.js');
+    assert.deepEqual(view.SKINS.map(s => s.id), ['compact', 'minimal', 'glass', 'cinema', 'islands']);
+    for (const s of view.SKINS) assert.ok(s.name && s.tag, s.id);
+    for (const s of view.SKINS.slice(1)) assert.ok(view.STYLE.includes(`.root[data-skin="${s.id}"]`), s.id);
+});
+
+test('без настройки оболочка выглядит как сейчас', () => {
+    const { sh, shell } = mount();
+    assert.equal(sh.querySelector('.root').dataset.skin, 'compact');
+    shell.destroy();
+});
+
+test('тема ставится на оболочку и меняется на ходу, неизвестная тема даёт нынешний вид', async () => {
+    const extra = { playerSkin: 'glass' };
+    const { sh, shell } = mount(extra);
+    assert.equal(sh.querySelector('.root').dataset.skin, 'glass');
+    extra.playerSkin = 'cinema';
+    await waitSync();
+    assert.equal(sh.querySelector('.root').dataset.skin, 'cinema');
+    extra.playerSkin = 'neon';
+    await waitSync();
+    assert.equal(sh.querySelector('.root').dataset.skin, 'compact');
+    shell.destroy();
+});
+
+test('время в любой теме, и в «Тихом», показано как «прошло / всего»', () => {
+    const { w, sh, shell } = mount({ playerSkin: 'minimal' });
+    const v = w.document.querySelector('video.fp-engine');
+    Object.defineProperty(v, 'currentTime', { get: () => 100, configurable: true });
+    Object.defineProperty(v, 'duration', { get: () => 1400, configurable: true });
+    v.dispatchEvent(new w.Event('timeupdate'));
+    assert.equal(sh.querySelector('.clock').textContent, '1:40 / 23:20');
+    shell.destroy();
+    const classic = mount();
+    const cv = classic.w.document.querySelector('video.fp-engine');
+    Object.defineProperty(cv, 'currentTime', { get: () => 100, configurable: true });
+    Object.defineProperty(cv, 'duration', { get: () => 1400, configurable: true });
+    cv.dispatchEvent(new classic.w.Event('timeupdate'));
+    assert.equal(classic.sh.querySelector('.clock').textContent, '1:40 / 23:20');
+    classic.shell.destroy();
+});
+
+test('кнопки «Пропустить» и «Вернуться» живут только в оболочке и пропадают вместе с ней', () => {
+    const { w, sh, shell } = mount({ playerSkin: 'cinema' });
+    const ui = shell.skipButtons();
+    assert.equal(ui.skip.id, 'ag-smart-skip');
+    assert.equal(ui.undo.id, 'ag-skip-undo');
+    assert.equal(ui.undo.textContent, '↩ Вернуться');
+    assert.equal(ui.skip.parentElement, sh.querySelector('.root'), 'внутри оболочки, тема действует на них');
+    assert.equal(w.document.getElementById('ag-smart-skip'), null, 'на странице плеера их нет');
+    shell.destroy();
+    assert.equal(shell.skipButtons(), null);
+    assert.equal(w.document.getElementById('ag-smart-skip'), null, 'после снятия оболочки на страницу не возвращаются');
+});
+
+test('у каждой темы свой вид кнопок пропуска', () => {
+    const view = require('../modules/player/shell-view.js');
+    assert.ok(view.STYLE.includes('#ag-smart-skip { background: var(--skip-bg)'));
+    for (const s of view.SKINS.slice(1)) {
+        const block = view.STYLE.split('.root[data-skin="' + s.id + '"] {')[1].split('}')[0];
+        assert.ok(block.includes('--skip-bg'), s.id);
+    }
+});
+
+test('все кнопки берут вид из темы: подсказки лисы, картинка в картинке, крестик панели, громкость, фокус', () => {
+    const view = require('../modules/player/shell-view.js');
+    const base = view.STYLE.split('/* ---------- Тихий')[0];
+    for (const [rule, value] of [['.guide button.go {', 'var(--go-bg)'], ['.guide-spot {', 'var(--spot)'], ['.guide {', 'var(--guide-bg)'], ['.pip {', 'var(--pip-bg)'], ['.panel h3 button:hover {', 'var(--close-hover)'], ['.slider i {', 'var(--vol-fill)'], ['button:focus-visible, input:focus-visible {', 'var(--focus)']]) {
+        const body = base.split(rule)[1];
+        assert.ok(body && body.split('}')[0].includes(value), `${rule} ${value}`);
+    }
+    for (const s of view.SKINS.slice(1)) {
+        const block = view.STYLE.split(`.root[data-skin="${s.id}"] {`)[1].split('}')[0];
+        for (const v of ['--go-bg', '--spot', '--guide-bg', '--vol-fill', '--focus']) assert.ok(block.includes(v), `${s.id} ${v}`);
+    }
+});
+
+test('своя тема в плеере: части по атрибутам, цвета переменными, правка подхватывается на ходу', async () => {
+    const extra = { playerSkin: 'custom-1', custom_skins: [{ id: 'custom-1', name: 'Синяя', values: { bar: 'plates', title: 'bottom', accent: '#3b82f6' } }] };
+    const { sh, shell } = mount(extra);
+    const root = sh.querySelector('.root');
+    assert.equal(root.dataset.skin, 'custom');
+    assert.equal(root.dataset.bar, 'plates');
+    assert.equal(root.dataset.title, 'bottom');
+    assert.equal(root.style.getPropertyValue('--rail-done'), '#3b82f6');
+    extra.custom_skins = [{ id: 'custom-1', name: 'Синяя', values: { bar: 'capsule', accent: '#22c55e' } }];
+    await waitSync();
+    assert.equal(root.style.getPropertyValue('--rail-done'), '#22c55e');
+    assert.equal(root.dataset.bar, 'capsule');
+    extra.playerSkin = 'glass';
+    await waitSync();
+    assert.equal(root.dataset.skin, 'glass');
+    assert.equal(root.style.getPropertyValue('--rail-done'), '');
+    assert.equal(root.dataset.bar, undefined);
+    shell.destroy();
+});
