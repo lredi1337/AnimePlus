@@ -118,6 +118,46 @@ test('Aksor: запуск идёт через его собственную кн
     assert.strictEqual(direct, 0);
 });
 
+test('Aksor: под оболочкой не видно его значка паузы, экрана загрузки и управления', () => {
+    // Разметка снята с player.aksor.tv 2026-11-07: значок и экран загрузки лежат рядом с управлением, а не внутри
+    const w = frame('https://player.aksor.tv/video/1', `<div class="_app_1dl7b_1"><div class="_playerHost_1dl7b_6">
+        <video class="_video_1dl7b_22"></video>
+        <div class="_loadingOverlay_i0mcd_1"><div class="_loadingCard_i0mcd_10"><div class="_loadingTitle_i0mcd_44">Loading video</div></div></div>
+        <button class="_centerPlayButton_1t3x7_1 _centerPlayButtonFading_1t3x7_36"></button>
+        <div class="_controls_1647g_1"></div>
+        <div class="_settingsPanel_1ydx9_1"></div>
+    </div></div>`);
+    w.document.body.classList.add('ag-shell-on');
+    const style = w.document.createElement('style');
+    style.textContent = w.AgPlayerAdapters.current().css;
+    w.document.head.appendChild(style);
+    const hiding = [...style.sheet.cssRules].filter(r => r.style && r.style.getPropertyValue('opacity') === '0').map(r => r.selectorText);
+    const hidden = (cls) => {
+        const el = w.document.querySelector(`[class*="${cls}"]`);
+        return hiding.some(sel => el.matches(sel));
+    };
+    for (const cls of ['_controls_', '_settingsPanel_', '_centerPlayButton_', '_loadingOverlay_']) assert.ok(hidden(cls), `${cls} скрыт`);
+    assert.ok(!hiding.some(sel => w.document.querySelector('video').matches(sel)), 'само видео видно');
+});
+
+test('Aksor: пока оболочка грузится, его значок паузы и экран загрузки тоже не видны', () => {
+    const dom = new JSDOM(`<!doctype html><html><body><div class="_playerHost_1dl7b_6">
+        <video class="_video_1dl7b_22"></video>
+        <div class="_loadingOverlay_i0mcd_1"></div><button class="_centerPlayButton_1t3x7_1"></button><div class="_controls_1647g_1"></div>
+    </div></body></html>`, { url: 'https://player.aksor.tv/video/1', runScripts: 'outside-only', pretendToBeVisual: true });
+    const w = dom.window;
+    w.chrome = { storage: { local: { get: async () => ({}) } } };
+    w.eval(read('modules/shared/sites.js'));
+    w.eval(read('modules/player/boot.js'));
+    const sheet = w.document.getElementById('ag-shell-boot-style').sheet;
+    const hiding = [...sheet.cssRules].filter(r => r.style && r.style.getPropertyValue('opacity') === '0').map(r => r.selectorText);
+    for (const cls of ['_controls_', '_centerPlayButton_', '_loadingOverlay_']) {
+        const el = w.document.querySelector(`[class*="${cls}"]`);
+        assert.ok(hiding.some(sel => el.matches(sel)), `${cls} скрыт до оболочки`);
+    }
+    assert.ok(!hiding.some(sel => w.document.querySelector('video').matches(sel)), 'само видео видно');
+});
+
 test('CVH: видео и родное управление находятся в Shadow DOM', () => {
     const w = frame('https://player.cdnvideohub.com/s2/frame/', '<div class="shadow-root-container"></div>');
     const root = w.document.querySelector('.shadow-root-container').attachShadow({ mode: 'open' });

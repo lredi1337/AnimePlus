@@ -194,8 +194,9 @@
         ...COMMON,
         id: 'aksor',
         name: 'Aksor',
+        // Значок паузы и экран загрузки лежат рядом с управлением, а не внутри него, и мелькали поверх оболочки
         css: `
-            body.ag-shell-on :is([class*="_controls_"], [class*="_settingsPanel_"]) { opacity: 0 !important; pointer-events: none !important; }
+            body.ag-shell-on :is([class*="_controls_"], [class*="_settingsPanel_"], [class*="_centerPlayButton_"], [class*="_loadingOverlay_"]) { opacity: 0 !important; pointer-events: none !important; }
         `,
         video: () => q('video[class*="_video_"]'),
         videos: () => qa('video'),

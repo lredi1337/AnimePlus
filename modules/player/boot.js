@@ -62,7 +62,7 @@
     style.id = 'ag-shell-boot-style';
     style.textContent = `
         html.${BOOT_CLASS}, html.${BOOT_CLASS} body { background: #000 !important; }
-        html.${BOOT_CLASS} :is(.allplay__controls, .allplay__control--overlaid, .allplay__skip, .selects, .time_save, [class*="_controls_"], .vjs-control-bar, .vjs-big-play-button, .playlistControlWrapper, .navigationArrow_wrapper) { opacity: 0 !important; }
+        html.${BOOT_CLASS} :is(.allplay__controls, .allplay__control--overlaid, .allplay__skip, .selects, .time_save, [class*="_controls_"], [class*="_centerPlayButton_"], [class*="_loadingOverlay_"], .vjs-control-bar, .vjs-big-play-button, .playlistControlWrapper, .navigationArrow_wrapper) { opacity: 0 !important; }
         html.${BOOT_CLASS} .fp-ui, html.${BOOT_CLASS} .serial-panel, html.${BOOT_CLASS} .play_button, html.${BOOT_CLASS} .play_background { opacity: 0 !important; pointer-events: none !important; }
     `;
     root.appendChild(style);
