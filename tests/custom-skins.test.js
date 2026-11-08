@@ -49,6 +49,22 @@ test('цвета панелей, размытие, форма, шрифт и п�
     assert.equal(v['--ord-skip'], '8');
 });
 
+test('размытие за кнопками центра только у кружков: прозрачные кнопки не размывают видео квадратом', () => {
+    for (const center of ['plain', 'plate', 'big']) {
+        const v = view.customVars({ values: { blur: true, center } });
+        assert.equal(v['--ctrl-blur'], 'none', center);
+    }
+    assert.match(view.customVars({ values: { blur: true, center: 'circles' } })['--ctrl-blur'], /^blur\(/);
+    assert.equal(view.customVars({ values: { blur: false, center: 'circles' } })['--ctrl-blur'], 'none');
+});
+
+test('цвет подложки нужен только там, где подложка есть', () => {
+    assert.equal(view.barColorUsed({ bar: 'full', title: 'top', center: 'plain' }), false, 'без подложки цвету нечего красить');
+    for (const bar of ['edge', 'floating', 'capsule', 'plates']) assert.equal(view.barColorUsed({ bar, title: 'top', center: 'plain' }), true, bar);
+    assert.equal(view.barColorUsed({ bar: 'full', title: 'card', center: 'plain' }), true, 'плашка названия');
+    assert.equal(view.barColorUsed({ bar: 'full', title: 'top', center: 'plate' }), true, 'плашка центра');
+});
+
 test('копия встроенной темы собирается из тех же блоков', () => {
     assert.deepEqual(view.presetOf('compact'), view.cleanValues(view.DEFAULTS), '«С нуля» и копия «Классики» совпадают');
     assert.equal(view.presetOf('glass').bar, 'floating');

@@ -37,7 +37,7 @@
 
     // ---------- Оформление плеера ----------
     // Превью собирается из тех же стилей и разметки, что и оболочка в плеере, поэтому всегда совпадает с ней
-    const { SKINS, BAR_ITEMS, CUSTOM_MAX, STYLE, TEMPLATE, icon, cleanCustom, cleanValues, presetOf, paintSkin } = window.AgShellView;
+    const { SKINS, BAR_ITEMS, CUSTOM_MAX, STYLE, TEMPLATE, icon, cleanCustom, cleanValues, presetOf, paintSkin, barColorUsed } = window.AgShellView;
     // Крупное превью размером с обычный плеер на сайте, миниатюры как плеер на весь экран
     const STAGE_W = 784;
     const THUMB_W = 1120;
@@ -293,6 +293,12 @@
         $('edRailNote').textContent = `${v.rail} px`;
         $('edScrimNote').textContent = `${Math.round(v.scrim * 100)}%`;
         $('edCenterWarn').hidden = v.center !== 'big';
+        const barUsed = barColorUsed(v);
+        $('edBarWarn').hidden = barUsed;
+        for (const id of ['edBarColor', 'edBarAlpha']) {
+            $(id).disabled = !barUsed;
+            $(id).closest('.ed-row').classList.toggle('off', !barUsed);
+        }
     };
 
     // Порядок кнопок: полоса под превью повторяет нижнюю панель. Кнопку перетаскивают мышью или стрелками

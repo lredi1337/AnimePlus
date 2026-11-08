@@ -163,7 +163,8 @@
             // Боковые панели и всплывающее
             '--panel-bg': rgba(v.panelColor, v.panelAlpha), '--tip-bg': panelSolid, '--note-bg': panelSolid, '--undo-bg': panelSolid, '--guide-bg': panelSolid,
             '--panel-blur': blur ? 'blur(22px) saturate(1.2)' : 'none', '--tip-blur': blur ? 'blur(16px)' : 'none', '--guide-blur': blur ? 'blur(16px)' : 'none',
-            '--ctrl-blur': blur ? 'blur(14px)' : 'none', '--note-fg': v.text, '--undo-fg': v.text,
+            // Размытие за кнопками центра только у кружков: у прозрачных кнопок оно размывает видео квадратом
+            '--ctrl-blur': blur && v.center === 'circles' ? 'blur(14px)' : 'none', '--note-fg': v.text, '--undo-fg': v.text,
             // Форма
             '--field-radius': `${r}px`, '--ep-radius': `${r}px`, '--row-radius': `${r}px`, '--jump-radius': `${r}px`, '--skip-radius': `${r}px`,
             '--tip-radius': `${r}px`, '--note-radius': `${r}px`, '--guide-radius': `${r + 4}px`, '--go-radius': `${r}px`, '--btn-radius': `${r}px`,
@@ -185,7 +186,12 @@
         const v = cleanValues(raw && raw.values !== undefined ? raw.values : raw);
         return { bar: v.bar, title: v.title, center: v.center, panel: v.panel, size: v.size, labels: v.labels ? 'on' : 'off', thumb: v.thumb, hide: v.hide.join(' ') };
     }
-    const LAYOUT_ATTRS = ['bar', 'title', 'center', 'panel', 'size', 'labels', 'thumb', 'hide'];
+    /** Красит ли что-нибудь цвет подложки: нижняя панель с подложкой, плашка названия или центра */
+    function barColorUsed(raw) {
+        const v = cleanValues(raw && raw.values !== undefined ? raw.values : raw);
+        return v.bar !== 'full' || v.title === 'card' || v.center === 'plate';
+    }
+    const LAYOUT_ATTRS =['bar', 'title', 'center', 'panel', 'size', 'labels', 'thumb', 'hide'];
 
     /** Ставит тему из настроек на корень оболочки: встроенную или свою (атрибуты и переменные). Прежние значения снимаются */
     function paintSkin(rootEl, settings) {
@@ -638,7 +644,7 @@
             <div class="panel" role="dialog"></div>
         </div>`;
 
-    const api = { MANUAL_SKIP_SEC, SKINS, KNOBS, DEFAULTS, BAR_ITEMS, HIDEABLE, CUSTOM_MAX, cleanValues, cleanCustom, presetOf, customVars, layoutOf, paintSkin, icon, STYLE, TEMPLATE };
+    const api = { MANUAL_SKIP_SEC, SKINS, KNOBS, DEFAULTS, BAR_ITEMS, HIDEABLE, CUSTOM_MAX, cleanValues, cleanCustom, presetOf, customVars, layoutOf, barColorUsed, paintSkin, icon, STYLE, TEMPLATE };
     root.AgShellView = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

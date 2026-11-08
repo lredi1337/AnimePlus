@@ -468,6 +468,7 @@ a.btn {
 .ed-group legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ed-hint, .ed-warn { display: block; margin: 0 0 6px; color: var(--ap-text-2); font-size: var(--ap-fs-sm); }
 .ed-warn { color: var(--ap-warning); }
+.ed-row.off { opacity: .45; }
 /* Полоса порядка кнопок под превью: повторяет нижнюю панель, промежуток растягивается */
 .ed-strip { margin-top: 12px; padding: 10px 12px 12px; background: var(--ap-raised); border: 1px solid var(--ap-line-strong); border-radius: var(--ap-radius-lg); }
 .strip-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
