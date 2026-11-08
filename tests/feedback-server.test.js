@@ -161,3 +161,24 @@ test('сервер принимает сообщения по адресу /v1/f
         assert.strictEqual(mails.length, 1);
     });
 });
+
+test('страница поддержки на GitHub Pages может отправить сообщение, но не отчёт о таймингах', async () => {
+    const worker = (await import('../server/timings/src/index.js')).default;
+    const SITE = 'https://lredi1337.github.io';
+    const { env } = makeEnv();
+    const preflight = (path) => worker.fetch(new Request(`https://x.test${path}`, { method: 'OPTIONS', headers: { Origin: SITE } }), env, {});
+    assert.strictEqual((await preflight('/v1/feedback')).headers.get('Access-Control-Allow-Origin'), SITE);
+    assert.strictEqual((await preflight('/v1/report')).headers.get('Access-Control-Allow-Origin'), null);
+    await withMail(200, async (mails) => {
+        const res = await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'POST', headers: { Origin: SITE }, body: JSON.stringify({ kind: 'idea', message: 'Добавьте, пожалуйста, ещё один сайт' }) }), env, {});
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.headers.get('Access-Control-Allow-Origin'), SITE);
+        // В письме видно, что расширение тут ни при чём: версии и сведений о работе нет
+        assert.match(mails[0].mail.text, /Отправлено со страницы поддержки/);
+    });
+    const report = await worker.fetch(new Request('https://x.test/v1/report', { method: 'POST', headers: { Origin: SITE }, body: '{}' }), env, {});
+    assert.strictEqual(report.status, 403);
+    // Похожий адрес не подходит
+    const fake = await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'POST', headers: { Origin: 'https://lredi1337.github.io.evil.example' }, body: JSON.stringify(good) }), env, {});
+    assert.strictEqual(fake.status, 403);
+});

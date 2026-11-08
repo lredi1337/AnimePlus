@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поддержка Anime+</title>
+    <meta name="description" content="Напишите разработчикам Anime+: ошибка или идея.">
+    <link rel="icon" href="icon.png">
+    <!-- Цвета и шрифты те же, что в расширении: файл копируется при сборке из modules/shared/tokens.css -->
+    <link rel="stylesheet" href="tokens.css">
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            color: var(--ap-text);
+            font-family: var(--ap-font);
+            font-size: var(--ap-fs-lg);
+            line-height: 1.5;
+            background: var(--ap-bg);
+        }
+
+        main {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 40px 16px 56px;
+        }
+
+        .head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .head img { width: 44px; height: 44px; }
+        .head h1 { margin: 0; font-size: var(--ap-fs-2xl); font-weight: 700; }
+        .head h1 span { color: var(--ap-accent); }
+        .head p { margin: 0; color: var(--ap-text-2); font-size: var(--ap-fs-md); }
+
+        .card {
+            margin-bottom: 16px;
+            padding: 20px;
+            background: var(--ap-surface);
+            border: 1px solid var(--ap-line);
+            border-radius: var(--ap-radius-lg);
+        }
+
+        .card h2 { margin: 0 0 4px; font-size: var(--ap-fs-xl); font-weight: 600; }
+        .hint { margin: 0 0 12px; color: var(--ap-text-2); font-size: var(--ap-fs-md); }
+
+        .feedback { display: flex; flex-direction: column; gap: 10px; }
+
+        input[type="text"], select, textarea {
+            width: 100%;
+            color: var(--ap-text);
+            font: inherit;
+            font-size: var(--ap-fs-md);
+            background: var(--ap-bg);
+            border: 1px solid var(--ap-line);
+            border-radius: var(--ap-radius-sm);
+            outline: none;
+        }
+
+        input[type="text"], select { height: 36px; padding: 0 10px; }
+        select { width: 170px; }
+        textarea { min-height: 120px; padding: 8px 10px; resize: vertical; }
+        input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--ap-accent); }
+
+        /* Поле-ловушка для ботов: человек его не видит */
+        .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+        small.hint { margin: 0; font-size: var(--ap-fs-sm); }
+
+        .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+        .btn {
+            height: 36px;
+            padding: 0 16px;
+            color: var(--ap-on-accent);
+            font: inherit;
+            font-size: var(--ap-fs-md);
+            font-weight: 600;
+            background: var(--ap-accent);
+            border: 1px solid transparent;
+            border-radius: var(--ap-radius-sm);
+            cursor: pointer;
+        }
+
+        .btn:hover { background: color-mix(in srgb, var(--ap-accent) 86%, white); }
+        .btn:disabled { opacity: .6; cursor: default; }
+        .btn:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 2px; }
+
+        .result { flex: 1; min-width: 0; margin: 0; color: var(--ap-text-2); font-size: var(--ap-fs-md); }
+        .result.error { color: var(--ap-danger); }
+        .result.ok { color: var(--ap-success); }
+
+        .links { margin: 0; padding: 0; list-style: none; }
+        .links li + li { margin-top: 6px; }
+        a { color: var(--ap-text); text-decoration-color: var(--ap-accent-line); text-underline-offset: 3px; }
+        a:hover { color: var(--ap-accent); }
+    </style>
+</head>
+
+<body>
+    <main>
+        <header class="head">
+            <img src="icon.png" alt="" width="44" height="44">
+            <div>
+                <h1>Anime<span>+</span>: поддержка</h1>
+                <p>Расширение для просмотра аниме</p>
+            </div>
+        </header>
+
+        <section class="card" aria-labelledby="support-title">
+            <h2 id="support-title">Написать нам</h2>
+            <p class="hint">Ошибка или идея. Если что-то сломалось, укажите сайт, тайтл и серию.</p>
+            <form class="feedback" id="feedbackForm">
+                <select id="feedbackKind" aria-label="Тип сообщения">
+                    <option value="bug">Ошибка</option>
+                    <option value="idea">Идея</option>
+                </select>
+                <textarea id="feedbackMessage" rows="5" minlength="10" maxlength="2000" required placeholder="Что случилось или что хотелось бы добавить" aria-label="Сообщение"></textarea>
+                <input type="text" id="feedbackContact" maxlength="120" placeholder="Почта или Telegram, если нужен ответ (необязательно)" aria-label="Контакт для ответа">
+                <div class="trap" aria-hidden="true">
+                    <input type="text" id="feedbackWebsite" tabindex="-1" autocomplete="off">
+                </div>
+                <small class="hint">Уйдут только текст и контакт. Если расширение установлено, удобнее написать из него: там можно приложить сведения о его работе.</small>
+                <div class="actions">
+                    <button type="submit" class="btn" id="feedbackSend">Отправить</button>
+                    <p class="result" id="feedbackResult" role="status"></p>
+                </div>
+            </form>
+        </section>
+
+        <section class="card" aria-labelledby="links-title">
+            <h2 id="links-title">Ссылки</h2>
+            <ul class="links">
+                <li><a href="privacy/">Политика конфиденциальности</a></li>
+                <li><a href="https://chromewebstore.google.com/detail/anime+/mgcaideibpbdddnbedoefmabladoaajg">Anime+ в Chrome Web Store</a></li>
+                <li><a href="https://github.com/lredi1337/AnimePlus">Исходный код на GitHub</a></li>
+            </ul>
+        </section>
+    </main>
+
+    <script>
+        // Та же отправка, что в настройках расширения (options/options.js), без версии и сведений о работе
+        (() => {
+            const FEEDBACK_URL = 'https://animeplus-timings.ruscadred.workers.dev/v1/feedback';
+            const ERRORS = {
+                limit: 'Слишком много сообщений. Попробуйте через час.',
+                busy: 'Сегодня пришло слишком много сообщений. Попробуйте завтра.',
+                'bad message': 'Сообщение слишком короткое или слишком длинное.'
+            };
+            const $ = (id) => document.getElementById(id);
+            $('feedbackForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const result = $('feedbackResult');
+                result.className = 'result';
+                result.textContent = 'Отправляем...';
+                $('feedbackSend').disabled = true;
+                let error = 'Не удалось отправить. Попробуйте ещё раз чуть позже.';
+                let sent = false;
+                try {
+                    const response = await fetch(FEEDBACK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            kind: $('feedbackKind').value,
+                            message: $('feedbackMessage').value,
+                            contact: $('feedbackContact').value,
+                            website: $('feedbackWebsite').value
+                        }),
+                        signal: AbortSignal.timeout(15000)
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    sent = response.ok && data.ok === true;
+                    error = ERRORS[data.error] || error;
+                } catch (err) { /* сеть: текст остаётся в форме */ }
+                $('feedbackSend').disabled = false;
+                // При ошибке текст остаётся в форме, чтобы не писать его заново
+                if (sent) {
+                    $('feedbackMessage').value = '';
+                    $('feedbackContact').value = '';
+                    result.classList.add('ok');
+                    result.textContent = 'Спасибо, сообщение отправлено.';
+                } else {
+                    result.classList.add('error');
+                    result.textContent = error;
+                }
+            });
+        })();
+    </script>
+</body>
+
+</html>

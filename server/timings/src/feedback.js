@@ -1,4 +1,4 @@
-// Сообщения зрителей из расширения: сервер проверяет их и пересылает на почту поддержки.
+// Сообщения зрителей из расширения и со страницы поддержки: сервер проверяет их и пересылает на почту поддержки.
 // Текст и контакт в базе не хранятся. Для ограничений остаются только необратимые хэши и время отправки.
 // Адрес получателя в секрете FEEDBACK_TO: репозиторий открытый, а адрес незачем показывать спамерам.
 
@@ -45,13 +45,15 @@ export function checkLimits(rows, reporter, digest, now = Date.now()) {
 }
 
 /** Письмо только обычным текстом: присланное не может стать разметкой или ссылкой-ловушкой */
-export function buildEmail({ kind, message, contact, version, diag }, to) {
+export function buildEmail({ kind, message, contact, version, diag }, to, { fromSite = false } = {}) {
     const firstLine = message.split('\n')[0].slice(0, 60);
+    // Со страницы поддержки версии и сведений о работе нет: сайт их не знает
+    const source = fromSite ? 'Отправлено со страницы поддержки' : `Версия Anime+: ${version || 'неизвестна'}`;
     const mail = {
         from: MAIL_FROM,
         to: [to],
         subject: `Anime+, ${KIND_TITLES[kind]}: ${firstLine}`,
-        text: `${message}\n\n---\nВерсия Anime+: ${version || 'неизвестна'}\nКонтакт: ${contact || 'не указан'}\n${diag ? `\nСведения о работе:\n${diag}\n` : ''}`
+        text: `${message}\n\n---\n${source}\nКонтакт: ${contact || 'не указан'}\n${diag ? `\nСведения о работе:\n${diag}\n` : ''}`
     };
     if (EMAIL.test(contact)) mail.reply_to = contact;
     return mail;
@@ -62,8 +64,8 @@ const sha256 = async (text) => {
     return [...new Uint8Array(digest)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-/** Возвращает { status, body } для ответа расширению */
-export async function handleFeedback(request, env) {
+/** Возвращает { status, body } для ответа расширению или странице поддержки */
+export async function handleFeedback(request, env, { fromSite = false } = {}) {
     if (env.FEEDBACK_OFF === '1' || !env.RESEND_API_KEY || !env.FEEDBACK_TO) return { status: 503, body: { error: 'off' } };
 
     const raw = await request.text();
@@ -86,7 +88,7 @@ export async function handleFeedback(request, env) {
     const sent = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildEmail(feedback, env.FEEDBACK_TO)),
+        body: JSON.stringify(buildEmail(fromSite ? { ...feedback, diag: '' } : feedback, env.FEEDBACK_TO, { fromSite })),
         signal: AbortSignal.timeout(8000)
     });
     if (!sent.ok) return { status: 502, body: { error: 'mail' } };

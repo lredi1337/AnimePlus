@@ -1,4 +1,4 @@
-# Сайт на GitHub Pages: страница поддержки (pages/index.md) и политика конфиденциальности из PRIVACY_POLICY.md.
+# Сайт на GitHub Pages: страница поддержки с формой (pages/index.html) и политика конфиденциальности из PRIVACY_POLICY.md.
 # Адреса для Chrome Web Store: https://lredi1337.github.io/AnimePlus/ и https://lredi1337.github.io/AnimePlus/privacy/
 # Pages отдаются с других серверов, чем github.com, поэтому открываются и когда сам сайт GitHub не отвечает.
 # В настройках репозитория: Settings → Pages → Source: GitHub Actions
@@ -12,6 +12,8 @@ on:
       - PRIVACY_POLICY.md
       - pages/**
       - .github/workflows/pages.yml
+      - modules/shared/tokens.css
+      - icons/icon128.png
   workflow_dispatch:
 
 permissions:
@@ -35,6 +37,11 @@ jobs:
             printf -- '---\ntitle: Политика конфиденциальности Anime+\npermalink: /privacy/\n---\n\n'
             cat PRIVACY_POLICY.md
           } > pages/privacy.md
+      # Страница поддержки в тех же цветах, что расширение
+      - name: Оформление и значок
+        run: |
+          cp modules/shared/tokens.css pages/tokens.css
+          cp icons/icon128.png pages/icon.png
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
         with:

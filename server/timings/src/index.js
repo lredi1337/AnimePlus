@@ -32,6 +32,16 @@ function extensionOrigin(request, env) {
     return ids.some(id => origin === `chrome-extension://${id}`) ? origin : null;
 }
 
+// Страница поддержки на GitHub Pages: с неё можно только написать в поддержку, отчёты о таймингах принимаются лишь от расширения
+const SUPPORT_SITE_ORIGIN = 'https://lredi1337.github.io';
+
+/** Кто может писать по этому адресу: адрес отправителя, который вернётся в CORS, или null */
+function allowedOrigin(request, env, pathname) {
+    const extension = extensionOrigin(request, env);
+    if (extension) return extension;
+    return pathname === '/v1/feedback' && request.headers.get('Origin') === SUPPORT_SITE_ORIGIN ? SUPPORT_SITE_ORIGIN : null;
+}
+
 /** У IPv6 один человек владеет целой сетью /64: считаем её одним адресом */
 function reporterNetwork(ip) {
     if (!ip.includes(':')) return ip;
@@ -142,14 +152,14 @@ export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
         try {
-            const origin = extensionOrigin(request, env);
+            const origin = allowedOrigin(request, env, url.pathname);
             if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: origin ? writeCors(origin) : { Vary: 'Origin' } });
             if (url.pathname === '/v1/timings' && request.method === 'GET') return await handleGet(url, env, ctx);
             if (request.method === 'POST' && (url.pathname === '/v1/report' || url.pathname === '/v1/feedback')) {
                 if (!origin) return json({ error: 'forbidden' }, 403);
                 const cors = writeCors(origin);
                 if (url.pathname === '/v1/report') return await handlePost(request, env, cors);
-                const { status, body } = await handleFeedback(request, env);
+                const { status, body } = await handleFeedback(request, env, { fromSite: origin === SUPPORT_SITE_ORIGIN });
                 return json(body, status, cors);
             }
             return json({ error: 'not found' }, 404);
