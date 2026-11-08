@@ -4,6 +4,7 @@
 //
 //   node tools/build-fingerprints.js --out fingerprints --ids 1,20,5114
 //   node tools/build-fingerprints.js --out fingerprints --top 3000 --ongoing 300    онгоинги и популярное с Shikimori
+//   --animethemes                                                          затем все остальные тайтлы с AnimeThemes
 //   --limit-minutes 300 --audio-cache <папка>                              ограничение времени и кэш скачанного звука
 //
 // Нужен ffmpeg в PATH. Уже собранные тайтлы пропускаются, поэтому прервать и продолжить можно в любой момент.
@@ -97,6 +98,36 @@ async function listIds(count, status) {
     return ids.slice(0, count);
 }
 
+// Все тайтлы AnimeThemes со ссылкой на MyAnimeList: /resource отдаёт их страницами по 100, около 60 запросов.
+// Сбой сервера не роняет сборку: остаётся очередь с Shikimori
+async function animeThemesIds(getJson = json, pauseMs = PAUSE_MS) {
+    const ids = new Set();
+    let url = 'https://api.animethemes.moe/resource?' + new URLSearchParams({
+        'filter[site]': 'MyAnimeList', 'filter[has]': 'anime', 'fields[resource]': 'external_id,site', 'page[size]': '100'
+    });
+    try {
+        while (url) {
+            const page = await getJson(url);
+            for (const r of page.resources || []) {
+                const id = Number(r.external_id);
+                if (r.site === 'MyAnimeList' && Number.isInteger(id) && id > 0) ids.add(id);
+            }
+            url = page.links && page.links.next;
+            if (url) await sleep(pauseMs);
+        }
+    } catch (e) {
+        console.log(`список AnimeThemes: ${e.message}, собрано ${ids.size}`);
+    }
+    return [...ids];
+}
+
+// Порядок: онгоинги (их смотрят сейчас), популярное, затем остальное с AnimeThemes, новые тайтлы раньше старых
+function buildQueue(ongoing, top, themes = []) {
+    const first = [...new Set([...ongoing, ...top])];
+    const seen = new Set(first);
+    return [...first, ...themes.filter(id => !seen.has(id)).sort((a, b) => b - a)];
+}
+
 // Онгоинг получает новые песни по ходу сезона, а песни тайтла без записи на AnimeThemes могут появиться позже
 function needsBuild(file, ongoing) {
     if (!fs.existsSync(file)) return true;
@@ -125,7 +156,7 @@ async function buildTitle(id, outDir, cacheDir) {
     return songs.length;
 }
 
-(async () => {
+async function main() {
     const outDir = arg('out', 'fingerprints');
     const cacheDir = arg('audio-cache', null);
     const limitMin = Number(arg('limit-minutes', 0));
@@ -137,7 +168,10 @@ async function buildTitle(id, outDir, cacheDir) {
     } else {
         // Сначала онгоинги: их смотрят прямо сейчас, затем популярное
         ongoing = new Set(await listIds(Number(arg('ongoing', 300)), 'ongoing'));
-        ids = [...new Set([...ongoing, ...(await listIds(Number(arg('top', 100))))])];
+        const top = await listIds(Number(arg('top', 100)));
+        const themes = process.argv.includes('--animethemes') ? await animeThemesIds() : [];
+        ids = buildQueue([...ongoing], top, themes);
+        console.log(`очередь: ${ids.length} тайтлов, из них с AnimeThemes сверх Shikimori ${ids.length - new Set([...ongoing, ...top]).size}`);
     }
     const started = Date.now();
     let built = 0;
@@ -154,4 +188,8 @@ async function buildTitle(id, outDir, cacheDir) {
     }
     console.log(`готово, собрано тайтлов: ${built}`);
     process.exit(0);
-})();
+}
+
+if (require.main === module) main();
+
+module.exports = { animeThemesIds, buildQueue };
