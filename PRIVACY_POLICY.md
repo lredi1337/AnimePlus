@@ -55,7 +55,7 @@
    * `anime-plus-db.ruscadred.workers.dev`, `cdn.jsdelivr.net`, `raw.githubusercontent.com`
    * *Цель:* получение публичных метаданных (название аниме, обложки, эпизоды, отпечатки песен для распознавания).
 2. **Аниме-порталы и плееры:**
-   * `animego.me`, `animego.org`, `jut-su.net`, `ru.yummyani.me`, `old.yummyani.me`, `yummyanime.tv`, `animego.online`, `yammyanime.club`
+   * `animego.me`, `animego.org`, `jut-su.net`, `ru.yummyani.me`, `old.yummyani.me`, `yummyanime.tv`, `animego.online`, `yammyanime.club`, `animevost.org` и его зеркала на `vost.pw`
    * Плееры `kodik.info`, `kodikplayer.com`, `aniboom.one`, `alloha.yani.tv`, `thealloha.club`, `player.aksor.tv`, `player.cdnvideohub.com`, `ceramet.net` и их официальные веб-зеркала. Собственный плеер сайтов на `ani5.top`, `ani6.top`, `ani7.top`: расширение только нажимает в нём кнопку перехода на Kodik.
    * *Цель:* внедрение пользовательского интерфейса управления плеером на целевых страницах, а также получение звука серии для анализа заранее с серверов, которые использует сам плеер.
 
@@ -85,7 +85,8 @@
 
 ## 7. Обратная связь и контакты
 По любым вопросам, касающимся данной Политики конфиденциальности или работы расширения, вы можете обратиться:
+* **Форма поддержки:** на странице настроек расширения, раздел «Написать нам», или кнопка «Напишите нам» в окне расширения
+* **Страница поддержки:** [https://lredi1337.github.io/AnimePlus/](https://lredi1337.github.io/AnimePlus/)
 * **GitHub Repository:** [https://github.com/lredi1337/AnimePlus](https://github.com/lredi1337/AnimePlus)
-* **Форма поддержки:** на странице настроек расширения, раздел «Поддержка»
 * **Разработчик:** `l_red_i`
 

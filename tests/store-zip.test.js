@@ -25,7 +25,7 @@ function readZip(zip) {
 }
 
 test('файлы разработки в архив не идут', () => {
-    for (const file of ['.claude/skills/x/SKILL.md', 'CLAUDE.md', 'AI_OVERVIEW.md', 'assets/a.png', 'tests/a.test.js', 'tools/a.js', 'server/timings/src/index.js', '.github/workflows/a.yml', 'package.json', 'eslint.config.js', 'AnimePlus-1.0.0.zip']) {
+    for (const file of ['.claude/skills/x/SKILL.md', 'CLAUDE.md', 'AI_OVERVIEW.md', 'assets/a.png', 'tests/a.test.js', 'tools/a.js', 'server/timings/src/index.js', '.github/workflows/a.yml', 'pages/index.md', 'pages/_config.yml', 'package.json', 'eslint.config.js', 'AnimePlus-1.0.0.zip']) {
         assert.equal(isStoreFile(file), false, file);
     }
     for (const file of ['manifest.json', 'background.js', 'credentials.js', 'modules/bg-audio.js', 'popup/popup.html', 'icons/icon16.png']) {

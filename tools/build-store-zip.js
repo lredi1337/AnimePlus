@@ -8,7 +8,7 @@ const zlib = require('node:zlib');
 const ROOT = path.join(__dirname, '..');
 
 // Папки и файлы разработки. Всё остальное из git уходит пользователям
-const EXCLUDED_DIRS = ['.claude', '.github', 'assets', 'node_modules', 'server', 'tests', 'tools'];
+const EXCLUDED_DIRS = ['.claude', '.github', 'assets', 'node_modules', 'pages', 'server', 'tests', 'tools'];
 const EXCLUDED_FILES = new Set([
     '.gitignore', 'AI_OVERVIEW.md', 'CLAUDE.md', 'LICENSE', 'PRIVACY_POLICY.md', 'README.md',
     'eslint.config.js', 'package-lock.json', 'package.json'

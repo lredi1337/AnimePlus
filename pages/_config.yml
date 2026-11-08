@@ -1,0 +1,6 @@
+# Сайт на GitHub Pages: страница поддержки и политика конфиденциальности для Chrome Web Store.
+# Собирается рабочим процессом .github/workflows/pages.yml, политика берётся из PRIVACY_POLICY.md в корне
+title: Anime+
+description: Расширение для просмотра аниме
+lang: ru
+theme: jekyll-theme-primer
