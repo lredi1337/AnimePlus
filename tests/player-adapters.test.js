@@ -72,6 +72,15 @@ test('ceramet: серии и озвучки из своих меню, пусты
     assert.strictEqual(player.adState(), 'playing');
 });
 
+// Живой ceramet.net пишет «cерия» и «cезон» с латинской «c» в начале
+test('ceramet: номер серии и сезона без слова, даже с латинской буквой в нём', () => {
+    const w = frame('https://ceramet.net/bil/1', `<div class="seasonSelect"><div class="ultimateSelect_option ultimateSelect_option__isSelected">2 cезон</div></div>
+        <div class="episodeSelect"><div class="ultimateSelect_option">1 cерия</div><div class="ultimateSelect_option ultimateSelect_option__isSelected">6 серия</div></div>`);
+    const player = w.AgPlayerAdapters.current();
+    assert.deepStrictEqual([...player.read('episodes')].map(o => o.label), ['1', '6']);
+    assert.deepStrictEqual([...player.read('seasons')].map(o => o.label), ['2']);
+});
+
 test('ceramet: свой отсчёт перехода и автопропуск отменяются', () => {
     const w = frame('https://ceramet.net/bil/1', '<div class="postload-wrapper"><div class="postload-close-button"></div></div><div class="skip-wrap"><div class="close-button"></div></div>');
     const player = w.AgPlayerAdapters.current();

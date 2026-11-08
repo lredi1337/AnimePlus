@@ -92,6 +92,18 @@ test('панель серий: переключатель сезонов и вы
     shell.destroy();
 });
 
+// Parlorate меняет серию в своём списке молча, без сообщения оболочке: открытая панель должна догнать заголовок
+test('открытая панель серий отмечает новую серию, когда плеер сменил её сам', async () => {
+    const { w, sh, shell } = mount();
+    sh.querySelector('[data-act="episodes"]').click();
+    const select = w.document.querySelector('.serial-series-box select');
+    select.value = '1';
+    for (let i = 0; i < 40 && !sh.querySelector('.sub').textContent.includes('Серия 1'); i++) await new Promise(r => setTimeout(r, 50));
+    assert.match(sh.querySelector('.sub').textContent, /Серия 1/);
+    assert.deepEqual([...sh.querySelectorAll('.panel .ep.now')].map(b => b.textContent), ['1']);
+    shell.destroy();
+});
+
 test('панель озвучки: приоритет первым, субтитры отдельно, выбор запоминается как выбор пользователя', () => {
     const { w, sh, shell, calls } = mount();
     sh.querySelector('[data-act="voices"]').click();

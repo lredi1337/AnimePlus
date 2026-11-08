@@ -193,7 +193,11 @@
             const ep = currentEpisode();
             const voice = listOf('voices').find(o => o.selected);
             $('.player-name').textContent = player.name ? `Плеер ${player.name}` : '';
+            const before = headKey;
             headKey = $('.sub').textContent = [season && `Сезон ${season.label}`, ep && `Серия ${ep.label}`, voice && voice.title].filter(Boolean).join(' · ');
+            // Открытая панель серий отмечает новую серию вместе с заголовком: не все плееры сообщают о смене,
+            // а заголовок перерисовывают и смена режима, и обход плеера
+            if (before && headKey !== before && openPanel === 'episodes') renderEpisodes();
         }
 
         function renderNav() {

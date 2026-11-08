@@ -476,7 +476,8 @@
                 return {
                     index,
                     selected: el.classList.contains('ultimateSelect_option__isSelected'),
-                    label: text.replace(/\s*(episode|season|серия|сезон)$/i, ''),
+                    // Плеер пишет «cерия» и «cезон» с латинской «c»
+                    label: text.replace(/\s*(episode|season|[сc]ерия|[сc]езон)$/i, ''),
                     title: text,
                     type: /субтитр|subtitles/i.test(text) ? 'subtitles' : 'voice',
                     count: ''
