@@ -247,3 +247,31 @@ test('эндинг идёт до конца файла, только если п
     // Кнопочный режим сохраняется
     assert.strictEqual(extendEnding({ ...t, manual: true }, 1435).manual, true);
 });
+
+test('тишина ломает звук, только если звук этого видео ещё ни разу не доходил', () => {
+    const { silenceStep } = globalThis.AgAudioSkip;
+    const quiet = (state, src, sec) => silenceStep(state, { peak: 0, sec, src, passive: false, quiet: false });
+    let s = { silentSec: 0, heardSrc: null };
+    // Обработчик сломал звук с самого начала: 30 с тишины, нужна перезагрузка
+    for (let i = 0; i < 29; i++) s = quiet(s, 'blob:a', 1);
+    assert.strictEqual(s.rescue, false);
+    s = quiet(s, 'blob:a', 1);
+    assert.strictEqual(s.rescue, true);
+
+    // Звук доходил, потом в самой серии 50 с тишины (у AnimeVost после титров): обработка работает, ничего не трогаем
+    s = silenceStep({ silentSec: 0, heardSrc: null }, { peak: 0.2, sec: 1, src: 'blob:b', passive: false, quiet: false });
+    assert.strictEqual(s.heardSrc, 'blob:b');
+    for (let i = 0; i < 50; i++) s = quiet(s, 'blob:b', 1);
+    assert.strictEqual(s.rescue, false);
+
+    // Видео сменило источник (реклама с другого домена): снова ждём звука
+    for (let i = 0; i < 30; i++) s = quiet(s, 'https://ads/x.mp4', 1);
+    assert.strictEqual(s.rescue, true);
+
+    // Без звука по воле зрителя и при копии звука тишина не считается
+    s = { silentSec: 0, heardSrc: null };
+    for (let i = 0; i < 40; i++) s = silenceStep(s, { peak: 0, sec: 1, src: 'blob:c', passive: false, quiet: true });
+    assert.strictEqual(s.rescue, false);
+    for (let i = 0; i < 40; i++) s = silenceStep(s, { peak: 0, sec: 1, src: 'blob:c', passive: true, quiet: false });
+    assert.strictEqual(s.rescue, false);
+});

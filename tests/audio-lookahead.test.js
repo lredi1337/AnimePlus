@@ -91,6 +91,10 @@ test('манифест CVH: куски в оглавлении файла, до�
     assert.deepStrictEqual(d.index, { url: d.init, range: '838-2093', end: 2093 });
     assert.ok(ahead.isManifestUrl('https://ok6-14.vkuser.net/?expires=1&ch=-16&type=1'));
     assert.ok(!ahead.isManifestUrl('https://ok6-14.vkuser.net/?expires=1&type=3&bytes=0-2093'));
+    // С ноября 2026 CVH отдаёт видео и с серверов OK
+    assert.ok(ahead.isManifestUrl('https://vd263.okcdn.ru/?expires=1&srcIp=1.2.3.4&pr=90&ch=-1610167797&type=1&id=8975810824944'));
+    assert.ok(!ahead.isManifestUrl('https://vd263.okcdn.ru/?expires=1&type=3&bytes=0-2093'));
+    assert.ok(!ahead.isManifestUrl('https://iv.okcdn.ru/videoPreview?id=1&ch=2'));
 });
 
 test('оглавление sidx: куски и их байты', () => {
@@ -187,4 +191,77 @@ test('поиск впереди просмотра: не дальше двух �
     // Зритель перемотал дальше: этот кусок уже звучал, его слушает обычное прослушивание
     assert.equal(ahead.followStep(300, 500), 'skip');
     assert.equal(ahead.followStep(300, 330), 'go');
+});
+
+// ---------- Обычный файл MP4 (AnimeVost) ----------
+
+const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+const box = (type, ...parts) => {
+    const body = parts.flat();
+    return [...u32(body.length + 8), ...type.split('').map(c => c.charCodeAt(0)), ...body];
+};
+const full = (type, ...parts) => box(type, [0, 0, 0, 0], ...parts);
+const table = (rows) => [...u32(rows.length), ...rows.flat().flatMap(u32)];
+
+/** moov с дорожкой видео и звуком AAC: кадры по 1024 отсчёта при 1024 Гц, то есть по секунде */
+function makeMoov({ sizes, chunkOffsets, perChunk, aot = 2 }) {
+    const asc = [(aot << 3) | (4 >> 1), ((4 & 1) << 7) | (2 << 3)];
+    const esds = full('esds', [0x03, 23, 0, 1, 0], [0x04, 15, 0x40, 0x15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0x05, 2, ...asc], [0x06, 1, 2]);
+    const mp4a = box('mp4a', new Array(6).fill(0), [0, 1], new Array(8).fill(0), [0, 2, 0, 16, 0, 0, 0, 0], u32(44100 << 16 >>> 0), esds);
+    const soun = box('trak', box('mdia',
+        full('mdhd', u32(0), u32(0), u32(1024), u32(sizes.length * 1024), [0, 0, 0, 0]),
+        full('hdlr', u32(0), [0x73, 0x6f, 0x75, 0x6e], new Array(12).fill(0), [0]),
+        box('minf', box('stbl',
+            full('stsd', u32(1), mp4a),
+            full('stts', table([[sizes.length, 1024]])),
+            full('stsc', table(perChunk.map(([first, per]) => [first, per, 1]))),
+            full('stsz', u32(0), table(sizes)),
+            full('stco', table(chunkOffsets))))));
+    const vide = box('trak', box('mdia',
+        full('mdhd', u32(0), u32(0), u32(25), u32(100), [0, 0, 0, 0]),
+        full('hdlr', u32(0), [0x76, 0x69, 0x64, 0x65], new Array(12).fill(0), [0])));
+    return new Uint8Array(box('moov', vide, soun)).buffer;
+}
+
+test('MP4: обычный файл узнаётся, повторы с номером запроса одинаковы', () => {
+    assert.ok(ahead.isMp4Url('https://vn5614.tigerlips.org/720/875498396.mp4?md5=x&time=1&ip=1.2.3.4'));
+    assert.ok(!ahead.isMp4Url('https://cdn/useruploads/x:1/360.mp4:hls:manifest.m3u8'));
+    assert.ok(!ahead.isMp4Url('https://cdn/seg-1.ts'));
+    assert.strictEqual(ahead.mp4Key('https://a/1.mp4?md5=x&wsn=2'), ahead.mp4Key('https://a/1.mp4?md5=x'));
+});
+
+test('MP4: звук по оглавлению, куски по 10 с подряд в файле', () => {
+    // 25 кадров звука по секунде, по одному в чанке, между ними видео
+    const sizes = Array.from({ length: 25 }, (_, i) => 10 + i);
+    const chunkOffsets = sizes.map((_, i) => 1000 + i * 100);
+    const s = ahead.parseMp4Audio(makeMoov({ sizes, chunkOffsets, perChunk: [[1, 1]] }), 'https://a/1.mp4');
+    assert.deepStrictEqual(s.aac, { aot: 2, freq: 4, chan: 2 });
+    assert.strictEqual(s.total, 25);
+    assert.deepStrictEqual(s.segments.map(x => [x.at, x.dur]), [[0, 10], [10, 10], [20, 5]]);
+    const second = s.segments[1];
+    assert.strictEqual(second.url, 'https://a/1.mp4');
+    // Кадры 10-19: с 2000 до конца кадра 19 (2900 + 29 байт)
+    assert.strictEqual(second.range, '2000-2928');
+    assert.deepStrictEqual(second.samples[0], [0, 20]);
+    assert.deepStrictEqual(second.samples[1], [100, 21]);
+    assert.strictEqual(ahead.batchesFor(s.segments, 12, 18).length, 1);
+});
+
+test('MP4: несколько кадров в чанке и HE-AAC как AAC LC', () => {
+    const sizes = [5, 6, 7, 8, 9];
+    const s = ahead.parseMp4Audio(makeMoov({ sizes, chunkOffsets: [100, 300], perChunk: [[1, 2], [2, 3]], aot: 5 }), 'u');
+    assert.strictEqual(s.aac.aot, 2);
+    assert.deepStrictEqual(s.segments[0].samples, [[0, 5], [5, 6], [200, 7], [207, 8], [215, 9]]);
+    assert.strictEqual(s.segments[0].range, '100-323');
+    assert.strictEqual(ahead.parseMp4Audio(new Uint8Array(box('moov', box('trak', box('mdia')))).buffer, 'u'), null);
+});
+
+test('MP4: кадры AAC получают заголовки ADTS', () => {
+    const seg = { samples: [[0, 3], [5, 2]] };
+    const adts = ahead.mp4ToAdts([new Uint8Array([1, 2, 3, 9, 9, 4, 5]).buffer], [seg], { aot: 2, freq: 4, chan: 1 });
+    assert.strictEqual(adts.length, 3 + 7 + 2 + 7);
+    assert.deepStrictEqual([...adts.subarray(0, 7)], [0xff, 0xf1, 0x50, 0x40, 0x01, 0x5f, 0xfc]);
+    assert.deepStrictEqual([...adts.subarray(7, 10)], [1, 2, 3]);
+    assert.strictEqual(((adts[10 + 3] & 3) << 11) | (adts[10 + 4] << 3) | (adts[10 + 5] >> 5), 9);
+    assert.deepStrictEqual([...adts.subarray(17)], [4, 5]);
 });

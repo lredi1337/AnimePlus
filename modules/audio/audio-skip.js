@@ -17,7 +17,7 @@
     const CHUNK = 4096;
     const CAPTURE_TRIES = 15;
     const CAPTURE_STEP_MS = 200;
-    // Абсолютная тишина столько времени при включённом звуке: значит, наш обработчик сломал звук видео
+    // Абсолютная тишина столько времени при включённом звуке, а звука этого видео ещё не было: значит, наш обработчик сломал звук
     const SILENCE_LIMIT_SEC = 30;
     // Видео идёт, а обработчик не получает звук: контекст встал, и пользователю тоже ничего не слышно
     const NO_AUDIO_LIMIT_MS = 15000;
@@ -189,6 +189,18 @@
         });
     }
 
+    /**
+     * Тишина как признак, что наш обработчик сломал звук. Сломанный обработчик молчит с самого начала,
+     * поэтому после звука того же видео тишина идёт из самой серии: у AnimeVost после титров до 50 с чёрного экрана.
+     * Тогда перезагрузка плеера и выключение распознавания на 30 дней были бы ложными
+     */
+    function silenceStep(prev, { peak, sec, src, passive, quiet }) {
+        if (peak > 0) return { silentSec: 0, heardSrc: src, rescue: false };
+        if (passive || quiet || prev.heardSrc === src) return { silentSec: 0, heardSrc: prev.heardSrc, rescue: false };
+        const silentSec = prev.silentSec + sec;
+        return { silentSec, heardSrc: prev.heardSrc, rescue: silentSec >= SILENCE_LIMIT_SEC };
+    }
+
     /** Итоговое время для части серии: чистая логика, проверяется тестами */
     function chooseTimings({ native, site, siteFits = true, hit, repeat }) {
         if (native) return { ...native, source: native.source || 'kodik' };
@@ -220,6 +232,8 @@
         let native = null;
         let blocked = false;
         let silentSec = 0;
+        // Источник видео, звук которого уже доходил до обработчика
+        let heardSrc = null;
         let analysisOff = false;
         let loadSpent = 0;
         let loadTotal = 0;
@@ -377,12 +391,10 @@
             feed.chunks++;
             feed.peak = +peak.toFixed(3);
             feed.rate = rate;
-            if (peak === 0 && !passive && !v.muted && v.volume > 0) {
-                silentSec += chunkSec;
-                if (silentSec >= SILENCE_LIMIT_SEC && !blocked) rescueSound(v);
-            } else {
-                silentSec = 0;
-            }
+            const silence = silenceStep({ silentSec, heardSrc }, { peak, sec: chunkSec, src: v.currentSrc, passive, quiet: v.muted || !(v.volume > 0) });
+            silentSec = silence.silentSec;
+            heardSrc = silence.heardSrc;
+            if (silence.rescue && !blocked) rescueSound(v);
             if (analysisOff || !matcher) return;
 
             // На другой скорости звук растянут и отпечатки не совпадут
@@ -526,5 +538,5 @@
         };
     }
 
-    globalThis.AgAudioSkip = { create, parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings };
+    globalThis.AgAudioSkip = { create, silenceStep, parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings };
 })();

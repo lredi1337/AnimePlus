@@ -48,8 +48,8 @@
     // ---------- Разбор манифестов ----------
 
     const isMaster = (text) => /#EXT-X-STREAM-INF/.test(text);
-    // У CVH (серверы OK и VK) манифест без расширения, его выдаёт параметр ch
-    const isManifestUrl = (url) => /\.m3u8(\?|$)|\.mpd(\?|$)|vkuser\.net\/\?(.*&)?ch=/i.test(String(url).split('#')[0]);
+    // У CVH (серверы OK и VK: vkuser.net, с ноября 2026 и okcdn.ru) манифест без расширения, его выдаёт параметр ch
+    const isManifestUrl = (url) => /\.m3u8(\?|$)|\.mpd(\?|$)|(vkuser\.net|okcdn\.ru)\/\?(.*&)?ch=/i.test(String(url).split('#')[0]);
 
     /** Самый лёгкий вариант качества: звук в нём тот же, а скачивать меньше */
     function pickLightest(master, baseUrl) {
@@ -232,6 +232,225 @@
 
     const isTs = (bytes) => bytes.length > TS_PACKET && bytes[0] === 0x47 && bytes[TS_PACKET] === 0x47;
 
+    // ---------- Звук из обычного файла MP4 (AnimeVost) ----------
+    // Видео одним файлом без плейлиста. Звук в нём разбит на крошечные куски вперемешку с кадрами, а сервер не отдаёт
+    // много диапазонов одним запросом без предварительного запроса CORS. Поэтому качаем участок подряд и вынимаем звук по оглавлению moov
+
+    const isMp4Url = (url) => /\.mp4(\?|$)/i.test(String(url).split('#')[0]);
+    // Повторы одного файла с разных зеркал и с номером запроса wsn: файл один и тот же
+    const mp4Key = (url) => String(url).replace(/[?&]wsn=\d+/, '');
+    const MP4_HEAD_BYTES = 64 * 1024;
+    const MP4_MAX_MOOV = 16 * 1024 * 1024;
+    const MP4_SEGMENT_SEC = 10;
+
+    const fourcc = (view, p) => String.fromCharCode(view.getUint8(p), view.getUint8(p + 1), view.getUint8(p + 2), view.getUint8(p + 3));
+
+    /** Блоки MP4 внутри [start, end): { type, at, size, start (данные), end } */
+    function mp4Boxes(view, start, end) {
+        const out = [];
+        let p = start;
+        while (p + 8 <= end) {
+            let size = view.getUint32(p);
+            let header = 8;
+            if (size === 1) {
+                if (p + 16 > end) break;
+                size = view.getUint32(p + 8) * 2 ** 32 + view.getUint32(p + 12);
+                header = 16;
+            } else if (size === 0) {
+                size = end - p;
+            }
+            if (size < header) break;
+            out.push({ type: fourcc(view, p + 4), at: p, size, start: p + header, end: Math.min(p + size, end) });
+            p += size;
+        }
+        return out;
+    }
+    const mp4Child = (view, box, type) => (box ? mp4Boxes(view, box.start, box.end).find(b => b.type === type) : null);
+
+    /** Настройки AAC из esds: { aot, freq, chan } или null */
+    function parseEsds(view, box) {
+        let p = box.start + 4;
+        const readLen = () => {
+            let len = 0;
+            for (let i = 0; i < 4; i++) {
+                const b = view.getUint8(p++);
+                len = (len << 7) | (b & 0x7f);
+                if (!(b & 0x80)) break;
+            }
+            return len;
+        };
+        while (p + 2 <= box.end) {
+            const tag = view.getUint8(p++);
+            const len = readLen();
+            if (tag === 0x03) {
+                const flags = view.getUint8(p + 2);
+                p += 3;
+                if (flags & 0x80) p += 2;
+                if (flags & 0x40) p += 1 + view.getUint8(p);
+                if (flags & 0x20) p += 2;
+            } else if (tag === 0x04) {
+                p += 13;
+            } else if (tag === 0x05) {
+                if (len < 2) return null;
+                const b0 = view.getUint8(p);
+                const b1 = view.getUint8(p + 1);
+                const aot = b0 >> 3;
+                const freq = ((b0 & 7) << 1) | (b1 >> 7);
+                const chan = (b1 >> 3) & 0xf;
+                if (aot === 31 || freq === 15) return null;
+                // HE-AAC описан ядром AAC LC: браузер сам достроит верхние частоты
+                return { aot: aot === 5 || aot === 29 ? 2 : aot, freq, chan };
+            } else {
+                p += len;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Звуковая дорожка из блока moov: { segments, total, aac } или null.
+     * Кусок сегмента: подряд идущие байты файла (range) и звуковые кадры в них (samples: [смещение от начала куска, размер])
+     */
+    function parseMp4Audio(buffer, url) {
+        const view = new DataView(buffer);
+        const moov = mp4Boxes(view, 0, view.byteLength).find(b => b.type === 'moov');
+        if (!moov) return null;
+        for (const trak of mp4Boxes(view, moov.start, moov.end).filter(b => b.type === 'trak')) {
+            const mdia = mp4Child(view, trak, 'mdia');
+            const hdlr = mp4Child(view, mdia, 'hdlr');
+            if (!hdlr || fourcc(view, hdlr.start + 8) !== 'soun') continue;
+            const mdhd = mp4Child(view, mdia, 'mdhd');
+            const stbl = mp4Child(view, mp4Child(view, mdia, 'minf'), 'stbl');
+            const stsd = mp4Child(view, stbl, 'stsd');
+            if (!mdhd || !stbl || !stsd) return null;
+            const timescale = view.getUint32(mdhd.start + (view.getUint8(mdhd.start) === 1 ? 20 : 12));
+            const entry = mp4Boxes(view, stsd.start + 8, stsd.end)[0];
+            if (!entry || entry.type !== 'mp4a' || !timescale) return null;
+            const version = view.getUint16(entry.start + 8);
+            const esds = mp4Boxes(view, entry.start + 28 + (version === 1 ? 16 : version === 2 ? 36 : 0), entry.end).find(b => b.type === 'esds');
+            const aac = esds ? parseEsds(view, esds) : null;
+            if (!aac) return null;
+
+            const stts = mp4Child(view, stbl, 'stts');
+            const stsc = mp4Child(view, stbl, 'stsc');
+            const stsz = mp4Child(view, stbl, 'stsz');
+            const stco = mp4Child(view, stbl, 'stco');
+            const co64 = mp4Child(view, stbl, 'co64');
+            if (!stts || !stsc || !stsz || !(stco || co64)) return null;
+            const count = view.getUint32(stsz.start + 8);
+            const fixed = view.getUint32(stsz.start + 4);
+            const sizeOf = (i) => (fixed || view.getUint32(stsz.start + 12 + i * 4));
+            const chunks = view.getUint32((stco || co64).start + 4);
+            const chunkOffset = (i) => (stco ? view.getUint32(stco.start + 8 + i * 4) : view.getUint32(co64.start + 8 + i * 8) * 2 ** 32 + view.getUint32(co64.start + 12 + i * 8));
+            const runs = [];
+            for (let i = 0, n = view.getUint32(stsc.start + 4); i < n; i++) runs.push({ first: view.getUint32(stsc.start + 8 + i * 12) - 1, per: view.getUint32(stsc.start + 12 + i * 12) });
+            const deltas = [];
+            for (let i = 0, n = view.getUint32(stts.start + 4); i < n; i++) deltas.push({ count: view.getUint32(stts.start + 8 + i * 8), delta: view.getUint32(stts.start + 12 + i * 8) });
+
+            const segments = [];
+            let seg = null;
+            let sample = 0;
+            let ticks = 0;
+            let d = 0;
+            let left = deltas.length ? deltas[0].count : 0;
+            const close = () => {
+                if (!seg) return;
+                const base = seg.samples[0][0];
+                seg.range = `${base}-${seg.last - 1}`;
+                seg.samples = seg.samples.map(([off, size]) => [off - base, size]);
+                seg.dur = ticks / timescale - seg.at;
+                delete seg.last;
+                segments.push(seg);
+            };
+            let run = 0;
+            for (let c = 0; c < chunks && sample < count; c++) {
+                while (run + 1 < runs.length && runs[run + 1].first <= c) run++;
+                let off = chunkOffset(c);
+                for (let k = 0; k < runs[run].per && sample < count; k++, sample++) {
+                    const size = sizeOf(sample);
+                    const at = ticks / timescale;
+                    // Новый кусок каждые 10 с, а также если звук пошёл назад по файлу: тогда подряд их уже не скачать
+                    if (!seg || at - seg.at >= MP4_SEGMENT_SEC || off < seg.last) {
+                        close();
+                        seg = { url, at, samples: [], last: off };
+                    }
+                    seg.samples.push([off, size]);
+                    seg.last = Math.max(seg.last, off + size);
+                    off += size;
+                    while (left === 0 && d + 1 < deltas.length) left = deltas[++d].count;
+                    ticks += deltas[d] ? deltas[d].delta : 0;
+                    left--;
+                }
+            }
+            close();
+            if (!segments.length) return null;
+            return { segments, total: ticks / timescale, aac, init: null, audioOnly: false };
+        }
+        return null;
+    }
+
+    /** Кусок файла строго по диапазону: сервер без поддержки диапазонов отдал бы весь файл, его не качаем */
+    async function fetchRange(url, range) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        try {
+            const r = await fetch(url, { signal: controller.signal, headers: { Range: `bytes=${range}` } });
+            if (r.status !== 206) {
+                controller.abort();
+                throw new Error(`статус ${r.status}`);
+            }
+            return await r.arrayBuffer();
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    /** Звук файла MP4 по его оглавлению: moov бывает и в начале, и в конце файла, поэтому идём по заголовкам блоков */
+    async function fetchMp4Stream(url) {
+        const head = await fetchRange(url, `0-${MP4_HEAD_BYTES - 1}`);
+        if (head.byteLength < 8 || fourcc(new DataView(head), 4) !== 'ftyp') return null;
+        let pos = 0;
+        for (let i = 0; i < 16; i++) {
+            const header = new DataView(pos + 16 <= head.byteLength ? head.slice(pos, pos + 16) : await fetchRange(url, `${pos}-${pos + 15}`));
+            if (header.byteLength < 8) return null;
+            let size = header.getUint32(0);
+            if (size === 1 && header.byteLength >= 16) size = header.getUint32(8) * 2 ** 32 + header.getUint32(12);
+            if (size < 8) return null;
+            if (fourcc(header, 4) === 'moov') {
+                if (size > MP4_MAX_MOOV) return null;
+                const moov = pos + size <= head.byteLength ? head.slice(pos, pos + size) : await fetchRange(url, `${pos}-${pos + size - 1}`);
+                return parseMp4Audio(moov, url);
+            }
+            pos += size;
+        }
+        return null;
+    }
+
+    /** Кадры AAC из куска MP4 с заголовками ADTS: такой поток браузер декодирует без контейнера */
+    function mp4ToAdts(buffers, segments, aac) {
+        let size = 0;
+        segments.forEach((seg) => seg.samples.forEach(([, len]) => { size += len + 7; }));
+        const out = new Uint8Array(size);
+        let p = 0;
+        segments.forEach((seg, i) => {
+            const bytes = new Uint8Array(buffers[i]);
+            for (const [off, len] of seg.samples) {
+                if (off + len > bytes.length) continue;
+                const frame = len + 7;
+                out[p] = 0xff;
+                out[p + 1] = 0xf1;
+                out[p + 2] = ((aac.aot - 1) << 6) | (aac.freq << 2) | (aac.chan >> 2);
+                out[p + 3] = ((aac.chan & 3) << 6) | (frame >> 11);
+                out[p + 4] = (frame >> 3) & 0xff;
+                out[p + 5] = ((frame & 7) << 5) | 0x1f;
+                out[p + 6] = 0xfc;
+                out.set(bytes.subarray(off, off + len), p + 7);
+                p += frame;
+            }
+        });
+        return out.subarray(0, p);
+    }
+
     function join(parts) {
         const out = new Uint8Array(parts.reduce((sum, p) => sum + p.byteLength, 0));
         let off = 0;
@@ -276,7 +495,8 @@
 
     /** Поток этой серии среди запросов самого плеера: длина должна совпасть с длиной видео */
     async function findStream(duration, seen) {
-        const entries = performance.getEntriesByType('resource').map(e => e.name).filter(isManifestUrl).reverse();
+        const all = performance.getEntriesByType('resource').map(e => e.name).reverse();
+        const entries = all.filter(isManifestUrl);
         const fits = (stream) => stream && stream.segments.length && Math.abs(stream.total - duration) <= DURATION_TOLERANCE_SEC;
         for (const url of entries) {
             if (seen.has(url)) continue;
@@ -312,6 +532,16 @@
             }
             if (fits(stream)) return stream;
         }
+        // Плейлиста нет: плеер играет обычный файл MP4
+        for (const url of all.filter(isMp4Url)) {
+            const key = mp4Key(url);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            try {
+                const stream = await fetchMp4Stream(url);
+                if (fits(stream)) return stream;
+            } catch (e) { /* другое зеркало того же файла */ }
+        }
         return null;
     }
 
@@ -336,9 +566,9 @@
     // ---------- Сам анализ ----------
 
     /** Звук одной порции: { pcm, sampleRate } или null */
-    async function decodeBatch(init, buffers, targetRate) {
-        let bytes = join(init ? [init, ...buffers] : buffers);
-        if (isTs(bytes)) bytes = demuxTs(bytes);
+    async function decodeBatch(init, buffers, targetRate, mp4 = null) {
+        let bytes = mp4 ? mp4ToAdts(buffers, mp4.segments, mp4.aac) : join(init ? [init, ...buffers] : buffers);
+        if (!mp4 && isTs(bytes)) bytes = demuxTs(bytes);
         if (!bytes.length) return null;
         const decoded = await new OfflineAudioContext(1, 8, 44100).decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
         const render = new OfflineAudioContext(1, Math.ceil(decoded.duration * targetRate), targetRate);
@@ -415,7 +645,7 @@
                 const buffers = await Promise.all(batch.segments.map(s => fetchWith(s.url, FETCH_TIMEOUT_MS, 'buffer', s.range)));
                 state.bytes += buffers.reduce((sum, b) => sum + b.byteLength, 0);
                 if (stopped) break;
-                const pcm = await decodeBatch(init, buffers, FP.SAMPLE_RATE);
+                const pcm = await decodeBatch(init, buffers, FP.SAMPLE_RATE, stream.aac ? { segments: batch.segments, aac: stream.aac } : null);
                 if (!pcm) continue;
                 const hits = [];
                 const heard = [];
@@ -463,7 +693,7 @@
         };
     }
 
-    const api = { create, opPlan, followStep, isManifestUrl, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
+    const api = { create, opPlan, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
     root.AgLookahead = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
