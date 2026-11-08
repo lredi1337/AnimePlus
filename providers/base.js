@@ -94,7 +94,7 @@
         /** Контейнер плеера (для псевдо-фуллскрина) */
         getPlayerContainer() { return null; }
 
-        /** Окна iframe плееров, которым отправляем AniSkip/настройки */
+        /** Окна iframe плееров, которым отправляем метки пропуска и настройки */
         getPlayerWindows() {
             return Array.from(document.querySelectorAll('iframe'))
                 .filter(f => /kodik|xfp|aniboom|alloha/i.test(f.src || f.name || ''))

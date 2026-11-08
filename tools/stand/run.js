@@ -362,15 +362,13 @@ async function accuracy(opts) {
         [WANTED, 'wanted: (part) => !repeat[part],'],
         // Метки Kodik остаются эталоном, но выбор времени их не видит: замер того, что видит зритель там, где их нет
         ['        const nativeFor = (part, video) => {\n', '        const nativeFor = (part, video) => {\n            if (part) return null;\n'],
-        // Варианты для замера: без метки сайта, без сравнения серий, без песни из базы (новый тайтл), без метки AniSkip
+        // Варианты для замера: без метки сайта, без сравнения серий, без песни из базы (новый тайтл)
         ['        const timingsFor = (part, video) => {', '        const timingsFor = (part, video, off = {}) => {'],
         ['            const site = siteFor(part, video);', '            const site = off.site ? null : siteFor(part, video);'],
         ['                hit: found[part],', '                hit: off.song ? null : found[part],'],
-        ['                repeat: repeat[part],', '                repeat: off.repeat ? null : repeat[part],'],
-        ['                mark: aniskip[part],', '                mark: off.mark ? { start: 0, end: 0 } : aniskip[part],'],
-        ['                hasSong: hasSongs(part.toUpperCase()),', '                hasSong: !off.song && hasSongs(part.toUpperCase()),'],
+        ['                repeat: repeat[part]\n', '                repeat: off.repeat ? null : repeat[part]\n'],
         ['                    timings\n                });', '                    timings,\n                    variants: Object.fromEntries(Object.entries(VARIANTS).map(([k, off]) => [k, { op: timingsFor(\'op\', video, off), ed: timingsFor(\'ed\', video, off) }]))\n                });'],
-        ['    function create(options) {', 'const VARIANTS = { полный_без: { repeat: true }, полный_с: {}, песня_без: { site: true, repeat: true }, песня_с: { site: true }, новый_без: { site: true, song: true, repeat: true }, новый_с: { site: true, song: true }, голый_без: { site: true, song: true, mark: true, repeat: true }, голый_с: { site: true, song: true, mark: true } };\n    function create(options) {']
+        ['    function create(options) {', 'const VARIANTS = { полный: {}, без_повтора: { repeat: true }, песня: { site: true, repeat: true }, новый: { site: true, song: true } };\n    function create(options) {']
     ];
     let patched = code.replace(/\r\n/g, '\n');
     for (const [from, to] of PATCHES) {
@@ -419,7 +417,7 @@ async function accuracy(opts) {
                     r.check(`серия ${episode + 1} запустилась`, false, s && { t: s.t, d: s.d });
                     break;
                 }
-                s = await waitFor(x => x.audio && (/^op: готово|^ed|^сбой|^поток не найден/.test((x.audio.ahead && x.audio.ahead.status) || '') || (x.audio.repeat && x.audio.repeat.op)), 75);
+                s = await waitFor(x => x.audio && (/^op: готово|^op: ждёт|^ed|^сбой|^поток не найден/.test((x.audio.ahead && x.audio.ahead.status) || '') || (x.audio.repeat && x.audio.repeat.op)), 75);
                 const head = s && s.audio && s.audio.ahead ? s.audio.ahead.status : null;
                 await b.ev(frame, "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.currentTime = v.duration - 410; })()");
                 s = await waitFor(x => x.audio && (/^ed: готово|^сбой|^лимит/.test((x.audio.ahead && x.audio.ahead.status) || '') || (x.audio.repeat && x.audio.repeat.ed)), 75);
@@ -480,6 +478,82 @@ async function accuracy(opts) {
         }
         r.info('варианты', tally);
         r.check('в первой серии сравнивать не с чем', summary.length > 0 && summary.filter(x => x.серия === 1).every(x => !x.op.найдено && !x.ed.найдено));
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+/**
+ * Опенинг позже первых 5 минут: анализ заранее ищет его впереди просмотра. Обычный просмотр с автопропуском, без звука.
+ * Метки Kodik выбор не видит, иначе прыгала бы метка. По умолчанию 2 серия «Магической битвы», опенинг на 345 с
+ */
+async function follow(opts) {
+    const r = reporter();
+    const dir = prepareExtension();
+    const skipFile = path.join(dir, 'modules/audio/audio-skip.js');
+    const from = '        const nativeFor = (part, video) => {\n';
+    const code = fs.readFileSync(skipFile, 'utf8').replace(/\r\n/g, '\n');
+    if (!code.includes(from)) throw new Error('в audio-skip.js изменилось: nativeFor');
+    fs.writeFileSync(skipFile, code.replace(from, from + '            if (part) return null;\n'));
+    const b = launch({ proxy: opts.proxy });
+    try {
+        const extId = await b.loadExtension(dir);
+        const worker = await b.serviceWorker(extId);
+        await b.ev(worker, "chrome.storage.local.set({ ag_guide: { tourDone: true, tipsDone: true, switchTipDone: true, questHidden: true }, ag_settings: { audioDebug: true } })");
+        const page = await openTitle(b, opts.url || 'https://jut-su.net/67-magicheskaja-bitva-r1.html');
+        let frame = null;
+        for (const t of (await b.targets('iframe')).filter(x => /kodikplayer|kodik./.test(x.url))) {
+            const session = await b.attach(t.targetId);
+            if (await b.ev(session, 'innerWidth > 0')) { frame = session; break; }
+        }
+        r.check('кадр Kodik на экране', !!frame);
+        if (!frame) return r.failed;
+        const STATE = "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; if (!v) return null; let a = null; try { a = JSON.parse(v.dataset.agAudio || 'null'); } catch (e) {} return { t: v.currentTime, d: v.duration || 0, paused: v.paused, a }; })()";
+        const waitFor = async (test, tries, ms = 2000) => {
+            for (let i = 0; i < tries; i++) {
+                const st = await b.ev(frame, STATE);
+                if (st && test(st)) return st;
+                await wait(ms);
+            }
+            return b.ev(frame, STATE);
+        };
+        // Нужная серия настоящими нажатиями в панели
+        for (let i = 1; i < (opts.count || 2); i++) {
+            await pressShell(b, frame, '[data-act="episodes"]');
+            await wait(700);
+            const next = await b.ev(frame, `(() => { const eps = [...${SHELL}.querySelectorAll('.panel .ep')]; const k = eps.findIndex(e => e.classList.contains('now')); const e = eps[k + 1]; if (!e) return null; const q = e.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+            if (next) await b.clickAt(frame, next);
+            await wait(5000);
+            if (await b.ev(frame, `!!${SHELL}.querySelector('.panel.on')`)) await pressShell(b, frame, '[data-act="episodes"]');
+            await wait(1000);
+        }
+        await pressShell(b, frame, '.big');
+        let st = await waitFor(x => x.d > 120 && !x.paused && x.t > 1, 45);
+        const started = !!st && !st.paused && st.d > 120;
+        r.check('серия запустилась', started, st && { t: st.t, d: st.d });
+        if (!started) return r.failed;
+        // Зритель начинает с 4-й минуты: первые 5 минут проверены сразу, дальше поиск идёт впереди просмотра
+        await b.ev(frame, "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.currentTime = 240; })()");
+        const log = [];
+        let prev = null;
+        let jump = null;
+        for (let i = 0; i < 400 && !jump; i++) {
+            st = await b.ev(frame, STATE);
+            if (!st) { await wait(500); continue; }
+            const a = st.a || {};
+            const line = { t: +st.t.toFixed(1), анализ: a.ahead && a.ahead.status, найдено: a.found && a.found.op, когда: a.foundAt && a.foundAt.op, источник: a.timings && a.timings.op && a.timings.op.source };
+            if (!prev || line.анализ !== prev.анализ || line.найдено !== prev.найдено) log.push(line);
+            if (prev && st.t - prev.t > 20) jump = { из: prev.t, в: line.t, источник: prev.источник, найдено: prev.найдено, когда: prev.когда };
+            prev = line;
+            if (st.t > 600) break;
+            await wait(500);
+        }
+        r.info('ход анализа', log);
+        r.info('прыжок', jump);
+        r.check('песню нашёл анализ заранее до её начала', !!jump && jump.найдено > 0 && jump.когда < jump.найдено, jump);
+        r.check('прыжок по узнанной песне в первые 2 с', !!jump && /^audio/.test(jump.источник || '') && jump.из - jump.найдено < 2, jump);
+        await b.closePage(page);
     } finally {
         await b.close();
     }
@@ -812,7 +886,7 @@ async function skins(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, dock, kodik, episodes, quality, perf, accuracy, skins };
+const SCENARIOS = { smoke, dock, kodik, episodes, quality, perf, accuracy, follow, skins };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

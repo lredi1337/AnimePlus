@@ -7,8 +7,11 @@
 (function (root) {
     'use strict';
 
-    // Опенинг ищем в начале серии, эндинг в конце
+    // Опенинг ищем в начале серии, эндинг в конце. Первые минуты качаем сразу
     const HEAD_SEC = 300;
+    // Не нашёлся в начале: ищем дальше, держась впереди просмотра, до середины серии. Опенинг бывает и на 6-й минуте
+    const FOLLOW_AHEAD_SEC = 120;
+    const FOLLOW_WAIT_MS = 2000;
     const TAIL_SEC = 300;
     // Эндинг ищем не сразу: зритель может и не досмотреть серию, а звук скачивался бы зря
     const TAIL_START_BEFORE_END_SEC = 420;
@@ -17,7 +20,9 @@
     const FETCH_TIMEOUT_MS = 20000;
     const PROBE_TIMEOUT_MS = 4000;
     // Больше на одну серию не качаем, что бы ни случилось
-    const MAX_BYTES = 45 * 1024 * 1024;
+    const MAX_BYTES = 70 * 1024 * 1024;
+    // Поиск опенинга впереди просмотра останавливается раньше: остаток нужен для эндинга
+    const FOLLOW_MAX_BYTES = 45 * 1024 * 1024;
     // Длина плейлиста должна совпасть с серией: в кадре бывают плейлисты других озвучек и рекламы
     const DURATION_TOLERANCE_SEC = 5;
     const FIND_TRIES = 20;
@@ -28,6 +33,17 @@
     const STREAM_AAC = 0x0f;
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    /** Где искать опенинг: сразу до head, дальше впереди просмотра до end */
+    function opPlan(duration) {
+        return { head: Math.min(HEAD_SEC, duration / 3), end: duration / 2 };
+    }
+
+    /** Кусок за пределами первых минут: качать, ждать, пока зритель подойдёт ближе, или пропустить уже прозвучавший */
+    function followStep(batchAt, now) {
+        if (batchAt + BATCH_SEC <= now) return 'skip';
+        return batchAt > now + FOLLOW_AHEAD_SEC ? 'wait' : 'go';
+    }
 
     // ---------- Разбор манифестов ----------
 
@@ -370,7 +386,8 @@
             return streamPromise;
         };
 
-        const scan = async (part, from, to) => {
+        // follow: с этого места качаем только впереди просмотра
+        const scan = async (part, from, to, follow = Infinity) => {
             stream = stream || await getStream();
             if (!stream || stopped) return report({ status: stream ? 'остановлен' : 'поток не найден' });
             if (stream.init && !init) {
@@ -382,6 +399,18 @@
             for (const batch of batchesFor(stream.segments, from, to)) {
                 if (stopped || !options.wanted(part)) break;
                 if (state.bytes >= MAX_BYTES) return report({ status: 'лимит' });
+                const ahead = batch.at >= follow;
+                if (ahead) {
+                    let step = followStep(batch.at, video.currentTime);
+                    while (step === 'wait' && !stopped && options.wanted(part)) {
+                        report({ status: `${part}: ждёт ${Math.round(batch.at)} с` });
+                        await sleep(FOLLOW_WAIT_MS);
+                        step = followStep(batch.at, video.currentTime);
+                    }
+                    if (stopped || !options.wanted(part)) break;
+                    if (step === 'skip') continue;
+                    if (state.bytes >= FOLLOW_MAX_BYTES) break;
+                }
                 report({ status: `${part}: ${Math.round(batch.at)} с` });
                 const buffers = await Promise.all(batch.segments.map(s => fetchWith(s.url, FETCH_TIMEOUT_MS, 'buffer', s.range)));
                 state.bytes += buffers.reduce((sum, b) => sum + b.byteLength, 0);
@@ -394,7 +423,8 @@
                     const sec = batch.at + frame * FP.FRAME_SEC;
                     const r = matcher.feed(h, sec);
                     if (r) hits.push(r);
-                    if (options.onHashes) heard.push({ h, sec });
+                    // Сравнение серий работает по первым минутам, как раньше
+                    if (options.onHashes && !ahead) heard.push({ h, sec });
                 });
                 const slice = HASH_SLICE_SEC * FP.SAMPLE_RATE;
                 for (let i = 0; i < pcm.length && !stopped; i += slice) {
@@ -403,7 +433,7 @@
                 }
                 hasher.finish();
                 hits.forEach(r => options.onFound(r));
-                if (options.onHashes) await options.onHashes(part, heard, false);
+                if (options.onHashes && !ahead) await options.onHashes(part, heard, false);
                 state.ms += Math.round(performance.now() - started);
                 await sleep(BATCH_PAUSE_MS);
             }
@@ -417,8 +447,10 @@
             state,
             start() {
                 const t = video.currentTime;
-                const to = Math.min(HEAD_SEC, video.duration / 3);
-                return t < to && options.wanted('op') ? guarded('op', t, to) : Promise.resolve();
+                const plan = opPlan(video.duration);
+                // Без песен в базе искать дальше нечего: сравнение серий смотрит только первые минуты
+                const end = options.songs && options.songs.length ? plan.end : plan.head;
+                return t < end && options.wanted('op') ? guarded('op', t, end, plan.head) : Promise.resolve();
             },
             /** Вызывается при просмотре: эндинг ищем, когда зритель приблизился к концу */
             tail() {
@@ -431,7 +463,7 @@
         };
     }
 
-    const api = { create, isManifestUrl, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
+    const api = { create, opPlan, followStep, isManifestUrl, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
     root.AgLookahead = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

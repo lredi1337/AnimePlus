@@ -18,9 +18,6 @@ const AUDIO_FP_CACHE = 'ap-audio-fingerprints-v1';
 const AUDIO_FP_TTL = 30 * 24 * 3600 * 1000;
 const AUDIO_FP_MISS_TTL = 3 * 24 * 3600 * 1000;
 const AUDIO_CONFIG_TTL = 6 * 3600 * 1000;
-const TIMINGS_API = 'https://animeplus-timings.ruscadred.workers.dev';
-const TIMINGS_TTL = 7 * 24 * 3600 * 1000;
-const TIMINGS_MISS_TTL = 3600 * 1000;
 const AUDIO_CACHE_KEEP = 90 * 24 * 3600 * 1000;
 const AUDIO_CACHE_PRUNE_ALARM = 'audio_cache_prune';
 const AUDIO_CACHE_PRUNE_MINUTES = 7 * 24 * 60;
@@ -65,47 +62,6 @@ async function getAudioFingerprints(id) {
     const config = await cachedAudioFile('config', 'config.json', AUDIO_CONFIG_TTL, AUDIO_CONFIG_TTL);
     if (config && config.audioSkip === false) return null;
     return cachedAudioFile(String(id), `${id}.json`, AUDIO_FP_TTL, AUDIO_FP_MISS_TTL);
-}
-
-// ---------- Общая база таймингов: только время и номер серии, без звука ----------
-
-const sharedTimingKey = ({ id, episode, voice, duration }) => audioKey(`shared/${id}/${encodeURIComponent(episode)}/${encodeURIComponent(voice)}/${Math.round(duration / 3)}`);
-
-async function sharedTimingsAllowed() {
-    const config = await cachedAudioFile('config', 'config.json', AUDIO_CONFIG_TTL, AUDIO_CONFIG_TTL);
-    return !(config && config.sharedTimings === false);
-}
-
-async function getSharedTimings(info) {
-    if (!(await sharedTimingsAllowed())) return null;
-    const cache = await caches.open(AUDIO_FP_CACHE);
-    const key = sharedTimingKey(info);
-    const hit = await cache.match(key);
-    const saved = hit ? await hit.json() : null;
-    if (saved && Date.now() - saved.at < (saved.data && (saved.data.op || saved.data.ed) ? TIMINGS_TTL : TIMINGS_MISS_TTL)) return saved.data;
-    const query = new URLSearchParams({ id: info.id, episode: info.episode, voice: info.voice, duration: info.duration });
-    const r = await fetch(`${TIMINGS_API}/v1/timings?${query}`, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return saved ? saved.data : null;
-    const data = await r.json();
-    await cache.put(key, new Response(JSON.stringify({ at: Date.now(), data })));
-    return data;
-}
-
-// Одна серия отправляется один раз, поэтому пересмотр не создаёт лишних запросов
-async function reportAudioTiming(info) {
-    if (!(await sharedTimingsAllowed())) return null;
-    const cache = await caches.open(AUDIO_FP_CACHE);
-    const key = `${sharedTimingKey(info)}/sent/${info.part}`;
-    if (await cache.match(key)) return null;
-    const { id, episode, voice, duration, part, start, end } = info;
-    const r = await fetch(`${TIMINGS_API}/v1/report`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, episode, voice, duration, part, start, end }),
-        signal: AbortSignal.timeout(8000)
-    });
-    if (r.ok) await cache.put(key, new Response(JSON.stringify({ at: Date.now() })));
-    return null;
 }
 
 // ---------- Отпечатки серий для сравнения между собой ----------

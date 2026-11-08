@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "11.4.0",
+  "version": "11.4.1",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "permissions": [
@@ -68,7 +68,6 @@
     "https://ani6.top/*",
     "https://*.ani7.top/*",
     "https://ani7.top/*",
-    "https://api.aniskip.com/*",
     "https://shikimori.one/*",
     "https://shikimori.io/*",
     "https://shikimori.me/*",

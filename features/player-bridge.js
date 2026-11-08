@@ -5,7 +5,7 @@
 //   AG_PSEUDO_FS {action}         → псевдо-фуллскрин контейнера плеера
 //   AG_NAV {dir}                  → provider.navigate()
 //   AG_START_MARATHON             → режим марафона для тайтла
-// Таймкоды: сначала с самого сайта (provider.getSkipData), иначе AniSkip по ID Shikimori.
+// Таймкоды: метки Kodik и самого сайта (provider.getSkipData). Остальное плеер находит по звуку.
 
 (function () {
     'use strict';
@@ -79,22 +79,6 @@
         `;
         (document.head || document.documentElement).appendChild(style);
     };
-
-    async function fetchAniSkip(shikimoriId, episode) {
-        if (!shikimoriId) return null;
-        try {
-            const res = await fetch(`https://api.aniskip.com/v2/skip-times/${shikimoriId}/${parseFloat(episode) || 1}?types=op&types=ed&episodeLength=0`);
-            const json = await res.json();
-            if (!json || !json.found) return null;
-            const range = (type) => {
-                const r = json.results.find(x => x.skipType === type);
-                return r ? { start: r.interval.startTime, end: r.interval.endTime } : { start: 0, end: 0 };
-            };
-            return { op: range('op'), ed: range('ed') };
-        } catch (e) {
-            return null;
-        }
-    }
 
     const MARATHON_KEY = 'ag_active_marathon_id';
     const RELOAD_EVERY_MS = 5 * 60 * 1000;
@@ -263,12 +247,8 @@
                 const own = await provider.getSkipData(episode);
                 const kodik = await kodikMarksFor(episode);
                 const known = (part) => (kodik && kodik[part] ? kodik[part] : (own && own[part].end > 0 ? own[part] : null));
-                // Чего нет у Kodik и сайта, ищем в AniSkip: то, что нашлось, при этом остаётся
-                const other = known('op') && known('ed') ? null : await fetchAniSkip(shikimoriId, episode);
-                const data = {
-                    op: known('op') || (other || NO_MARKS).op,
-                    ed: known('ed') || (other || NO_MARKS).ed
-                };
+                // Чего нет у Kodik и сайта, плеер найдёт по звуку
+                const data = { op: known('op') || NO_MARKS.op, ed: known('ed') || NO_MARKS.ed };
                 if (request !== skipRequest) return;
                 skipCache = { key, data, malId: shikimoriId };
             }

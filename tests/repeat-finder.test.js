@@ -193,28 +193,19 @@ test('слишком мало звука: отпечаток не запомин
 
 // ---------- Выбор времени ----------
 
-test('повтор между сериями: после узнанной песни, но точнее AniSkip', () => {
+test('повтор между сериями: после узнанной песни', () => {
     const repeat = { start: 90, end: 180, manual: false };
-    const mark = { start: 80, end: 170 };
-    assert.equal(chooseTimings({ repeat, mark }).source, 'repeat');
-    assert.equal(chooseTimings({ repeat, mark }).manual, undefined);
-    assert.equal(chooseTimings({ repeat: { ...repeat, manual: true }, mark }).manual, true);
+    assert.equal(chooseTimings({ repeat }).source, 'repeat');
+    assert.equal(chooseTimings({ repeat }).manual, undefined);
+    assert.equal(chooseTimings({ repeat: { ...repeat, manual: true } }).manual, true);
     assert.equal(chooseTimings({ repeat, native: { start: 1, end: 90 } }).source, 'kodik');
-    assert.equal(chooseTimings({ repeat, shared: { start: 2, end: 91 } }).source, 'shared');
     assert.equal(chooseTimings({ repeat, site: { start: 3, end: 92 } }).source, 'site');
     assert.match(chooseTimings({ repeat, hit: { start: 4, song: { len: 90 } } }).source, /^audio/);
 });
 
-test('повтор и AniSkip начинаются вместе: конец из AniSkip, тихий край песни повтор теряет', () => {
-    // Замер на «Поднятии уровня»: повтор 81-166, AniSkip 81,7-171,7, эталон Kodik 80-170
+test('повтор берёт свой конец, метка AniSkip его не меняет', () => {
     const repeat = { start: 81, end: 166, manual: false };
-    const t = chooseTimings({ repeat, mark: { start: 81.7, end: 171.7 } });
-    assert.deepEqual([t.start, t.end, t.source], [81, 171.7, 'repeat+aniskip']);
-    // Начало AniSkip другое: его конец тоже не верим
-    assert.equal(chooseTimings({ repeat, mark: { start: 88, end: 178 } }).end, 166);
-    // Конец AniSkip слишком далеко: это уже не та же песня
-    assert.equal(chooseTimings({ repeat, mark: { start: 81, end: 200 } }).end, 166);
-    // Кнопка остаётся кнопкой
+    assert.deepEqual(chooseTimings({ repeat, mark: { start: 81.7, end: 171.7 } }), { start: 81, end: 166, source: 'repeat' });
     assert.equal(chooseTimings({ repeat: { ...repeat, manual: true }, mark: { start: 81.7, end: 171.7 } }).manual, true);
 });
 

@@ -172,3 +172,19 @@ test('из TS вынимается только звук, без видео и �
     assert.deepStrictEqual([...ahead.demuxTs(ts)], [0xff, 0xf1, 0x50, 0x80, 0x01]);
     assert.ok(!ahead.isTs(new Uint8Array([0, 0, 0, 0x18])));
 });
+
+test('опенинг ищется и после первых 5 минут: впереди просмотра, до середины серии', () => {
+    // Магическая битва, 2 серия: опенинг на 345 с, первых 5 минут не хватало
+    assert.deepEqual(ahead.opPlan(1435), { head: 300, end: 717.5 });
+    // Короткая серия: заранее только треть, дальше впереди просмотра
+    assert.deepEqual(ahead.opPlan(600), { head: 200, end: 300 });
+});
+
+test('поиск впереди просмотра: не дальше двух минут, просмотренное не качается', () => {
+    assert.equal(ahead.followStep(300, 200), 'go');
+    assert.equal(ahead.followStep(330, 200), 'wait');
+    assert.equal(ahead.followStep(400, 290), 'go');
+    // Зритель перемотал дальше: этот кусок уже звучал, его слушает обычное прослушивание
+    assert.equal(ahead.followStep(300, 500), 'skip');
+    assert.equal(ahead.followStep(300, 330), 'go');
+});

@@ -87,19 +87,15 @@ test('посторонний id не уходит в сеть', async () => {
     assert.equal(seen.length, 0);
 });
 
-test('выключатель останавливает базу песен и отправку таймингов', async () => {
-    const { ctx, seen } = load({ reply: () => json({ audioSkip: false, sharedTimings: false }) });
+test('выключатель останавливает базу песен', async () => {
+    const { ctx } = load({ reply: () => json({ audioSkip: false }) });
     assert.equal(await ctx.getAudioFingerprints(5), null);
-    assert.equal(await ctx.reportAudioTiming({ id: 1, episode: '1', voice: 'A', duration: 1400, part: 'op', start: 1, end: 90 }), null);
-    assert.equal(seen.some(s => s.url.includes('/v1/report')), false);
 });
 
-test('одна серия отправляется один раз', async () => {
-    const { ctx, seen } = load({ reply: (url) => (isConfig(url) ? json({}) : json({ ok: true })) });
-    const info = { id: 1, episode: '1', voice: 'A', duration: 1400, part: 'op', start: 1, end: 90 };
-    await ctx.reportAudioTiming(info);
-    await ctx.reportAudioTiming(info);
-    assert.equal(seen.filter(s => s.url.includes('/v1/report')).length, 1);
+test('общая база таймингов убрана: фон не читает и не отправляет тайминги', () => {
+    const { ctx } = load({ reply: () => json({}) });
+    assert.equal(typeof ctx.getSharedTimings, 'undefined');
+    assert.equal(typeof ctx.reportAudioTiming, 'undefined');
 });
 
 test('чистка удаляет только давно не нужное, настройки остаются', async () => {

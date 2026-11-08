@@ -24,7 +24,8 @@ function prepareExtension() {
 
 function launch({ proxy = null, windowSize = '1280,800' } = {}) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'anime-plus-profile-'));
-    const args = ['--headless=new', `--window-size=${windowSize}`, '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', 'about:blank'];
+    // Без звука: прогоны не должны звучать поверх того, что смотрит сам пользователь. Анализ звука это не мешает
+    const args = ['--headless=new', '--mute-audio', `--window-size=${windowSize}`, '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', 'about:blank'];
     if (proxy) args.unshift(`--proxy-server=${proxy}`);
     const proc = spawn(CHROME, args, { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
     const out = proc.stdio[3];

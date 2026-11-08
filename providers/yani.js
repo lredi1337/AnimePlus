@@ -330,7 +330,7 @@
             return { op: range(video.skips.opening), ed: range(video.skips.ending) };
         }
 
-        // Таймкоды опенинга/эндинга есть прямо в API сайта — точнее, чем AniSkip
+        // Таймкоды опенинга/эндинга есть прямо в API сайта
         async getSkipData(episode) {
             const api = await this.loadApi();
             const videos = (api?.videos || []).filter(v => String(v.number) === String(episode) && v.skips);
@@ -339,7 +339,7 @@
             const video = exact || videos.find(v => v.skips.opening || v.skips.ending);
             if (!video) return null;
             // Метка этой озвучки точна, а у другой озвучки время может быть сдвинуто. Короткий эндинг сайта — это
-            // титры озвучки в конце файла, а не песня: такую часть провайдер не отдаёт, и её время берётся из AniSkip
+            // титры озвучки в конце файла, а не песня: такую часть провайдер не отдаёт, её найдёт звук
             const toRange = (s) => s && s.length >= SITE_MARK_MIN_SEC ? { start: s.time, end: s.time + s.length, ...(exact ? { trusted: true } : {}) } : { start: 0, end: 0 };
             return { op: toRange(video.skips.opening), ed: toRange(video.skips.ending) };
         }

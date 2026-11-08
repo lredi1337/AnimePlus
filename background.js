@@ -146,8 +146,6 @@ const MESSAGE_HANDLERS = {
     get_audio_fingerprints: [(m) => getAudioFingerprints(m.id), () => null],
     get_kodik_marks: [findKodikMarks, () => null],
     get_remote_config: [() => getRemoteConfig(), () => null],
-    get_shared_timings: [getSharedTimings, () => null],
-    report_audio_timing: [reportAudioTiming, () => null],
     get_episode_prints: [getEpisodePrints, () => []],
     save_episode_print: [saveEpisodePrint, () => null],
 

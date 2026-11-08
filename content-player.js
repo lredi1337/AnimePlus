@@ -75,11 +75,6 @@
     // Пропуск по звуку: уточняет тайминги, дальше работает обычная логика пропуска
     const audioSkip = globalThis.AgAudioSkip ? globalThis.AgAudioSkip.create({
         getSettings: () => settings,
-        getVoice: () => {
-            if (!isKodik) return (playerShell && playerShell.current('voices') || {}).title || '';
-            const sel = document.querySelector('.serial-translations-box select, .serial-translations select, select[name="translation"]');
-            return sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.split(' (')[0].trim() : '';
-        },
         getEpisode: () => {
             if (!isKodik) return getLocalEpisodeData().current;
             const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"]');
@@ -834,7 +829,7 @@
                 const seekTo = parseFloat(btn.getAttribute('data-seek-to'));
                 const staleTarget = seekTo <= curTime;
                 // Метку уже признали неверной или её заменил звук: родная кнопка вела бы по старому времени
-                const notNative = nativeRange.manual || /^(audio|shared)/.test(nativeRange.source || '');
+                const notNative = nativeRange.manual || /^audio/.test(nativeRange.source || '');
                 if (isVisible && !outsideSong && !staleTarget && !notNative && !skipMemory.isKept(nativePart) && settings[nativeSetting] !== false && (text.includes('пропустить') || text.includes('skip')) && Math.abs(curTime - lastSkipTime) > 30) {
 
                     // Записываем текущее время как время последнего скипа

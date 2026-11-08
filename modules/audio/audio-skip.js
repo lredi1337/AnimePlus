@@ -1,9 +1,9 @@
 // modules/audio/audio-skip.js
 // Пропуск по звуку внутри плеера: узнаёт опенинг или эндинг по базе отпечатков песен.
-// Порядок для каждой части отдельно: метка самого плеера → метка сайта → общая база таймингов → узнанная песня → повтор между сериями → AniSkip.
+// Порядок для каждой части отдельно: метка самого плеера → метка сайта → узнанная песня → повтор между сериями.
 // Метка сайта обычно точна и срабатывает сразу, но бывает грубо неверной: такую показываем кнопкой, пока песню не подтвердит звук.
-// Время в AniSkip часто не совпадает с конкретной озвучкой, поэтому узнанная песня важнее метки.
-// Звук анализируется на устройстве, не сохраняется и никуда не отправляется. В общую базу уходит только найденное время.
+// AniSkip не используется: его время часто не совпадает с конкретной озвучкой, на замере он ошибался чаще, чем попадал.
+// Звук анализируется на устройстве, не сохраняется и никуда не отправляется.
 
 (function () {
     'use strict';
@@ -13,10 +13,6 @@
 
     // Конец песни в серии обычно на секунду раньше конца образца: образец заканчивается затуханием
     const END_TRIM_SEC = 1;
-    // Если метка AniSkip начинается там же, что и песня, её конец точнее: песня в серии бывает короче образца
-    const SAME_START_SEC = 3;
-    // Насколько конец AniSkip может расходиться с концом повтора, чтобы это была та же песня
-    const REPEAT_END_GAP_SEC = 10;
     const MAIN_VIDEO_MIN_SEC = 300;
     const CHUNK = 4096;
     const CAPTURE_TRIES = 15;
@@ -194,41 +190,24 @@
     }
 
     /** Итоговое время для части серии: чистая логика, проверяется тестами */
-    function chooseTimings({ native, site, siteFits = true, shared, hit, repeat, mark, hasSong, listening }) {
+    function chooseTimings({ native, site, siteFits = true, hit, repeat }) {
         if (native) return { ...native, source: native.source || 'kodik' };
         // Метка сайта срабатывает сразу, без прослушивания. Если песню всё-таки успели узнать, звук точнее
         if (site && siteFits && !hit) return { start: site.start, end: site.end, source: 'site' };
-        if (shared) return { start: shared.start, end: shared.end, source: 'shared' };
-        const m = mark || { start: 0, end: 0 };
-        if (hit) {
-            const end = hit.start + hit.song.len - END_TRIM_SEC;
-            if (m.end > 0 && Math.abs(m.start - hit.start) <= SAME_START_SEC && m.end > hit.start) {
-                return { start: hit.start, end: Math.min(m.end, end + END_TRIM_SEC), source: 'audio+aniskip' };
-            }
-            return { start: hit.start, end, source: 'audio' };
-        }
-        // Кусок, повторяющийся в сериях тайтла. Точнее метки AniSkip, потому что найден в этом самом файле
-        // Тихий край песни совпадает хуже, и повтор кончается на несколько секунд раньше: если AniSkip начинается там же, конец берём у него
-        if (repeat) {
-            const button = repeat.manual ? { manual: true } : {};
-            if (m.end > 0 && Math.abs(m.start - repeat.start) <= SAME_START_SEC && Math.abs(m.end - repeat.end) <= REPEAT_END_GAP_SEC) {
-                return { start: repeat.start, end: m.end, source: 'repeat+aniskip', ...button };
-            }
-            return { start: repeat.start, end: repeat.end, source: 'repeat', ...button };
-        }
+        if (hit) return { start: hit.start, end: hit.start + hit.song.len - END_TRIM_SEC, source: 'audio' };
+        // Кусок, повторяющийся в сериях тайтла: найден в этом самом файле
+        if (repeat) return { start: repeat.start, end: repeat.end, source: 'repeat', ...(repeat.manual ? { manual: true } : {}) };
         // Метка сайта не похожа на песню: автопрыжок съел бы серию, поэтому только кнопка
         if (site) return { start: site.start, end: site.end, source: 'site', manual: true };
-        if (m.end <= 0) return { start: 0, end: 0 };
-        // Метка могла съехать: пока песню не подтвердит звук, она видна на шкале и пропускается только кнопкой
-        if (hasSong && listening) return { ...m, source: 'aniskip', manual: true };
-        return { ...m, source: 'aniskip' };
+        return { start: 0, end: 0 };
     }
 
-    /** options: { getSettings, getEpisode, getVoice, onTimings(timings) } — плеер получает итоговые тайминги и пропускает как обычно */
+    /** options: { getSettings, getEpisode, onTimings(timings) } — плеер получает итоговые тайминги и пропускает как обычно */
     function create(options) {
         let title = null;
         let songs = null;
-        let aniskip = { op: { start: 0, end: 0 }, ed: { start: 0, end: 0 } };
+        // Метки Kodik и сайта, которые передала страница
+        let passed = { op: null, ed: null };
         let found = { op: null, ed: null };
         let repeat = { op: null, ed: null };
         let matcher = null;
@@ -239,8 +218,6 @@
         let bound = null;
         let loadToken = 0;
         let native = null;
-        let shared = {};
-        let sharedKey = null;
         let blocked = false;
         let silentSec = 0;
         let analysisOff = false;
@@ -254,9 +231,8 @@
         let aheadFor = null;
         const listeners = new WeakMap();
 
-        const hasSongs = (type) => !!(songs && songs.some(s => s.type === type));
         const listening = (video) => !!(video && listeners.get(video));
-        const passedMark = (part) => (aniskip[part] && aniskip[part].trusted && aniskip[part].end > 0 ? aniskip[part] : null);
+        const passedMark = (part) => (passed[part] && passed[part].trusted && passed[part].end > 0 ? passed[part] : null);
         const nativeMark = (part, video) => (native ? splitNativeMarks(native.ranges, video && video.duration)[part] : null);
         // Метка самого Kodik этой серии и озвучки: своя или найденная для другого плеера
         const nativeFor = (part, video) => {
@@ -269,13 +245,8 @@
             if (native && native.fromSite && nativeMark(part, video)) return nativeMark(part, video);
             return passed && !passed.kodik ? passed : null;
         };
-        // Метку сайта проверяем звуком, поэтому известной считаем только метку Kodik и подтверждённую общую базу
-        const resolved = (part, video) => !!(nativeFor(part, video) || shared[part]);
-        const seriesInfo = (video) => {
-            const episode = options.getEpisode ? String(options.getEpisode() || '') : '';
-            const voice = options.getVoice ? options.getVoice() : '';
-            return title && episode && video && video.duration > MAIN_VIDEO_MIN_SEC ? { id: title, episode, voice: voice || '', duration: Math.round(video.duration) } : null;
-        };
+        // Метку сайта проверяем звуком, поэтому известной считаем только метку Kodik
+        const resolved = (part, video) => !!nativeFor(part, video);
 
         const timingsFor = (part, video) => {
             const site = siteFor(part, video);
@@ -283,12 +254,8 @@
                 native: nativeFor(part, video),
                 site,
                 siteFits: !site || siteMarkFits(part, site),
-                shared: shared[part],
                 hit: found[part],
-                repeat: repeat[part],
-                mark: aniskip[part],
-                hasSong: hasSongs(part.toUpperCase()),
-                listening: listening(video)
+                repeat: repeat[part]
             });
             return part === 'ed' ? extendEnding(timings, video ? video.duration : 0) : timings;
         };
@@ -335,7 +302,6 @@
             found[place] = { song: r.song, start: Math.max(0, r.start), votes: r.votes, fits: newFits };
             foundAt[place] = +sec.toFixed(1);
             publish(bound);
-            shareFound(place);
         };
 
         // Анализ заранее: песня находится до того, как зазвучит. Нужен, только если места песни ещё никто не знает наверняка
@@ -386,32 +352,6 @@
                     if (print) chrome.runtime.sendMessage({ action: 'save_episode_print', title: id, part, episode, print }).catch(() => {});
                 }
             };
-        };
-
-        // Первый зритель находит тайминг, остальные получают его сразу и без прослушивания
-        const shareFound = (part) => {
-            if (resolved(part, bound)) return;
-            const info = seriesInfo(bound);
-            const t = timingsFor(part, bound);
-            if (!info || !t.end || !String(t.source).startsWith('audio')) return;
-            chrome.runtime.sendMessage({ action: 'report_audio_timing', ...info, part, start: t.start, end: t.end }).catch(() => {});
-        };
-
-        const loadShared = async (video) => {
-            if (options.getSettings().audioSkip === false) return;
-            const info = seriesInfo(video);
-            if (!info) return;
-            const key = `${info.id}|${info.episode}|${info.voice}|${info.duration}`;
-            if (key === sharedKey) return;
-            sharedKey = key;
-            shared = {};
-            let res = null;
-            try {
-                res = await chrome.runtime.sendMessage({ action: 'get_shared_timings', ...info });
-            } catch (e) {}
-            if (key !== sharedKey || !res) return;
-            shared = { op: res.op || undefined, ed: res.ed || undefined };
-            publish(video);
         };
 
         // Наш обработчик сломал звук: запоминаем это в браузере и перезагружаем плеер, там звук уже без нас
@@ -479,8 +419,6 @@
             if (native && native.episode !== episode) native = null;
             found = { op: null, ed: null };
             repeat = { op: null, ed: null };
-            shared = {};
-            sharedKey = null;
             if (ahead) ahead.stop();
             ahead = null;
             aheadFor = null;
@@ -533,8 +471,7 @@
             bound = video;
             resetEpisode();
             restorePosition(video);
-            const kick = async () => {
-                await loadShared(video);
+            const kick = () => {
                 tryListen(video);
                 if (!video.paused) startAhead(video);
             };
@@ -563,9 +500,9 @@
                 native = ranges && ranges.length ? { ranges, fromSite, episode: options.getEpisode ? options.getEpisode() : '' } : null;
                 publish(bound);
             },
-            /** Метка AniSkip и ID тайтла со страницы сайта */
+            /** Метки Kodik и сайта и ID тайтла со страницы сайта */
             async setTitle(id, marks) {
-                if (marks) aniskip = marks;
+                if (marks) passed = marks;
                 if (id && id !== title) {
                     title = id;
                     songs = null;
@@ -580,7 +517,6 @@
                     segment = null;
                     hasher = null;
                     if (bound) {
-                        await loadShared(bound);
                         tryListen(bound);
                         if (!bound.paused) startAhead(bound);
                     }

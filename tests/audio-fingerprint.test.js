@@ -8,9 +8,9 @@ const { parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNative
 
 const SR = FP.SAMPLE_RATE;
 
-test('метка сайта для этой озвучки важнее общей базы и узнанной песни', () => {
+test('метка сайта для этой озвучки важнее узнанной песни', () => {
     const site = { start: 0, end: 89, source: 'site' };
-    assert.deepStrictEqual(chooseTimings({ native: site, shared: { start: 5, end: 95 }, hit: null, mark: null }), site);
+    assert.deepStrictEqual(chooseTimings({ native: site, hit: { start: 5, song: { len: 90 } } }), site);
     assert.equal(chooseTimings({ native: { start: 1, end: 90 } }).source, 'kodik');
 });
 
@@ -166,41 +166,32 @@ test('песня из диапазона серий AnimeThemes', () => {
 });
 
 const sampleSong = { len: 90 };
-const mark = { start: 100, end: 190 };
 
 test('метка плеера важнее всего для своей части', () => {
-    const t = chooseTimings({ native: { start: 50, end: 140 }, hit: { start: 100, song: sampleSong }, mark, hasSong: true, listening: true, currentTime: 0 });
+    const t = chooseTimings({ native: { start: 50, end: 140 }, hit: { start: 100, song: sampleSong } });
     assert.deepStrictEqual(t, { start: 50, end: 140, source: 'kodik' });
 });
 
-test('узнанная песня важнее съехавшей метки AniSkip, конец на секунду раньше образца', () => {
-    const t = chooseTimings({ hit: { start: 196.9, song: sampleSong }, mark: { start: 173, end: 263 }, hasSong: true, listening: true, currentTime: 200 });
+test('узнанная песня: конец на секунду раньше конца образца', () => {
+    const t = chooseTimings({ hit: { start: 196.9, song: sampleSong } });
     assert.strictEqual(t.source, 'audio');
     assert.strictEqual(t.start, 196.9);
     assert.ok(Math.abs(t.end - 285.9) < 0.01);
 });
 
-test('метка начинается там же: её конец точнее, песня в серии бывает короче образца', () => {
-    const t = chooseTimings({ hit: { start: 47, song: { len: 92 } }, mark: { start: 47, end: 121 }, hasSong: true, listening: true, currentTime: 60 });
-    assert.strictEqual(t.end, 121);
-    assert.strictEqual(t.source, 'audio+aniskip');
+test('метка AniSkip больше не участвует: ни подрезки песни, ни прыжка, ни кнопки', () => {
+    // Замер 2026-11-08: без песни в базе AniSkip ошибался в 10 частях из 17, эндинг «Монолога фармацевта» на 225 с раньше песни
+    const t = chooseTimings({ hit: { start: 47, song: { len: 92 } }, mark: { start: 47, end: 121 } });
+    assert.deepStrictEqual(t, { start: 47, end: 138, source: 'audio' });
+    assert.deepStrictEqual(chooseTimings({ mark: { start: 1044, end: 1134 } }), { start: 0, end: 0 });
+    assert.deepStrictEqual(chooseTimings({}), { start: 0, end: 0 });
 });
 
-test('образец есть, песня ещё не узнана: метка видна сразу, но пропускается только кнопкой', () => {
-    const t = chooseTimings({ mark, hasSong: true, listening: true });
-    assert.deepStrictEqual(t, { start: 100, end: 190, source: 'aniskip', manual: true });
-});
-
-test('образца нет или слушать нельзя: метка AniSkip работает как раньше', () => {
-    assert.strictEqual(chooseTimings({ mark, hasSong: false, listening: false, currentTime: 0 }).manual, undefined);
-    assert.strictEqual(chooseTimings({ mark, hasSong: true, listening: false, currentTime: 0 }).source, 'aniskip');
-    assert.deepStrictEqual(chooseTimings({ mark: { start: 0, end: 0 }, hasSong: false, listening: false, currentTime: 0 }), { start: 0, end: 0 });
-});
-
-test('общая база важнее поиска, но метка плеера важнее базы', () => {
+test('общей базы таймингов больше нет: её метка ничего не меняет', () => {
+    // На 2026-11-08 за неделю ни одна метка не набрала трёх подтверждений
     const shared = { start: 60, end: 150 };
-    assert.strictEqual(chooseTimings({ shared, hit: { start: 100, song: sampleSong }, mark, hasSong: true, listening: true, currentTime: 0 }).source, 'shared');
-    assert.strictEqual(chooseTimings({ native: { start: 50, end: 140 }, shared, hasSong: true, listening: false, currentTime: 0 }).source, 'kodik');
+    assert.strictEqual(chooseTimings({ shared, hit: { start: 100, song: sampleSong } }).source, 'audio');
+    assert.deepStrictEqual(chooseTimings({ shared }), { start: 0, end: 0 });
 });
 
 test('метки подставил сайт или они от самого Kodik', () => {
@@ -217,29 +208,29 @@ test('метка сайта с необычной длиной не похожа
 });
 
 test('точная метка сайта срабатывает сразу, без прослушивания', () => {
-    const t = chooseTimings({ site: { start: 73, end: 162 }, siteFits: true, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 0 });
+    const t = chooseTimings({ site: { start: 73, end: 162 }, siteFits: true });
     assert.deepStrictEqual(t, { start: 73, end: 162, source: 'site' });
 });
 
 test('метка сайта похожа на песню, но звук уже нашёл песню: важнее звук', () => {
-    const t = chooseTimings({ site: { start: 73, end: 162 }, siteFits: true, hit: { start: 76.8, song: { len: 93 } }, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 90 });
+    const t = chooseTimings({ site: { start: 73, end: 162 }, siteFits: true, hit: { start: 76.8, song: { len: 93 } } });
     assert.strictEqual(t.source, 'audio');
     assert.strictEqual(t.start, 76.8);
 });
 
 test('неверная метка сайта только кнопкой, а узнанная песня пропускается как обычно', () => {
     const wrong = { start: 0, end: 159 };
-    const waiting = chooseTimings({ site: wrong, siteFits: false, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 10 });
+    const waiting = chooseTimings({ site: wrong, siteFits: false });
     assert.deepStrictEqual(waiting, { start: 0, end: 159, source: 'site', manual: true });
-    const heard = chooseTimings({ site: wrong, siteFits: false, hit: { start: 85.1, song: { len: 90 } }, mark: { start: 0, end: 0 }, hasSong: true, listening: true, currentTime: 92 });
+    const heard = chooseTimings({ site: wrong, siteFits: false, hit: { start: 85.1, song: { len: 90 } } });
     assert.strictEqual(heard.source, 'audio');
     assert.strictEqual(heard.manual, undefined);
     assert.strictEqual(heard.start, 85.1);
 });
 
-test('неверная метка сайта уступает подтверждённой общей базе', () => {
-    const t = chooseTimings({ site: { start: 0, end: 159 }, siteFits: false, shared: { start: 86, end: 176 }, mark: { start: 0, end: 0 } });
-    assert.strictEqual(t.source, 'shared');
+test('неверная метка сайта без песни остаётся кнопкой', () => {
+    const t = chooseTimings({ site: { start: 0, end: 159 }, siteFits: false });
+    assert.deepStrictEqual(t, { start: 0, end: 159, source: 'site', manual: true });
 });
 
 test('эндинг идёт до конца файла, только если после песни осталось не больше 20 с', () => {
