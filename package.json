@@ -1,6 +1,6 @@
 {
   "name": "anime-plus",
-  "version": "11.5.0",
+  "version": "11.5.1",
   "private": true,
   "description": "Anime+ — браузерное расширение для аниме-сайтов (Manifest V3)",
   "scripts": {
