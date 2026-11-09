@@ -9,47 +9,9 @@
     <link rel="icon" href="icon.png">
     <!-- Цвета и шрифты те же, что в расширении: файл копируется при сборке из modules/shared/tokens.css -->
     <link rel="stylesheet" href="tokens.css">
+    <!-- Общий вид с политикой конфиденциальности -->
+    <link rel="stylesheet" href="site.css">
     <style>
-        * { box-sizing: border-box; }
-
-        body {
-            margin: 0;
-            color: var(--ap-text);
-            font-family: var(--ap-font);
-            font-size: var(--ap-fs-lg);
-            line-height: 1.5;
-            background: var(--ap-bg);
-        }
-
-        main {
-            max-width: 640px;
-            margin: 0 auto;
-            padding: 40px 16px 56px;
-        }
-
-        .head {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-
-        .head img { width: 44px; height: 44px; }
-        .head h1 { margin: 0; font-size: var(--ap-fs-2xl); font-weight: 700; }
-        .head h1 span { color: var(--ap-accent); }
-        .head p { margin: 0; color: var(--ap-text-2); font-size: var(--ap-fs-md); }
-
-        .card {
-            margin-bottom: 16px;
-            padding: 20px;
-            background: var(--ap-surface);
-            border: 1px solid var(--ap-line);
-            border-radius: var(--ap-radius-lg);
-        }
-
-        .card h2 { margin: 0 0 4px; font-size: var(--ap-fs-xl); font-weight: 600; }
-        .hint { margin: 0 0 12px; color: var(--ap-text-2); font-size: var(--ap-fs-md); }
-
         .feedback { display: flex; flex-direction: column; gap: 10px; }
 
         input[type="text"], select, textarea {
@@ -98,8 +60,6 @@
 
         .links { margin: 0; padding: 0; list-style: none; }
         .links li + li { margin-top: 6px; }
-        a { color: var(--ap-text); text-decoration-color: var(--ap-accent-line); text-underline-offset: 3px; }
-        a:hover { color: var(--ap-accent); }
     </style>
 </head>
 

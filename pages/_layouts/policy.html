@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }}</title>
+    <meta name="description" content="Какие данные использует Anime+ и куда они передаются.">
+    <!-- Страница лежит в /privacy/, поэтому общие файлы на уровень выше -->
+    <link rel="icon" href="../icon.png">
+    <link rel="stylesheet" href="../tokens.css">
+    <link rel="stylesheet" href="../site.css">
+    <style>
+        /* Заголовок политики уже есть в шапке страницы */
+        .intro h1 { display: none; }
+        .intro p:first-of-type { margin-top: 0; }
+        .intro em { color: var(--ap-text-2); font-size: var(--ap-fs-md); font-style: normal; }
+
+        .doc h2 { margin: 0 0 8px; }
+        .doc p { margin: 0 0 10px; }
+        .doc p:last-child, .doc ul:last-child, .doc ol:last-child { margin-bottom: 0; }
+        .doc ul, .doc ol { margin: 0 0 10px; padding-left: 20px; }
+        .doc li + li { margin-top: 6px; }
+        .doc li > ul { margin: 6px 0 0; }
+        .doc li::marker { color: var(--ap-text-3); }
+        .doc strong { font-weight: 600; }
+        .doc code {
+            padding: 1px 5px;
+            font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+            font-size: .88em;
+            background: var(--ap-raised);
+            border-radius: 4px;
+            overflow-wrap: anywhere;
+        }
+
+        .back { margin: 8px 0 0; font-size: var(--ap-fs-md); }
+    </style>
+</head>
+
+<body>
+    <main>
+        <header class="head">
+            <a href="../"><img src="../icon.png" alt="" width="44" height="44"></a>
+            <div>
+                <h1><a href="../">Anime<span>+</span></a>: политика конфиденциальности</h1>
+                <p>Расширение для просмотра аниме</p>
+            </div>
+        </header>
+
+        {%- comment -%} Разделы политики разделены линиями «---»: каждый идёт своей карточкой, как на странице поддержки {%- endcomment -%}
+        {%- assign parts = content | split: '<hr />' -%}
+        {%- for part in parts %}
+        <section class="card doc{% if forloop.first %} intro{% endif %}">
+            {{ part }}
+        </section>
+        {%- endfor %}
+
+        <p class="back"><a href="../">← Страница поддержки</a></p>
+    </main>
+</body>
+
+</html>

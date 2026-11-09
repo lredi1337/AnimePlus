@@ -34,10 +34,10 @@ jobs:
       - name: Политика конфиденциальности
         run: |
           {
-            printf -- '---\ntitle: Политика конфиденциальности Anime+\npermalink: /privacy/\n---\n\n'
+            printf -- '---\ntitle: Политика конфиденциальности Anime+\nlayout: policy\npermalink: /privacy/\n---\n\n'
             cat PRIVACY_POLICY.md
           } > pages/privacy.md
-      # Страница поддержки в тех же цветах, что расширение
+      # Обе страницы в тех же цветах, что расширение: общий вид в pages/site.css, шаблон политики в pages/_layouts/policy.html
       - name: Оформление и значок
         run: |
           cp modules/shared/tokens.css pages/tokens.css
