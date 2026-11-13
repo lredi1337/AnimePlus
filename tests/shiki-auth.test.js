@@ -157,6 +157,49 @@ test('профиль при входе запрашивается повторн
     assert.equal(whoami, 2);
 });
 
+// Без секрета Shikimori всегда отвечает invalid_client: зритель видел непонятную ошибку вместо настоящей причины
+test('сервер входа недоступен: понятная ошибка, а не запрос к Shikimori без секрета', async () => {
+    const { ctx } = loadBg();
+    const sent = [];
+    ctx.fetch = async (url) => {
+        sent.push(String(url));
+        if (/workers\.dev/.test(String(url))) throw new TypeError('Failed to fetch');
+        return json({ error: 'invalid_client' }, 401);
+    };
+    await assert.rejects(ctx.exchangeShikiCode(CODE, 'client'), /Сервер входа Anime\+ недоступен/);
+    assert.equal(sent.some(u => /oauth\/token/.test(u)), false);
+});
+
+test('ответы сервера входа превращаются в понятные сообщения', async () => {
+    const cases = [
+        [json({ error: 'invalid_grant' }, 400), /Код входа устарел или уже использован/],
+        [json({ error: 'not_configured' }, 503), /Сервер входа Anime\+ недоступен/],
+        [json({ error: 'shikimori_unreachable' }, 502), /Shikimori не отвечает/],
+        [json({ error: 'invalid_client' }, 401), /Shikimori не принял приложение/]
+    ];
+    for (const [reply, message] of cases) {
+        const { ctx } = loadBg();
+        ctx.fetch = async () => reply.clone();
+        await assert.rejects(ctx.exchangeShikiCode(`${CODE}${message.source.length}`, 'client'), message);
+    }
+});
+
+test('своё приложение зрителя: сервер входа отсылает к Shikimori, и запрос уходит туда с секретом зрителя', async () => {
+    const { ctx } = loadBg();
+    const direct = [];
+    ctx.fetch = async (url, options = {}) => {
+        if (/workers\.dev/.test(String(url))) return json({ error: 'own_app_direct' }, 404);
+        if (/oauth\/token/.test(String(url))) {
+            direct.push(Object.fromEntries(new URLSearchParams(options.body)));
+            return json({ access_token: 'own', refresh_token: 'own-r', expires_in: 86400 });
+        }
+        return json({ id: 7, nickname: 'viewer' });
+    };
+    assert.equal((await ctx.exchangeShikiCode(CODE, 'own-app', 'own-secret')).success, true);
+    assert.equal(direct.length, 1);
+    assert.equal(direct[0].client_secret, 'own-secret');
+});
+
 test('разрешение на вход истекает', async () => {
     const { ctx, session } = loadBg();
     const tabId = await ctx.beginShikiAuth('client');

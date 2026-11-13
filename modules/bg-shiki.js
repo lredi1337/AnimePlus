@@ -318,12 +318,17 @@ async function postShikiOAuthToken(bodyObj, isRetry = false) {
                 return postShikiOAuthToken(bodyObj, true);
             }
 
-            if (res.ok || (res.status >= 400 && res.status !== 404)) {
-                return res;
-            }
+            // 404 — своё приложение зрителя: сервер входа отсылает к Shikimori напрямую
+            if (res.status !== 404) return res;
         } catch (e) {
-            console.warn('[Anime+] Cloudflare Worker fetch error, falling back to direct:', e);
+            console.warn('[Anime+] Сервер входа недоступен:', e);
         }
+    }
+
+    // Напрямую Shikimori выдаёт токены только с секретом. Он есть лишь у своего приложения зрителя:
+    // без него ответ всегда invalid_client, и зритель видел бы непонятную ошибку вместо настоящей причины
+    if (!bodyObj.client_secret) {
+        return new Response(JSON.stringify({ error: 'auth_server_unreachable' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
 
     const searchParams = new URLSearchParams();
@@ -411,6 +416,28 @@ async function requestShikiTokenRefresh(tokens) {
     return tokens;
 }
 
+// Ответы сервера входа и Shikimori: зритель видит, что случилось и что делать, а не код ошибки
+const SHIKI_AUTH_ERRORS = {
+    invalid_grant: 'Код входа устарел или уже использован. Нажмите «Войти» ещё раз.',
+    invalid_client: 'Shikimori не принял приложение. Если в настройках указано своё приложение, проверьте его Client ID и секрет.',
+    auth_server_unreachable: 'Сервер входа Anime+ недоступен. Проверьте интернет и попробуйте позже.',
+    not_configured: 'Сервер входа Anime+ недоступен. Попробуйте позже.',
+    server: 'Сервер входа Anime+ недоступен. Попробуйте позже.',
+    shikimori_unreachable: 'Shikimori не отвечает. Попробуйте позже.'
+};
+
+function shikiAuthErrorText(status, errText) {
+    let code = '';
+    try { code = String(JSON.parse(errText).error || ''); } catch (e) {}
+    if (Object.hasOwn(SHIKI_AUTH_ERRORS, code)) return SHIKI_AUTH_ERRORS[code];
+    if (status === 429) return 'Слишком много попыток входа. Подождите минуту и попробуйте снова.';
+    if (status >= 500) return 'Shikimori не отвечает. Попробуйте позже.';
+    // Неизвестный ответ: код ошибки пригодится для письма в поддержку, разметка страницы — нет
+    const title = (String(errText).match(/<title>(.*?)<\/title>/i) || [])[1];
+    const detail = code || title || `HTTP ${status}`;
+    return `Не удалось войти (${String(detail).slice(0, 80)}). Попробуйте ещё раз.`;
+}
+
 if (!globalThis.activeOAuthPromises) globalThis.activeOAuthPromises = new Map();
 
 async function exchangeShikiCode(code, clientId, clientSecret) {
@@ -441,12 +468,7 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
         if (!res.ok) {
             const errText = await res.text();
             console.error('[Anime+] Shikimori auth error response:', errText);
-            let cleanErr = errText;
-            if (errText.includes('<html') || errText.includes('<!DOCTYPE')) {
-                const matchTitle = errText.match(/<title>(.*?)<\/title>/i) || errText.match(/<h1>(.*?)<\/h1>/i);
-                cleanErr = matchTitle ? matchTitle[1] : `HTTP ${res.status}`;
-            }
-            throw new Error(`Ошибка авторизации (${res.status}): ${cleanErr}`);
+            throw new Error(shikiAuthErrorText(res.status, errText));
         }
 
         const tokenData = await res.json();
