@@ -1,6 +1,5 @@
-# Cloudflare Worker Backend Scripts (Not used in extension bundle)
-cloudflare-worker.js
-*worker*.js
+# Старые копии воркера входа с секретом в коде. Исходники воркеров лежат в server/, секреты — только в Cloudflare
+/cloudflare-worker.js
 
 # Secret Keys & Environment Files
 .env

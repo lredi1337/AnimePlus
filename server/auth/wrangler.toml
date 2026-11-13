@@ -1,0 +1,17 @@
+name = "animeplus"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+# Адреса предпросмотра не нужны: воркер принимает только расширение
+preview_urls = false
+
+# Журналы в панели Cloudflare: по ним видно, почему не прошёл вход
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
+# Секрет приложения Shikimori хранится только в Cloudflare (Settings → Variables and Secrets, тип Secret):
+#   npx wrangler secret put SHIKI_CLIENT_SECRET
+# Необязательно: EXTRA_EXTENSION_IDS — id копий расширения для разработки через запятую

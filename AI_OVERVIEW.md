@@ -54,6 +54,7 @@ AnimePlus-main/
 ├── features/                  # player-bridge, fox-dock, search-redirect
 ├── top/                       # Вкладка «Топ Shikimori» (страница расширения)
 ├── popup/  options/           # Окно расширения и страница настроек
+├── server/auth/               # Cloudflare Worker animeplus: обмен кода Shikimori на токены с секретом из настроек Cloudflare
 ├── server/timings/            # Cloudflare Worker: письма поддержки; адреса закрытой базы таймингов отвечают пустым ответом
 ├── tests/                     # node --test, jsdom
 ├── tools/                     # build-store-zip, build-fingerprints, build-songs-site, stand/ (живые проверки)
