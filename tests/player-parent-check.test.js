@@ -16,7 +16,9 @@ async function startFrame(ancestors, referrer = '') {
     if (ancestors) Object.defineProperty(frame.location, 'ancestorOrigins', { value: ancestors, configurable: true });
 
     const toTop = [];
-    dom.window.addEventListener('message', (e) => { if (e.data && e.data.type) toTop.push(e.data.type); });
+    const targets = new Set();
+    // Адрес получателя видит только отправитель: перехватываем сам вызов
+    dom.window.postMessage = (data, targetOrigin) => { if (data && data.type) { toTop.push(data.type); targets.add(targetOrigin); } };
     frame.chrome = {
         runtime: { id: 'test', getURL: (p) => p, sendMessage() {}, onMessage: { addListener() {} } },
         storage: { local: { get: async () => ({ ag_settings: { auto_select_voice: false } }), set: async () => {} }, onChanged: { addListener() {} } }
@@ -24,6 +26,7 @@ async function startFrame(ancestors, referrer = '') {
     for (const file of ['config.js', 'modules/shared/sites.js', 'modules/player/adapters.js', 'modules/player/skip-memory.js', 'content-player.js']) frame.eval(read(file));
     await new Promise(r => setTimeout(r, 150));
     dom.window.close();
+    Object.defineProperty(toTop, 'targets', { value: [...targets] });
     return toTop;
 }
 
@@ -39,6 +42,11 @@ test('похожий адрес не считается сайтом или пл
 test('кадр на поддерживаемом сайте запускается, в том числе внутри обёртки другого плеера', async () => {
     assert.ok((await startFrame(['https://jut-su.net'])).includes('AG_GET_DATA'));
     assert.ok((await startFrame(['https://ani5.top', 'https://yammyanime.club'])).includes('AG_GET_DATA'));
+});
+
+test('плеер пишет только верхней странице сайта, а не любому, кто его встроил', async () => {
+    assert.deepEqual((await startFrame(['https://jut-su.net'])).targets, ['https://jut-su.net']);
+    assert.deepEqual((await startFrame(['https://ani5.top', 'https://yammyanime.club'])).targets, ['https://yammyanime.club']);
 });
 
 test('обёртка плеера на чужом сайте не делает кадр своим', async () => {

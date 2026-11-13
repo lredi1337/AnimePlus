@@ -257,7 +257,7 @@
                 if (!e.source) return;
                 const episode = adapter.getEpisode(e.data.episode != null ? String(e.data.episode) : null) || '1';
                 const { position } = getWatched(`${location.pathname}#${episode}`);
-                if (position >= MIN_RESUME_SEC) e.source.postMessage({ type: 'AG_RESUME', time: position }, '*');
+                if (position >= MIN_RESUME_SEC) e.source.postMessage({ type: 'AG_RESUME', time: position }, e.origin);
                 return;
             }
             const ev = parsePlayerMessage(e.data);

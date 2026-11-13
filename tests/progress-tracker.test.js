@@ -89,7 +89,10 @@ const playOurs = (env, from, to, duration = 1400) => {
 
 const askResume = (env) => {
     const replies = [];
-    env.post({ type: 'AG_GET_RESUME', episode: '3' }, { source: { postMessage: (m) => replies.push(m) } });
+    const replyTargets = [];
+    env.post({ type: 'AG_GET_RESUME', episode: '3' }, { source: { postMessage: (m, target) => { replies.push(m); replyTargets.push(target); } } });
+    // Ответ уходит только тому, кто спросил: место просмотра не должно достаться кадру, сменившему адрес
+    assert.deepEqual(replyTargets, replies.map(() => 'https://kodikplayer.com'));
     return replies;
 };
 

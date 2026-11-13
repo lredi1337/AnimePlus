@@ -58,6 +58,9 @@
             || null;
     }
 
+    // Только верхней странице сайта: выбор озвучки не должен уходить странице, которая встроила плеер сама
+    const topOrigin = () => (root.AgSites && root.AgSites.topOrigin ? root.AgSites.topOrigin() : '*');
+
     /** Плеер в iframe спрашивает у страницы сайта: она знает выбор, сделанный на её кнопках */
     function askPage() {
         return new Promise((resolve) => {
@@ -72,13 +75,13 @@
             };
             const timer = setTimeout(() => done(null), ASK_TIMEOUT_MS);
             window.addEventListener('message', onMessage);
-            try { window.top.postMessage({ type: 'AG_GET_VOICE_CHOICE' }, '*'); } catch (e) { done(null); }
+            try { window.top.postMessage({ type: 'AG_GET_VOICE_CHOICE' }, topOrigin()); } catch (e) { done(null); }
         });
     }
 
     function tellPage(voice) {
         if (window === window.top) return;
-        try { window.top.postMessage({ type: 'AG_VOICE_CHOSEN', voice: voiceName(voice) }, '*'); } catch (e) {}
+        try { window.top.postMessage({ type: 'AG_VOICE_CHOSEN', voice: voiceName(voice) }, topOrigin()); } catch (e) {}
     }
 
     // Страница сайта отвечает плееру и запоминает выбор, сделанный внутри плеера
@@ -89,7 +92,7 @@
             if (root.isValidOrigin && !root.isValidOrigin(e.origin)) return;
             if (data.type === 'AG_GET_VOICE_CHOICE') {
                 const voice = await get(pageKey());
-                try { e.source.postMessage({ type: 'AG_VOICE_CHOICE', voice }, '*'); } catch (err) {}
+                try { e.source.postMessage({ type: 'AG_VOICE_CHOICE', voice }, e.origin); } catch (err) {}
             } else if (data.type === 'AG_VOICE_CHOSEN') {
                 set(pageKey(), data.voice);
             }

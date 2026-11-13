@@ -146,6 +146,21 @@
             return new URL(path, site.home).href;
         },
 
+        /**
+         * Адрес верхней страницы вкладки для postMessage из кадра: сообщение не достанется странице, которая сменила адрес
+         * или встроила кадр без нашего ведома. Chrome сообщает адреса всех внешних кадров, верхний идёт последним.
+         * Без этих сведений (не Chromium) остаётся '*': такие кадры и так проверяются по адресу источника
+         */
+        topOrigin() {
+            try {
+                const list = root.location && root.location.ancestorOrigins;
+                const top = list && list.length ? list[list.length - 1] : '';
+                return /^https:\/\//.test(top) ? top : '*';
+            } catch (e) {
+                return '*';
+            }
+        },
+
         /** Страница «Топ Shikimori» (top/top.html) с параметрами: embed, pick, site, origin (см. top/top.js) */
         topPageUrl(params = {}) {
             const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v));

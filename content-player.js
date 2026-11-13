@@ -54,10 +54,14 @@
         return;
     }
 
+    // Сообщения уходят только верхней странице сайта (modules/shared/sites.js)
+    const TOP_ORIGIN = globalThis.AgSites ? globalThis.AgSites.topOrigin() : '*';
+    const toTop = (message) => window.top.postMessage(message, TOP_ORIGIN);
+
     // Команды плееру принимаем только от страниц поддерживаемых сайтов (точное совпадение домена)
     const isParentSiteOrigin = (origin) => /^https:\/\//.test(origin || '') && isSiteHost(hostOf(origin));
 
-    window.top.postMessage({ type: 'AG_GET_DATA' }, '*');
+    toTop({ type: 'AG_GET_DATA' });
 
     // ==========================================
     // --- ЛОГИКА ВНУТРИ ПЛЕЕРА (IFRAME) ---
@@ -429,7 +433,7 @@
     const reportActiveEpisode = () => {
         if (!isShown()) return;
         const data = getLocalEpisodeData();
-        window.top.postMessage({ type: 'AG_EPISODE_CHANGED', episode: data.current }, '*');
+        toTop({ type: 'AG_EPISODE_CHANGED', episode: data.current });
     };
 
     // Плеер сообщил новые списки: серию могли сменить его собственные кнопки или автопереход
@@ -468,7 +472,7 @@
 
         if (combo === settings.keys.fs) {
             e.preventDefault(); e.stopPropagation();
-            window.top.postMessage({ type: 'AG_PSEUDO_FS', action: 'toggle' }, '*');
+            toTop({ type: 'AG_PSEUDO_FS', action: 'toggle' });
         }
         else if (combo === settings.keys.forward) {
             e.preventDefault(); e.stopPropagation();
@@ -481,12 +485,12 @@
         else if (combo === settings.keys.next) {
             e.preventDefault(); e.stopPropagation();
             if (shouldUseLocalNav()) { switchKodikEpisode('next'); }
-            else window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
+            else toTop({ type: 'AG_NAV', dir: 'next' });
         }
         else if (combo === settings.keys.prev) {
             e.preventDefault(); e.stopPropagation();
             if (shouldUseLocalNav()) { switchKodikEpisode('prev'); }
-            else window.top.postMessage({ type: 'AG_NAV', dir: 'prev' }, '*');
+            else toTop({ type: 'AG_NAV', dir: 'prev' });
         }
         else if (combo === settings.keys.skip) {
             e.preventDefault(); e.stopPropagation();
@@ -498,7 +502,7 @@
             }
         }
         else if (e.key === 'Escape') {
-            window.top.postMessage({ type: 'AG_PSEUDO_FS', action: 'disable' }, '*');
+            toTop({ type: 'AG_PSEUDO_FS', action: 'disable' });
         }
     }, true);
     document.addEventListener('keyup', (e) => {
@@ -570,16 +574,16 @@
         }
         return "1";
     };
-    window.top.postMessage({ type: 'AG_PLAYER_READY', episode: isShown() ? getKodikEpisode() : undefined }, '*');
+    toTop({ type: 'AG_PLAYER_READY', episode: isShown() ? getKodikEpisode() : undefined });
 
     document.addEventListener('change', (e) => {
         if (e.target.matches('.serial-series-box select, .serial-series, select[name="series"], .series-select, .serial-series select')) {
             const ep = e.target.value || (e.target.options[e.target.selectedIndex] ? e.target.options[e.target.selectedIndex].text.match(/\d+/)?.[0] : "1");
-            window.top.postMessage({ type: 'AG_PLAYER_READY', episode: isShown() ? ep : undefined }, '*');
+            toTop({ type: 'AG_PLAYER_READY', episode: isShown() ? ep : undefined });
         }
     });
 
-    function sendFs(action) { window.top.postMessage({ type: 'AG_PSEUDO_FS', action: action }, '*'); }
+    function sendFs(action) { toTop({ type: 'AG_PSEUDO_FS', action: action }); }
     function doRewind(s, v) {
         rewindSum += s;
         clearTimeout(rewindTimer);
@@ -682,7 +686,7 @@
         if (!('mediaSession' in navigator)) return;
         const nav = (dir) => {
             if (shouldUseLocalNav()) switchKodikEpisode(dir);
-            else window.top.postMessage({ type: 'AG_NAV', dir }, '*');
+            else toTop({ type: 'AG_NAV', dir });
         };
         try {
             navigator.mediaSession.metadata = new MediaMetadata({ title: 'Anime+', artist: 'Anime+' });
@@ -692,7 +696,7 @@
             navigator.mediaSession.setActionHandler('previoustrack', () => nav('prev'));
             navigator.mediaSession.setActionHandler('nexttrack', () => nav('next'));
         } catch (e) { console.warn("MediaSession not fully supported."); }
-        window.top.postMessage({ type: 'AG_GET_DATA' }, '*');
+        toTop({ type: 'AG_GET_DATA' });
     }
 
     // Серии переключаются внутри Kodik: страница сайта узнаёт номер только от нас
@@ -755,7 +759,7 @@
             if (!isKodik) {
                 v.addEventListener('play', () => {
                     if (!settings.autoPlay) return;
-                    window.top.postMessage({ type: 'AG_START_MARATHON' }, '*');
+                    toTop({ type: 'AG_START_MARATHON' });
                     // Серия может смениться и без перезагрузки кадра: следующая запускается сама
                     canAutoPlay = true;
                 }, { once: true });
@@ -787,7 +791,7 @@
                     if (shouldUseLocalNav()) {
                         switchKodikEpisode('next', true);
                     } else {
-                        window.top.postMessage({ type: 'AG_NAV', dir: 'next' }, '*');
+                        toTop({ type: 'AG_NAV', dir: 'next' });
                     }
                 }
 
@@ -886,7 +890,7 @@
                     setTimeout(() => { if (playBtn) playBtn.click(); }, 600);
                 } else {
                     playBtn.addEventListener('click', () => {
-                        window.top.postMessage({ type: 'AG_START_MARATHON' }, '*');
+                        toTop({ type: 'AG_START_MARATHON' });
                     }, { once: true });
                 }
             }
@@ -985,7 +989,7 @@
                 return;
             }
             resumeVideo = v;
-            window.top.postMessage({ type: 'AG_GET_RESUME', episode: getEpisodeCached().current }, '*');
+            toTop({ type: 'AG_GET_RESUME', episode: getEpisodeCached().current });
         };
         v.addEventListener('loadstart', () => { episodeCache = null; resumeAsked = false; });
         v.addEventListener('loadedmetadata', askResume);
@@ -994,14 +998,14 @@
 
         const report = (isEnded) => {
             const data = getEpisodeCached();
-            window.top.postMessage({
+            toTop({
                 type: 'AG_VIDEO_PROGRESS',
                 episode: data.current,
                 currentTime: v.currentTime || 0,
                 duration: Number.isFinite(v.duration) ? v.duration : 0,
                 volume: v.volume,
                 isEnded
-            }, '*');
+            });
         };
 
         v.addEventListener('timeupdate', () => {
@@ -1242,7 +1246,7 @@
             });
         };
         window.addEventListener('message', onStart);
-        window.top.postMessage({ type: 'AG_GET_START' }, '*');
+        toTop({ type: 'AG_GET_START' });
         // Сайт может и не ответить: без него плеер остаётся как есть
         noAnswer = setTimeout(() => {
             window.removeEventListener('message', onStart);
@@ -1358,7 +1362,7 @@
         const key = isKodik ? player.id : `${player.id}|${voice}|${season}|${getLocalEpisodeData().current}|${duration}`;
         if (key === playerNowKey) return;
         playerNowKey = key;
-        window.top.postMessage({ type: 'AG_PLAYER_NOW', player: player.id, voice, season, duration }, '*');
+        toTop({ type: 'AG_PLAYER_NOW', player: player.id, voice, season, duration });
     };
     setInterval(reportPlayerNow, PLAYER_NOW_MS);
     const askHandoff = () => {
@@ -1368,7 +1372,7 @@
             if (!isShown() || ++tries > HANDOFF_ASK_TRIES) return clearInterval(handoffAsk);
             if (!player.video() && !document.querySelector('.play_button, .play_background')) return undefined;
             clearInterval(handoffAsk);
-            window.top.postMessage({ type: 'AG_GET_HANDOFF', visible: true }, '*');
+            toTop({ type: 'AG_GET_HANDOFF', visible: true });
             return undefined;
         };
         handoffAsk = setInterval(ask, HANDOFF_ASK_MS);
@@ -1382,9 +1386,9 @@
         let tries = 0;
         const ask = setInterval(() => {
             if (siteListsReady || ++tries > 15) return clearInterval(ask);
-            window.top.postMessage({ type: 'AG_SHELL_GET' }, '*');
+            toTop({ type: 'AG_SHELL_GET' });
         }, 1000);
-        window.top.postMessage({ type: 'AG_SHELL_GET' }, '*');
+        toTop({ type: 'AG_SHELL_GET' });
     };
     // Новая оболочка плеера. Откатывается на обычный Kodik при сбое и удалённо, если обновление Kodik её сломает
     const startPlayerShell = async () => {
@@ -1416,14 +1420,14 @@
                 switchTipSeen: async () => (await globalThis.AgGuide.read()).switchTipDone,
                 demo: globalThis.AgGuide.switchDemo
             } : null,
-            sitePick: (kind, index) => window.top.postMessage({ type: 'AG_SHELL_PICK', kind, index }, '*'),
-            refreshSite: () => window.top.postMessage({ type: 'AG_SHELL_GET' }, '*'),
-            reloadPage: () => window.top.postMessage({ type: 'AG_RELOAD_PAGE' }, '*'),
+            sitePick: (kind, index) => toTop({ type: 'AG_SHELL_PICK', kind, index }),
+            refreshSite: () => toTop({ type: 'AG_SHELL_GET' }),
+            reloadPage: () => toTop({ type: 'AG_RELOAD_PAGE' }),
             nav: (dir) => {
                 if (shouldUseLocalNav()) {
                     switchKodikEpisode(dir);
                 } else {
-                    window.top.postMessage({ type: 'AG_NAV', dir }, '*');
+                    toTop({ type: 'AG_NAV', dir });
                 }
             }
         });
@@ -1434,7 +1438,7 @@
     const onShown = () => {
         playerNowKey = '';
         reportActiveEpisode();
-        window.top.postMessage({ type: 'AG_SHELL_GET' }, '*');
+        toTop({ type: 'AG_SHELL_GET' });
         askHandoff();
     };
     window.addEventListener('resize', () => {
@@ -1452,7 +1456,7 @@
         const checkGone = setInterval(() => {
             if (!isShown() || !player.gone()) return;
             clearInterval(checkGone);
-            window.top.postMessage({ type: 'AG_RELOAD_PAGE' }, '*');
+            toTop({ type: 'AG_RELOAD_PAGE' });
         }, 2000);
     }
 })();

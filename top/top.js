@@ -115,7 +115,9 @@
     }
 
     /** Сообщение значку на странице сайта (только в режиме поверх сайта) */
-    const tellDock = (message) => window.parent.postMessage({ source: MESSAGE_SOURCE, ...message }, '*');
+    // Только странице сайта, на которой открыт значок: ближайший внешний кадр
+    const parentOrigin = (() => { try { return location.ancestorOrigins[0] || '*'; } catch (e) { return '*'; } })();
+    const tellDock = (message) => window.parent.postMessage({ source: MESSAGE_SOURCE, ...message }, parentOrigin);
 
     function render(ctx, sites = []) {
         let { site, origin } = ctx;
