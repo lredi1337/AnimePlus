@@ -888,7 +888,67 @@ async function skins(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, dock, kodik, episodes, quality, perf, accuracy, follow, skins };
+/** Синтетическая страница AnimeGO: тайтл из Shikimori в оформлении сайта, наведение, просмотр постера и кадров настоящими нажатиями */
+async function synthetic(opts) {
+    const r = reporter();
+    const { b } = await startBrowser(opts);
+    try {
+        const page = await b.openPage('https://animego.me/anime/shiki-5114');
+        let built = null;
+        for (let i = 0; i < 20 && !(built && built.thumbs); i++) {
+            await wait(1000);
+            built = await b.ev(page.session, "(() => { const p = document.getElementById('ag-synthetic-page-container'); return p ? { h1: (p.querySelector('h1') || {}).textContent, thumbs: p.querySelectorAll('.ag-screenshot-thumb').length, info: !!p.querySelector('.entity-field') } : null; })()");
+        }
+        r.check('страница тайтла собрана из шаблона AnimeGO', !!built && /алхимик/i.test(built.h1 || '') && built.info, built);
+        r.check('в сетке четыре кадра', !!built && built.thumbs === 4, built && built.thumbs);
+        const inline = await b.ev(page.session, "[...document.querySelectorAll('#ag-synthetic-page-container *')].filter(el => [...el.attributes].some(a => /^on/i.test(a.name))).length");
+        r.check('в разметке нет встроенных обработчиков', inline === 0, inline);
+
+        const center = (selector) => b.ev(page.session, `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; el.scrollIntoView({ block: 'center' }); const q = el.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+        const poster = await center('.entity__poster img');
+        if (poster) {
+            await b.mouse(page.session, 'mouseMoved', poster.x, poster.y);
+            await wait(600);
+        }
+        const lifted = await b.ev(page.session, "getComputedStyle(document.querySelector('.entity__poster img')).transform");
+        r.check('постер приподнимается при наведении', !!lifted && lifted !== 'none', lifted);
+        if (poster) await b.clickAt(page.session, poster);
+        await wait(800);
+        r.check('постер открывается на весь экран', await b.ev(page.session, "(() => { const o = document.getElementById('ag-poster-lightbox'); return !!o && o.style.display === 'flex' && getComputedStyle(o).opacity === '1'; })()"));
+        const close = await b.ev(page.session, "(() => { const q = document.querySelector('#ag-poster-lightbox .ag-poster-close').getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()");
+        await b.clickAt(page.session, close);
+        await wait(800);
+        r.check('крестик закрывает постер', await b.ev(page.session, "document.getElementById('ag-poster-lightbox').style.display === 'none'"));
+
+        const thumb = await center('.ag-screenshot-thumb:nth-child(2)');
+        if (thumb) await b.clickAt(page.session, thumb);
+        await wait(1500);
+        const counter = () => b.ev(page.session, "(() => { const o = document.getElementById('ag-screenshot-lightbox'); return o && o.style.display === 'flex' ? document.getElementById('ag-lb-curr').textContent + '/' + document.getElementById('ag-lb-total').textContent : null; })()");
+        const opened = await counter();
+        r.check('кадр открывается в просмотрщике', !!opened && opened.startsWith('2/'), opened);
+        const next = await b.ev(page.session, "(() => { const q = document.querySelector('.ag-lb-next').getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()");
+        await b.clickAt(page.session, next);
+        await wait(800);
+        const moved = await counter();
+        r.check('кнопка «дальше» листает кадры', !!moved && moved.startsWith('3/'), moved);
+        await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, page.session);
+        await wait(800);
+        r.check('Esc закрывает просмотрщик', (await counter()) === null);
+
+        let rows = 0;
+        for (let i = 0; i < 15 && !rows; i++) {
+            await wait(1000);
+            rows = await b.ev(page.session, "document.querySelectorAll('#ag-watch-choice a.ag-wc__item').length");
+        }
+        r.check('выбор сайта для просмотра со ссылками', rows > 0, rows);
+        r.check('связанные тайтлы из Shikimori', (await b.ev(page.session, "document.querySelectorAll('.ag-related-block a[href^=\"/anime/shiki-\"]').length")) > 0);
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {
