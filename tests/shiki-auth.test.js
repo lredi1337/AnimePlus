@@ -44,7 +44,37 @@ test('два запроса при истёкшем токене обновля�
     await Promise.all([ctx.shikiFetch('https://shikimori.io/api/a'), ctx.shikiFetch('https://shikimori.io/api/b')]);
     assert.equal(stats.tokenPosts.length, 1);
     assert.notEqual(local.shiki_auth_error, true);
-    assert.equal(local.shiki_refresh_token, 'refresh1');
+    assert.equal((await ctx.readShikiSecrets()).shiki_refresh_token, 'refresh1');
+});
+
+// Скрипты расширения работают и в чужих кадрах плееров, а chrome.storage.local им открыт: токенам там не место
+test('токены и секрет приложения не лежат в chrome.storage.local', async () => {
+    const { ctx, local } = loadBg();
+    const tabId = await ctx.beginShikiAuth('client');
+    assert.equal((await ctx.exchangeShikiCode(CODE, 'client', 'secret')).success, true);
+    for (const key of ['shiki_access_token', 'shiki_refresh_token', 'shiki_client_secret']) assert.equal(key in local, false, key);
+    assert.equal(local.shiki_user.id, 7);
+    const tokens = await ctx.getShikiTokens();
+    assert.equal(tokens.shiki_access_token, 'access1');
+    assert.equal(tokens.shiki_client_secret, 'secret');
+    assert.equal(typeof tabId, 'number');
+
+    await ctx.logoutShiki();
+    assert.equal((await ctx.getShikiTokens()).shiki_access_token, undefined);
+    assert.equal((await ctx.readShikiSecrets()).shiki_refresh_token, undefined);
+    // Секрет своего приложения выход не стирает, как и раньше
+    assert.equal((await ctx.readShikiSecrets()).shiki_client_secret, 'secret');
+});
+
+test('токены прошлых версий переезжают из chrome.storage.local и продолжают работать', async () => {
+    const { ctx, local } = loadBg({ store: { shiki_access_token: 'old', shiki_refresh_token: 'R1', shiki_client_secret: 'S', shiki_token_expires_at: 9999999999, shiki_user: { id: 7 } } });
+    const tokens = await ctx.getShikiTokens();
+    assert.equal(tokens.shiki_access_token, 'old');
+    assert.equal(tokens.shiki_refresh_token, 'R1');
+    assert.equal(tokens.shiki_client_secret, 'S');
+    for (const key of ['shiki_access_token', 'shiki_refresh_token', 'shiki_client_secret']) assert.equal(key in local, false, key);
+    assert.equal(local.shiki_token_expires_at, 9999999999);
+    assert.equal((await ctx.getShikiStatus()).isLoggedIn, true);
 });
 
 test('код берётся только с адреса самого Shikimori', () => {
@@ -64,7 +94,8 @@ test('код без нажатия «Войти» отклоняется, ток
     assert.equal(res.success, false);
     assert.equal(res.reason, 'not_expected');
     assert.equal(stats.tokenPosts.length, 0);
-    assert.equal(local.shiki_access_token, 'mine');
+    assert.equal((await ctx.readShikiSecrets()).shiki_access_token, 'mine');
+    assert.equal('shiki_access_token' in local, false);
 });
 
 test('«Войти» открывает вкладку, и код принимается только из неё и только один раз', async () => {
@@ -76,7 +107,8 @@ test('«Войти» открывает вкладку, и код принима
 
     assert.equal((await ctx.completeShikiAuth(CODE, tabId + 1)).reason, 'not_expected');
     assert.equal((await ctx.completeShikiAuth(CODE, tabId)).success, true);
-    assert.equal(local.shiki_access_token, 'access1');
+    assert.equal((await ctx.readShikiSecrets()).shiki_access_token, 'access1');
+    assert.equal('shiki_access_token' in local, false);
     assert.equal(Object.keys(session).length, 0);
 
     assert.equal((await ctx.completeShikiAuth(`${CODE}other`, tabId)).reason, 'not_expected');

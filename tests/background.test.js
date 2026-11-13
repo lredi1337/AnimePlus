@@ -175,6 +175,12 @@ test('связанные тайтлы и ответ при сбое', async () =
     assert.equal(out.related[0].kind, 'TV');
     assert.equal(out.related[0].year, '2021');
 
+    // Номер и год вставляются в разметку страницы: разметка в них не проходит
+    const bad = [{ anime: { id: '3"><img src=x onerror=alert(1)>', name: 'C', aired_on: '<b>2020' } }, { anime: { id: '4', name: 'D', aired_on: '2019<i>' } }];
+    const dirty = loadBackground({ routes: { '/related': bad } });
+    const cleaned = plain((await dirty.send({ action: 'get_shikimori_anime_related', id: 1 })).response).related;
+    assert.deepEqual(cleaned.map(r => [r.id, r.year]), [[3, ''], [4, '2019']]);
+
     const failed = loadBackground();
     assert.deepEqual(plain((await failed.send({ action: 'get_shikimori_anime_related', id: 1 })).response), { related: [] });
 });
@@ -221,33 +227,34 @@ test('«Войти» принимается только со страницы �
 const tokenRoutes = { 'workers.dev': { access_token: 'a1', refresh_token: 'r1', expires_in: 100 }, 'whoami': { id: 1 } };
 
 test('код из чужой вкладки не меняет аккаунт, а за вкладками фон не следит', async () => {
-    const { listeners, seen, local, send } = loadBackground({ routes: tokenRoutes, store: { shiki_access_token: 'mine' } });
+    const { listeners, seen, context, send } = loadBackground({ routes: tokenRoutes, store: { shiki_access_token: 'mine' } });
     assert.equal(listeners.tabUpdated, undefined);
     const res = (await send({ action: 'shiki_auto_auth', code: CODE }, fromTab(5))).response;
     await new Promise(r => setTimeout(r, 20));
     assert.equal(res.reason, 'not_expected');
     assert.equal(seen.fetched.some(f => f.url.includes('workers.dev')), false);
-    assert.equal(local.shiki_access_token, 'mine');
+    assert.equal((await context.readShikiSecrets()).shiki_access_token, 'mine');
 });
 
 test('своя вкладка: код со страницы входа привязывает аккаунт, повторная проверка страницы его не теряет и при опоздании', async () => {
-    const { send, local } = loadBackground({ routes: tokenRoutes });
+    const { send, local, context } = loadBackground({ routes: tokenRoutes });
     await send({ action: 'shiki_auth_begin' }, EXT_PAGE);
     const url = `https://shikimori.io/oauth/authorize/${CODE}`;
     assert.equal((await send({ action: 'shiki_auth_expected' }, fromTab(77, 9, url))).response.expected, true);
     assert.equal((await send({ action: 'shiki_auth_expected' }, fromTab(78, 9, url))).response.expected, false);
 
     assert.equal((await send({ action: 'shiki_auto_auth', code: CODE }, fromTab(77, 9, url))).response.success, true);
-    assert.equal(local.shiki_access_token, 'a1');
+    assert.equal((await context.readShikiSecrets()).shiki_access_token, 'a1');
+    assert.equal('shiki_access_token' in local, false);
     // Разрешение уже потрачено, но это тот же код: страница не должна показать родной вид или ошибку
     assert.equal((await send({ action: 'shiki_auth_expected' }, fromTab(77, 9, url))).response.expected, true);
     assert.equal((await send({ action: 'shiki_auto_auth', code: CODE }, fromTab(77, 9, url))).response.success, true);
 });
 
 test('код, вставленный в окне расширения вручную, работает без открытой вкладки', async () => {
-    const { send, local } = loadBackground({ routes: tokenRoutes });
+    const { send, context } = loadBackground({ routes: tokenRoutes });
     assert.equal((await send({ action: 'shiki_oauth_exchange', code: CODE }, EXT_PAGE)).response.success, true);
-    assert.equal(local.shiki_access_token, 'a1');
+    assert.equal((await context.readShikiSecrets()).shiki_access_token, 'a1');
 });
 
 test('шаблон страницы AnimeGO отбирает настоящую страницу тайтла', async () => {

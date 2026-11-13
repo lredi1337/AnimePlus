@@ -151,15 +151,101 @@ async function fetchShikimoriApi(endpoint) {
     return null;
 }
 
+// ---------- Хранилище секретов ----------
+// Токены и секрет приложения лежат в IndexedDB расширения: она доступна только фону и страницам расширения.
+// chrome.storage.local читают и content-скрипты, а они работают в том числе в чужих кадрах плееров.
+
+const SHIKI_SECRET_KEYS = ['shiki_access_token', 'shiki_refresh_token', 'shiki_client_secret'];
+const SHIKI_VAULT_DB = 'anime-plus-vault';
+const SHIKI_VAULT_STORE = 'secrets';
+
+function openShikiVaultDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(SHIKI_VAULT_DB, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore(SHIKI_VAULT_STORE);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/** Одна транзакция: work получает хранилище и возвращает то, что нужно отдать после её завершения */
+function shikiVaultTx(db, mode, work) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(SHIKI_VAULT_STORE, mode);
+        const result = work(tx.objectStore(SHIKI_VAULT_STORE));
+        tx.oncomplete = () => resolve(result);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+    });
+}
+
+function idbShikiVault(db) {
+    return {
+        async read() {
+            const requests = await shikiVaultTx(db, 'readonly', store => SHIKI_SECRET_KEYS.map(key => [key, store.get(key)]));
+            return Object.fromEntries(requests.filter(([, r]) => r.result !== undefined).map(([key, r]) => [key, r.result]));
+        },
+        write: (patch) => shikiVaultTx(db, 'readwrite', (store) => { for (const [key, value] of Object.entries(patch)) store.put(value, key); }),
+        remove: (keys) => shikiVaultTx(db, 'readwrite', (store) => { for (const key of keys) store.delete(key); })
+    };
+}
+
+// Без IndexedDB (тесты, повреждённый профиль браузера) секреты живут в памяти фона: вход придётся повторить, но наружу они не попадут
+function memoryShikiVault() {
+    const data = {};
+    return {
+        read: async () => ({ ...data }),
+        write: async (patch) => { Object.assign(data, patch); },
+        remove: async (keys) => { for (const key of keys) delete data[key]; }
+    };
+}
+
+async function openShikiVault() {
+    let vault = null;
+    try {
+        vault = idbShikiVault(await openShikiVaultDb());
+    } catch (e) {
+        if (typeof indexedDB !== 'undefined' && globalThis.noteDiag) noteDiag('shiki_vault_unavailable', String(e && e.message));
+        vault = memoryShikiVault();
+    }
+    // Прошлые версии держали секреты в chrome.storage.local: переносим и убираем оттуда
+    const old = await chrome.storage.local.get(SHIKI_SECRET_KEYS);
+    const found = Object.fromEntries(SHIKI_SECRET_KEYS.filter(key => old[key] !== undefined && old[key] !== null).map(key => [key, old[key]]));
+    if (Object.keys(found).length > 0) {
+        await vault.write({ ...found, ...await vault.read() });
+        await chrome.storage.local.remove(SHIKI_SECRET_KEYS);
+    }
+    return vault;
+}
+
+let shikiVaultOpening = null;
+function shikiVault() {
+    if (!shikiVaultOpening) {
+        shikiVaultOpening = openShikiVault();
+        // Сбой открытия не запоминаем: следующий запрос попробует снова
+        shikiVaultOpening.catch(() => { shikiVaultOpening = null; });
+    }
+    return shikiVaultOpening;
+}
+
+async function readShikiSecrets() {
+    return (await shikiVault()).read();
+}
+
+/** Сохраняет данные входа: секреты уходят в хранилище фона, остальное в chrome.storage.local */
+async function saveShikiAuth(values) {
+    const secrets = {};
+    const open = {};
+    for (const [key, value] of Object.entries(values)) (SHIKI_SECRET_KEYS.includes(key) ? secrets : open)[key] = value;
+    if (Object.keys(secrets).length > 0) await (await shikiVault()).write(secrets);
+    if (Object.keys(open).length > 0) await chrome.storage.local.set(open);
+}
+
 async function getShikiTokens() {
-    const data = await chrome.storage.local.get([
-        'shiki_client_id',
-        'shiki_client_secret',
-        'shiki_access_token',
-        'shiki_refresh_token',
-        'shiki_token_expires_at',
-        'shiki_user'
-    ]);
+    const data = {
+        ...await chrome.storage.local.get(['shiki_client_id', 'shiki_token_expires_at', 'shiki_user']),
+        ...await readShikiSecrets()
+    };
     if (!data.shiki_client_id || typeof data.shiki_client_id !== 'string' || !data.shiki_client_id.trim()) {
         data.shiki_client_id = SHIKI_CLIENT_ID;
     }
@@ -303,7 +389,7 @@ async function requestShikiTokenRefresh(tokens) {
         if (res.ok) {
             const data = await res.json();
             const expiresAt = Math.floor(Date.now() / 1000) + (data.expires_in || 86400);
-            await chrome.storage.local.set({
+            await saveShikiAuth({
                 shiki_access_token: data.access_token,
                 shiki_refresh_token: data.refresh_token,
                 shiki_token_expires_at: expiresAt,
@@ -375,7 +461,7 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
         };
         if (cleanClientSecret) storageToSet.shiki_client_secret = cleanClientSecret;
 
-        await chrome.storage.local.set(storageToSet);
+        await saveShikiAuth(storageToSet);
 
         let userRes;
         try {
@@ -519,15 +605,17 @@ async function getShikiRelated(id) {
     if (!Array.isArray(list)) return { related: [] };
     const related = list.map((item) => {
         const rel = item.anime || item.manga;
-        if (!rel) return null;
+        // Номер и год попадают в разметку страницы: только цифры
+        const id = rel ? parseInt(rel.id, 10) : 0;
+        if (!id) return null;
         const poster = rel.image ? (rel.image.original || rel.image.preview || '') : '';
         return {
-            id: rel.id,
+            id,
             name: rel.name,
             russian: rel.russian || rel.name,
             relation: item.relation_russian || item.relation || 'Связанное',
             kind: rel.kind ? rel.kind.toUpperCase() : '',
-            year: rel.aired_on ? rel.aired_on.split('-')[0] : '',
+            year: (String(rel.aired_on || '').match(/^\d{4}/) || [''])[0],
             poster: poster && !poster.startsWith('http') ? `${SHIKI_API_BASE}${poster}` : poster
         };
     }).filter(Boolean);
@@ -536,9 +624,9 @@ async function getShikiRelated(id) {
 }
 
 async function logoutShiki() {
+    // Секрет своего приложения остаётся, как и его client_id: с ними зритель входит снова
+    await (await shikiVault()).remove(['shiki_access_token', 'shiki_refresh_token']);
     await chrome.storage.local.remove([
-        'shiki_access_token',
-        'shiki_refresh_token',
         'shiki_token_expires_at',
         'shiki_user',
         'shiki_auth_error',

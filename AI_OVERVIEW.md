@@ -116,7 +116,7 @@ AnimePlus-main/
 ```
 
 ### Другие ключи в `chrome.storage.local`
-- `shiki_access_token`, `shiki_refresh_token`, `shiki_token_expires_at`: Токены OAuth 2.0 Shikimori.
+- `shiki_token_expires_at`: срок действия токена Shikimori. Сами `shiki_access_token`, `shiki_refresh_token` и `shiki_client_secret` лежат не здесь, а в IndexedDB фона (`anime-plus-vault`, см. «Хранилище секретов» в `modules/bg-shiki.js`): `chrome.storage.local` читают content-скрипты в кадрах плееров. Старые значения переносятся при первом обращении.
 - `shiki_user`: JSON-объект профиля пользователя Shikimori (`{ id, nickname, avatar, ... }`).
 - `shiki_today_date`, `shiki_today_count`, `shiki_today_episodes`: Дневная статистика просмотренных серий (массив строк вида `"${animeId}_${episode}"`).
 - `shiki_list_cache_watching`, `shiki_list_cache_rewatching`: Кэш списков аниме пользователя.

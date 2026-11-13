@@ -121,7 +121,9 @@ async function smoke(opts) {
         r.check('chrome.windows работает', (await b.ev(worker, 'chrome.windows.getLastFocused().then(w => typeof w.id)')) === 'number');
         const code = await b.openPage('https://shikimori.io/oauth/authorize/AAAAAAAAAAAAAAAAAAAAAAAAAAAA');
         await wait(5000);
-        r.check('чужой код не принят', await b.ev(worker, "chrome.storage.local.get(['shiki_access_token']).then(s => s.shiki_access_token === undefined)"));
+        r.check('чужой код не принят', await b.ev(worker, 'readShikiSecrets().then(s => s.shiki_access_token === undefined)'));
+        // Хранилище секретов в настоящем браузере — IndexedDB: в тестах её нет, поэтому запись и чтение проверяются здесь
+        r.check('секреты входа пишутся в хранилище фона и не попадают в chrome.storage.local', await b.ev(worker, "saveShikiAuth({ shiki_client_secret: 'stand-probe' }).then(() => Promise.all([readShikiSecrets(), chrome.storage.local.get(['shiki_client_secret'])])).then(([vault, local]) => shikiVault().then(v => v.remove(['shiki_client_secret'])).then(() => readShikiSecrets()).then(after => vault.shiki_client_secret === 'stand-probe' && local.shiki_client_secret === undefined && after.shiki_client_secret === undefined))"));
         await b.closePage(code);
 
         const popup = await b.openPage(`chrome-extension://${extId}/popup/popup.html`);

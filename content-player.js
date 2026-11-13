@@ -24,21 +24,30 @@
     const embedDomain = (urlParams.get('d') || '').toLowerCase();
     const embedRef = urlParams.get('ref') || '';
     const refHost = hostOf(ref);
+    // Кто встроил кадр: Chrome сообщает адреса всех внешних кадров, верхний идёт последним.
+    // В отличие от referrer, страница не может ни скрыть их, ни подделать
+    const ancestors = window.location.ancestorOrigins;
+    const topHost = ancestors && ancestors.length ? hostOf(ancestors[ancestors.length - 1]) : '';
     const parentSite = globalThis.AgSites ? (
+        globalThis.AgSites.byHost(topHost) ||
         globalThis.AgSites.byHost(refHost) ||
         globalThis.AgSites.byHost(embedDomain) ||
         globalThis.AgSites.byHost(hostOf(embedRef))
     ) : null;
 
     try {
-        const isAllowed = !ref
+        // Обёртка другого плеера между сайтом и кадром не мешает: важна только верхняя страница
+        const isAllowed = topHost ? isSiteHost(topHost) : (
+            // Браузер без ancestorOrigins: остаётся адрес источника, а сайт может его и не передать
+            !ref
             || isSiteHost(refHost)
             || isSiteHost(embedDomain)
             || isSiteHost(hostOf(embedRef))
-            // Kodik внутри обёртки другого плеера
-            || /kodik|anivod|aniboom|dbcode|kombik|tube-storage|aniqizm/.test(refHost)
+            // Kodik внутри обёртки другого плеера: точное совпадение домена из списка в config.js
+            || window.isValidOrigin(`https://${refHost}`)
             // Кадр перезагрузил сам себя: адрес источника теперь он сам
-            || refHost === window.location.hostname;
+            || refHost === window.location.hostname
+        );
 
         if (!isAllowed) return;
     } catch (e) {

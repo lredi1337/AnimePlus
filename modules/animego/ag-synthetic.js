@@ -78,7 +78,8 @@
         const kindMap = { tv: 'ТВ Сериал', movie: 'Фильм', ova: 'OVA', ona: 'ONA', special: 'Спешл', music: 'Клип', tv_special: 'ТВ Спешл' };
 
         return {
-            id: raw.id,
+            // Номер и число серий попадают в разметку страницы: только числа
+            id: parseInt(raw.id, 10),
             name: raw.name || '',
             russian: raw.russian || raw.name || '',
             japanese: Array.isArray(raw.japanese) ? raw.japanese[0] : (raw.japanese || ''),
@@ -86,8 +87,8 @@
             kind: kindMap[raw.kind] || (raw.kind ? String(raw.kind).toUpperCase() : 'TV'),
             score: raw.score || '—',
             status: raw.status || '',
-            episodes: raw.episodes || 0,
-            episodesAired: raw.episodes_aired || 0,
+            episodes: parseInt(raw.episodes, 10) || 0,
+            episodesAired: parseInt(raw.episodes_aired, 10) || 0,
             airedOn: raw.aired_on ? String(raw.aired_on).split('-')[0] : '',
             // description_html — пользовательский HTML Shikimori: только через санитайзер
             description: raw.description_html ? window.agSanitizeHtml(raw.description_html) : escapeHtml(raw.description || ''),
@@ -743,12 +744,12 @@
                                     <h2 class="mb-3 h5 font-weight-bold">Связанное</h2>
                                     <div class="d-flex flex-wrap gap-3">
                                         ${res.related.slice(0, 8).map(item => `
-                                            <a href="/anime/shiki-${item.id}" class="d-flex align-items-center gap-3 p-2 rounded bg-body-tertiary text-decoration-none text-reset" style="width: 260px; border: 1px solid var(--ap-hover); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
-                                                <img referrerpolicy="no-referrer" src="${escapeHtml(item.poster || '')}" style="width: 48px; height: 68px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="${escapeHtml(item.russian)}" data-ag-poster-id="${item.id}" data-ag-poster-ru="${escapeHtml(item.russian)}">
+                                            <a href="/anime/shiki-${escapeHtml(String(item.id))}" class="d-flex align-items-center gap-3 p-2 rounded bg-body-tertiary text-decoration-none text-reset" style="width: 260px; border: 1px solid var(--ap-hover); transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                                                <img referrerpolicy="no-referrer" src="${escapeHtml(item.poster || '')}" style="width: 48px; height: 68px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="${escapeHtml(item.russian)}" data-ag-poster-id="${escapeHtml(String(item.id))}" data-ag-poster-ru="${escapeHtml(item.russian)}">
                                                 <div class="overflow-hidden">
                                                     <div class="fw-bold text-truncate small">${escapeHtml(item.russian)}</div>
                                                     <div class="text-body-tertiary text-truncate" style="font-size: 0.8rem; opacity: 0.75;">${escapeHtml(item.relation)}</div>
-                                                    <div class="text-secondary" style="font-size: 0.8rem;">${escapeHtml(item.kind)}${item.year ? ' / ' + item.year : ''}</div>
+                                                    <div class="text-secondary" style="font-size: 0.8rem;">${escapeHtml(item.kind)}${item.year ? ' / ' + escapeHtml(String(item.year)) : ''}</div>
                                                 </div>
                                             </a>
                                         `).join('')}

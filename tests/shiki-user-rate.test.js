@@ -13,7 +13,7 @@ function run({ anime, rate = null, episode, animeFails = false }) {
         console, URL, URLSearchParams, setTimeout, clearTimeout, AbortController, Date, Math, JSON, Promise,
         chrome: {
             storage: {
-                local: { get: async () => ({ ...store }), set: async (v) => { Object.assign(store, v); } },
+                local: { get: async () => ({ ...store }), set: async (v) => { Object.assign(store, v); }, remove: async (keys) => { [].concat(keys).forEach(k => delete store[k]); } },
                 onChanged: { addListener() {} }
             },
             alarms: { create() {}, get: async () => null, onAlarm: { addListener() {} } },

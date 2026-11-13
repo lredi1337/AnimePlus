@@ -93,8 +93,9 @@
         renderRate();
     });
 
-    const { shiki_access_token: token } = await chrome.storage.local.get(['shiki_access_token']);
-    if (token) await AgGuide.mark('shiki');
+    // Токены хранит только фон; профиль записывается сразу после входа и удаляется при выходе
+    const { shiki_user: account } = await chrome.storage.local.get(['shiki_user']);
+    if (account) await AgGuide.mark('shiki');
     // Отсчёт дней до просьбы об оценке начинается с первого открытия окна или первой серии
     state = await AgGuide.patch({});
     renderQuest();
