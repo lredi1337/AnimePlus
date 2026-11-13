@@ -125,7 +125,8 @@ test('плеер сайта не дал кнопку Kodik: это видно в
     w.chrome = { storage: { local: { get: async () => ({}) } } };
     w.eval(read('modules/shared/sites.js'));
     w.eval(read('modules/player/agp-to-kodik.js').replace('const WAIT_MS = 30000', 'const WAIT_MS = 200'));
-    await tick(500);
+    // Ждём записи, а не фиксированное время: под нагрузкой всех тестов таймер срабатывает позже
+    for (let i = 0; i < 40 && notes.length === 0; i++) await tick(100);
     assert.deepEqual(notes, ['agp_no_button']);
     w.close();
 });
