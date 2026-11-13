@@ -68,11 +68,16 @@ test('предварительный запрос разрешает отпра�
     assert.strictEqual((await preflight('https://evil.example')).headers.get('Access-Control-Allow-Origin'), null);
 });
 
-test('копия для разработки разрешается настройкой сервера', async () => {
+test('форма поддержки работает и в копии, загруженной из папки с GitHub', async () => {
     const { default: worker } = await load();
     const { env, ctx } = makeServer();
-    env.EXTRA_EXTENSION_IDS = 'abcdefghijklmnopabcdefghijklmnop';
-    assert.strictEqual((await worker.fetch(postReport(REPORT, 'chrome-extension://abcdefghijklmnopabcdefghijklmnop'), env, ctx)).status, 200);
+    const unpacked = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    const preflight = await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'OPTIONS', headers: { Origin: unpacked } }), env, ctx);
+    assert.strictEqual(preflight.headers.get('Access-Control-Allow-Origin'), unpacked);
+    // Без настроек почты сервер отвечает 503, но не 403: отправителя он пропустил
+    const res = await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'POST', headers: { Origin: unpacked }, body: '{}' }), env, ctx);
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual((await worker.fetch(new Request('https://x.test/v1/feedback', { method: 'POST', headers: { Origin: 'chrome-extension://bad' }, body: '{}' }), env, ctx)).status, 403);
 });
 
 test('неизвестный адрес: 404', async () => {

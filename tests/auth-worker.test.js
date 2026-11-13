@@ -59,7 +59,7 @@ test('без секрета в настройках сервер не работ
 test('чужие сайты и страницы не могут менять коды через секрет Anime+', async () => {
     const { default: worker } = await load();
     const calls = mockShikimori();
-    for (const origin of ['https://evil.example', 'chrome-extension://otherextensionidotherextension', null]) {
+    for (const origin of ['https://evil.example', 'chrome-extension://not-an-id', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop.evil.example', 'moz-extension://abcdefghijklmnopabcdefghijklmnop', 'null', null]) {
         const res = await worker.fetch(post({ grant_type: 'authorization_code', code: 'C0DE' }, { origin }), ENV);
         assert.strictEqual(res.status, 403, String(origin));
     }
@@ -68,12 +68,24 @@ test('чужие сайты и страницы не могут менять к�
     assert.strictEqual(preflight.headers.get('Access-Control-Allow-Origin'), null);
 });
 
-test('копия для разработки разрешается настройкой сервера', async () => {
+// Многие ставят расширение из папки с GitHub: у каждой такой копии свой id, и вход должен работать и у них
+test('копия, загруженная из папки, входит так же, как версия из магазина', async () => {
     const { default: worker } = await load();
     mockShikimori();
-    const dev = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
-    const res = await worker.fetch(post({ grant_type: 'refresh_token', refresh_token: 'R1' }, { origin: dev }), { ...ENV, EXTRA_EXTENSION_IDS: 'abcdefghijklmnopabcdefghijklmnop' });
+    const unpacked = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    const preflight = await worker.fetch(new Request('https://animeplus.test/', { method: 'OPTIONS', headers: { Origin: unpacked, 'Access-Control-Request-Headers': 'content-type,user-agent' } }), ENV);
+    assert.strictEqual(preflight.headers.get('Access-Control-Allow-Origin'), unpacked);
+    const res = await worker.fetch(post({ grant_type: 'refresh_token', refresh_token: 'R1' }, { origin: unpacked }), ENV);
     assert.strictEqual(res.status, 200);
+});
+
+// Расширение добавляет к запросу User-Agent: если браузер его отправит, без разрешения запрос не дойдёт до воркера
+test('предварительный запрос разрешает заголовки, которые шлёт расширение', async () => {
+    const { default: worker } = await load();
+    const preflight = await worker.fetch(new Request('https://animeplus.test/', { method: 'OPTIONS', headers: { Origin: STORE_ORIGIN, 'Access-Control-Request-Headers': 'content-type,user-agent' } }), ENV);
+    const allowed = preflight.headers.get('Access-Control-Allow-Headers').toLowerCase();
+    assert.match(allowed, /content-type/);
+    assert.match(allowed, /user-agent/);
 });
 
 test('своё приложение зрителя: 404, и расширение идёт к Shikimori напрямую со своим секретом', async () => {

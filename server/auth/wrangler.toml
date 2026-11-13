@@ -14,4 +14,3 @@ enabled = true
 
 # Секрет приложения Shikimori хранится только в Cloudflare (Settings → Variables and Secrets, тип Secret):
 #   npx wrangler secret put SHIKI_CLIENT_SECRET
-# Необязательно: EXTRA_EXTENSION_IDS — id копий расширения для разработки через запятую

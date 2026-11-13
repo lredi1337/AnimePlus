@@ -5,7 +5,8 @@
 
 import { handleFeedback } from './feedback.js';
 
-const STORE_EXTENSION_ID = 'mgcaideibpbdddnbedoefmabladoaajg';
+// id расширения Chrome: 32 буквы от a до p. Любого, а не только версии из магазина: многие ставят Anime+ из папки с GitHub
+const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
 // Ответ на чтение таймингов один и тот же: пусть его держит кэш браузера и Cloudflare
 const CLOSED_CACHE_SEC = 7 * 24 * 3600;
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -14,10 +15,9 @@ const writeCors = (origin) => ({ ...CORS, 'Access-Control-Allow-Origin': origin,
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS, ...extra } });
 
 /** Писать могут только расширения: страница любого сайта иначе отправляла бы письма с адресов своих посетителей */
-function extensionOrigin(request, env) {
+function extensionOrigin(request) {
     const origin = request.headers.get('Origin') || '';
-    const ids = [STORE_EXTENSION_ID, ...String(env.EXTRA_EXTENSION_IDS || '').split(',').map(id => id.trim()).filter(Boolean)];
-    return ids.some(id => origin === `chrome-extension://${id}`) ? origin : null;
+    return EXTENSION_ORIGIN.test(origin) ? origin : null;
 }
 
 // Страница поддержки на GitHub Pages: с неё можно только написать в поддержку
@@ -25,7 +25,7 @@ const SUPPORT_SITE_ORIGIN = 'https://lredi1337.github.io';
 
 /** Кто может писать по этому адресу: адрес отправителя, который вернётся в CORS, или null */
 function allowedOrigin(request, env, pathname) {
-    const extension = extensionOrigin(request, env);
+    const extension = extensionOrigin(request);
     if (extension) return extension;
     return pathname === '/v1/feedback' && request.headers.get('Origin') === SUPPORT_SITE_ORIGIN ? SUPPORT_SITE_ORIGIN : null;
 }

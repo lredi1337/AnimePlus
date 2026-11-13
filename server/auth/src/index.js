@@ -1,9 +1,9 @@
 // Сервер входа в Shikimori для Anime+ (воркер animeplus.ruscadred.workers.dev).
 // Shikimori выдаёт токены только вместе с секретом приложения, а в расширении его не спрятать: секрет живёт здесь,
 // в настройках Cloudflare (SHIKI_CLIENT_SECRET), и подставляется в обмен кода и обновление токена.
-// Принимает запросы только от расширения, иначе любой сайт мог бы менять коды через секрет Anime+.
+// Принимает запросы только от расширений Chrome, иначе любой сайт мог бы менять коды через секрет Anime+.
+// Любых, а не только версии из магазина: многие ставят Anime+ из папки с GitHub, и у каждой такой копии свой id.
 
-const STORE_EXTENSION_ID = 'mgcaideibpbdddnbedoefmabladoaajg';
 // client_id не секрет: он виден в адресе входа и записан в credentials.js
 const DEFAULT_CLIENT_ID = 'SDRlebImRwlk9l3e-h380zUp-8HM725SHq1MLw73lzI';
 // Основной домен первым: shikimori.one и .me перенаправляют на него, а POST после перенаправления превращается в GET
@@ -12,17 +12,20 @@ const SHIKI_TIMEOUT_MS = 4000;
 const USER_AGENT = 'AnimePlus (Cloudflare Worker)';
 const MAX_BODY = 4096;
 
+// id расширения Chrome: 32 буквы от a до p
+const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
+
 /** Адрес расширения, которое может писать сюда, или null */
-function extensionOrigin(request, env) {
+function extensionOrigin(request) {
     const origin = request.headers.get('Origin') || '';
-    const ids = [STORE_EXTENSION_ID, ...String(env.EXTRA_EXTENSION_IDS || '').split(',').map(id => id.trim()).filter(Boolean)];
-    return ids.some(id => origin === `chrome-extension://${id}`) ? origin : null;
+    return EXTENSION_ORIGIN.test(origin) ? origin : null;
 }
 
 const corsFor = (origin) => (origin ? {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    // Расширение добавляет User-Agent: без разрешения браузер, который его отправит, не пропустил бы запрос
+    'Access-Control-Allow-Headers': 'Content-Type, User-Agent',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin'
 } : { Vary: 'Origin' });
@@ -80,7 +83,7 @@ async function askShikimori(params, origin) {
 
 export default {
     async fetch(request, env) {
-        const origin = extensionOrigin(request, env);
+        const origin = extensionOrigin(request);
         if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsFor(origin) });
         if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
         if (!origin) return json({ error: 'forbidden' }, 403, null);
