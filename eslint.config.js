@@ -1,24 +1,26 @@
 // ESLint (flat config). Главное правило — no-undef: именно оно поймало бы
 // необъявленные `cachedCover` (пустой Топ на Jut-Su) и `isValidOrigin` (падение обработчика на AnimeGO).
 const globals = require('globals');
+const fs = require('node:fs');
+const path = require('node:path');
 
-// Функции и константы, которые фоновые скрипты делят через importScripts (общая глобальная область service worker)
-const backgroundShared = Object.fromEntries([
-    'AgTitleMatch', 'AgSites', 'AgKodikMarks', 'SHIKI_CREDENTIALS',
-    'SITE_URL_CACHE_TTL', 'stripTags', 'parseDleSearchCards', 'searchDleSite', 'searchYaniSite', 'resolveSiteUrl', 'resolveAllSites', 'resolveShikiIdFromRedirect',
-    'CACHE_TTL_MS', 'SHIKI_API_BASE', 'SHIKI_API_DOMAINS', 'SHIKI_APP_USER_AGENT',
-    'SHIKI_ID_CACHE_TTL', 'SHIKI_POSTER_MISS_TTL', 'SHIKI_POSTER_TTL', 'SHIKI_REDIRECT_URI',
-    'absoluteShikiUrl', 'addToWatchHistory', 'bumpTodayCounter', 'cachedScheduleData', 'cachedScheduleTime',
-    'shikiRateFetch', 'syncShikiProgress', 'noteDiag', 'diagSummary', 'cleanDiagText', 'addSiteMirror', 'syncSiteMirrors',
-    'ensureRetryAlarm', 'exchangeShikiCode', 'fetchShikimoriApi', 'fillShikiPosters',
-    'findAnimeGoDirectUrl', 'findJutsuDirectUrl', 'getCacheKey', 'getDirectUrlFromCache', 'getShikiPosters',
-    'getShikiTokens', 'getShikiWatchingList', 'isChineseAnime', 'isMissingShikiPoster', 'localDateKey', 'logoutShiki',
-    'postShikiOAuthToken', 'refreshShikiToken', 'resolveShikimoriId', 'searchShikimoriAnime', 'getShikiGenres', 'setDirectUrlInCache',
-    'getAudioFingerprints', 'getRemoteConfig', 'getEpisodePrints', 'saveEpisodePrint', 'pruneAudioCache',
-    'SHIKI_CLIENT_ID', 'beginShikiAuth', 'completeShikiAuth', 'isShikiAuthExpected', 'isShikiCodeInProgress', 'shikiAuthCodeFromUrl',
-    'getShikiStatus', 'resetTodayCount', 'getShikiRelated', 'getOngoingSchedule', 'resolveJutsuCover', 'getRandomShikimoriAnime',
-    'shikiFetch', 'shikiPosterMemo', 'storageWriteQueues', 'toShikiApiUrl', 'updateShikiUserRate', 'updateStorageObject'
-].map(name => [name, 'writable']));
+// Фоновые скрипты делят одну глобальную область service worker: всё, что объявлено на верхнем уровне файлов
+// из importScripts, видно в остальных. Список собирается из самих файлов, поэтому не отстаёт от кода:
+// раньше его вели вручную, и забытое имя давало ложную ошибку, а лишнее прятало настоящую
+function backgroundSharedNames() {
+    const read = (file) => fs.readFileSync(path.join(__dirname, file), 'utf8');
+    const files = [...read('background.js').match(/importScripts\(([^)]*)\)/)[1].matchAll(/'(?:\.\/)?([^']+)'/g)].map(m => m[1]);
+    const names = new Set();
+    for (const file of ['background.js', ...files]) {
+        const source = read(file);
+        // Объявления в начале строки — верхний уровень файла: вложенный код в проекте всегда с отступом
+        for (const m of source.matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm)) names.add(m[1] || m[2]);
+        // Общие модули из modules/shared и credentials.js выставляют себя присваиванием: root.AgSites = …
+        for (const m of source.matchAll(/^\s*(?:root|globalThis|_globalScope)\.([A-Z][\w$]*)\s*=/gm)) names.add(m[1]);
+    }
+    return names;
+}
+const backgroundShared = Object.fromEntries([...backgroundSharedNames()].map(name => [name, 'writable']));
 
 module.exports = [
     {
