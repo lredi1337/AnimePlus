@@ -4,6 +4,7 @@
   "version": "11.5.1",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
+  "minimum_chrome_version": "111",
   "permissions": [
     "storage",
     "scripting",

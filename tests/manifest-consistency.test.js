@@ -21,6 +21,13 @@ test('каждый файл из манифеста существует', () =>
     for (const file of files) assert.ok(fs.existsSync(path.join(ROOT, file)), file);
 });
 
+// Скрипты в мире страницы (world: MAIN) и цвета через color-mix() работают с Chrome 111. На старом браузере
+// расширение сломалось бы молча, а с этой записью магазин просто не предложит его установить
+test('минимальная версия Chrome не ниже той, что нужна коду', () => {
+    assert.ok(Number(manifest.minimum_chrome_version) >= 111, String(manifest.minimum_chrome_version));
+    assert.ok(manifest.content_scripts.some(b => b.world === 'MAIN'));
+});
+
 test('файлы из importScripts существуют', () => {
     const line = read('background.js').match(/importScripts\(([^)]*)\)/)[1];
     for (const m of line.matchAll(/'([^']+)'/g)) assert.ok(fs.existsSync(path.join(ROOT, m[1])), m[1]);

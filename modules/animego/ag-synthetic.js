@@ -40,7 +40,7 @@
             ensureAgLogoPlus(document);
             return document.querySelector('main');
         })().catch((e) => {
-            console.error('[AnimeGO+] Failed to build site shell:', e);
+            console.error('[Anime+] Failed to build site shell:', e);
             shellPromise = null;
             return null;
         });

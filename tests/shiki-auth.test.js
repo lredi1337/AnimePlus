@@ -126,6 +126,37 @@ test('страница и фон сообщают один код одновре
     assert.equal(stats.tokenPosts.length, 1);
 });
 
+test('сбой обмена кода не мешает повторить вход с тем же кодом', async () => {
+    const { ctx, stats } = loadBg();
+    const tabId = await ctx.beginShikiAuth('client');
+    const realFetch = ctx.fetch;
+    let down = true;
+    ctx.fetch = async (url, options) => (down && /workers\.dev|oauth\/token/.test(String(url)) ? new Response('down', { status: 400 }) : realFetch(url, options));
+    const failed = await ctx.completeShikiAuth(CODE, tabId);
+    assert.equal(failed.success, false);
+    assert.match(failed.error, /400/);
+
+    down = false;
+    const retried = await ctx.completeShikiAuth(CODE, tabId);
+    assert.equal(retried.success, true);
+    assert.equal(stats.tokenPosts.length, 1);
+    assert.equal((await ctx.readShikiSecrets()).shiki_access_token, 'access1');
+});
+
+test('профиль при входе запрашивается повторно, если первый запрос не удался', async () => {
+    const { ctx } = loadBg();
+    const realFetch = ctx.fetch;
+    let whoami = 0;
+    ctx.fetch = async (url, options) => {
+        if (/whoami/.test(String(url)) && ++whoami === 1) return new Response('busy', { status: 503 });
+        return realFetch(url, options);
+    };
+    const res = await ctx.exchangeShikiCode(CODE, 'client');
+    assert.equal(res.success, true);
+    assert.equal(res.user.nickname, 'viewer');
+    assert.equal(whoami, 2);
+});
+
 test('разрешение на вход истекает', async () => {
     const { ctx, session } = loadBg();
     const tabId = await ctx.beginShikiAuth('client');

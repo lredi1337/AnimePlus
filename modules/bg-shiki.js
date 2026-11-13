@@ -1,5 +1,5 @@
 // modules/bg-shiki.js
-// Движок авторизации, работы с API Shikimori, синхронизации и push-уведомлений
+// Вход в Shikimori, запросы к его API и запись просмотренных серий в список зрителя
 
 const SHIKI_APP_USER_AGENT = `AnimePlus/${chrome.runtime.getManifest().version} (Browser Extension)`;
 const SHIKI_REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
@@ -356,7 +356,7 @@ async function postShikiOAuthToken(bodyObj, isRetry = false) {
             }
             lastRes = res;
         } catch (e) {
-            console.warn(`[AnimeGO+] OAuth token fetch failed for ${domain}:`, e);
+            console.warn(`[Anime+] OAuth token fetch failed for ${domain}:`, e);
         }
     }
 
@@ -406,7 +406,7 @@ async function requestShikiTokenRefresh(tokens) {
             });
         }
     } catch (e) {
-        console.error('[AnimeGO+] Error refreshing Shikimori token:', e);
+        console.error('[Anime+] Error refreshing Shikimori token:', e);
     }
     return tokens;
 }
@@ -440,7 +440,7 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
 
         if (!res.ok) {
             const errText = await res.text();
-            console.error('[AnimeGO+] Shikimori auth error response:', errText);
+            console.error('[Anime+] Shikimori auth error response:', errText);
             let cleanErr = errText;
             if (errText.includes('<html') || errText.includes('<!DOCTYPE')) {
                 const matchTitle = errText.match(/<title>(.*?)<\/title>/i) || errText.match(/<h1>(.*?)<\/h1>/i);
@@ -463,34 +463,25 @@ async function exchangeShikiCode(code, clientId, clientSecret) {
 
         await saveShikiAuth(storageToSet);
 
-        let userRes;
-        try {
-            userRes = await shikiRateFetch('https://shikimori.io/api/users/whoami', {
-                headers: {
-                    'User-Agent': SHIKI_APP_USER_AGENT,
-                    'Authorization': `Bearer ${tokenData.access_token}`
-                }
-            });
-            if (!userRes.ok) {
-                userRes = await shikiRateFetch('https://shikimori.io/api/users/whoami', {
-                    headers: {
-                        'User-Agent': SHIKI_APP_USER_AGENT,
-                        'Authorization': `Bearer ${tokenData.access_token}`
-                    }
-                });
-            }
-        } catch (e) {}
-
+        // Профиль нужен окну расширения сразу после входа: при сбое пробуем ещё раз
+        const headers = { 'User-Agent': SHIKI_APP_USER_AGENT, 'Authorization': `Bearer ${tokenData.access_token}` };
         let userInfo = null;
-        if (userRes && userRes.ok) {
-            userInfo = await userRes.json();
-            await chrome.storage.local.set({ shiki_user: userInfo });
+        for (let attempt = 0; attempt < 2 && !userInfo; attempt++) {
+            try {
+                const userRes = await shikiRateFetch(`${SHIKI_API_BASE}/api/users/whoami`, { headers });
+                if (userRes.ok) userInfo = await userRes.json();
+            } catch (e) {}
         }
+        if (userInfo) await chrome.storage.local.set({ shiki_user: userInfo });
 
         return { success: true, user: userInfo };
     })();
 
     globalThis.activeOAuthPromises.set(cleanCode, promise);
+    // Неудачный обмен забываем: иначе тот же код до засыпания фона возвращал бы прежнюю ошибку, не пытаясь снова
+    promise.catch(() => {
+        if (globalThis.activeOAuthPromises.get(cleanCode) === promise) globalThis.activeOAuthPromises.delete(cleanCode);
+    });
     return promise;
 }
 
@@ -704,7 +695,7 @@ async function getShikiWatchingList(targetStatus = 'watching') {
             }
         }
     } catch (err) {
-        console.error("[AnimeGO+] getShikiWatchingList network error:", err);
+        console.error("[Anime+] getShikiWatchingList network error:", err);
     }
 
     if (cachedItems) {
@@ -908,7 +899,7 @@ async function updateShikiUserRate({ shikimoriId, episode, status }) {
         return { success: true, rate: savedData };
     } else {
         const errText = await saveRes.text();
-        console.error('[AnimeGO+] Failed to update Shikimori user rate:', errText);
+        console.error('[Anime+] Failed to update Shikimori user rate:', errText);
         await chrome.storage.local.set({
             shiki_last_sync_time: Date.now(),
             shiki_last_sync_status: 'error'
