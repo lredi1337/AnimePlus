@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { read } = require('./helpers');
+const { loadPlayerFrame } = require('./helpers');
 
 const dropdown = (items, selected) => `<div class="dropdown"><div class="dropdown-content">${items.map(t =>
     `<div class="item${t === selected ? ' selected' : ''}"><div class="inner-item"><span>${t}</span></div></div>`).join('')}</div></div>`;
@@ -37,8 +37,6 @@ async function startKodik(current, panelOptions) {
         runtime: { id: 'test', getURL: (p) => p, sendMessage() {}, onMessage: { addListener() {} } },
         storage: { local: { get: async () => ({ ag_settings: { auto_select_voice: false } }), set: async () => {} }, onChanged: { addListener() {} } }
     };
-    frame.eval(read('config.js'));
-    frame.eval(read('modules/shared/sites.js'));
 
     const clicked = [];
     frame.document.addEventListener('click', (e) => {
@@ -47,9 +45,7 @@ async function startKodik(current, panelOptions) {
         if (e.target.closest('.serial-next-button')) clicked.push('next-button');
     }, true);
 
-    frame.eval(read('modules/player/adapters.js'));
-    frame.eval(read('modules/player/skip-memory.js'));
-    frame.eval(read('content-player.js'));
+    loadPlayerFrame(frame);
     await new Promise(r => setTimeout(r, 150));
 
     const send = (dir) => frame.dispatchEvent(new frame.MessageEvent('message', {

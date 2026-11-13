@@ -22,6 +22,18 @@ function isValidOriginSource() {
     return { name: 'config.js#isValidOrigin', code: src.slice(src.indexOf('const TRUSTED_ORIGIN_SUFFIXES'), src.indexOf('window.AG_CONSTANTS')) };
 }
 
+/**
+ * Загружает в окно кадра плеера content-player.js и всё, без чего он не работает, в порядке манифеста.
+ * Оболочка, звук песен и подсказки не загружаются: тесты проверяют сам кадр
+ */
+function loadPlayerFrame(win) {
+    const manifest = JSON.parse(read('manifest.json'));
+    const block = manifest.content_scripts.find(b => (b.js || []).includes('content-player.js'));
+    const needed = (file) => ['config.js', 'modules/shared/sites.js', 'modules/player/adapters.js', 'modules/player/skip-memory.js', 'content-player.js'].includes(file)
+        || file.startsWith('modules/player/frame/');
+    for (const file of block.js.filter(needed)) win.eval(read(file));
+}
+
 const flush = () => new Promise(r => setTimeout(r, 20));
 
-module.exports = { ROOT, read, loadInContext, isValidOriginSource, flush };
+module.exports = { ROOT, read, loadInContext, isValidOriginSource, loadPlayerFrame, flush };

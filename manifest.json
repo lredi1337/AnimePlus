@@ -294,6 +294,12 @@
         "modules/player/shell-view.js",
         "modules/player/shell.js",
         "modules/player/skip-memory.js",
+        "modules/player/frame/link.js",
+        "modules/player/frame/sound.js",
+        "modules/player/frame/progress.js",
+        "modules/player/frame/episodes.js",
+        "modules/player/frame/voice.js",
+        "modules/player/frame/takeover.js",
         "content-player.js"
       ],
       "run_at": "document_end",

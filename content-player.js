@@ -15,51 +15,10 @@
     if (!player) return;
     const isKodik = player.id === 'kodik';
 
-    const siteHosts = globalThis.AgSites ? globalThis.AgSites.allHosts() : ['animego.me', 'animego.org', 'jut-su.net'];
-    const hostOf = (u) => { try { return new URL(u).hostname; } catch (e) { return ''; } };
-    const isSiteHost = (h) => !!h && siteHosts.some(d => h === d || h.endsWith('.' + d));
-
-    const ref = document.referrer || '';
-    const urlParams = new URLSearchParams(window.location.search);
-    const embedDomain = (urlParams.get('d') || '').toLowerCase();
-    const embedRef = urlParams.get('ref') || '';
-    const refHost = hostOf(ref);
-    // Кто встроил кадр: Chrome сообщает адреса всех внешних кадров, верхний идёт последним.
-    // В отличие от referrer, страница не может ни скрыть их, ни подделать
-    const ancestors = window.location.ancestorOrigins;
-    const topHost = ancestors && ancestors.length ? hostOf(ancestors[ancestors.length - 1]) : '';
-    const parentSite = globalThis.AgSites ? (
-        globalThis.AgSites.byHost(topHost) ||
-        globalThis.AgSites.byHost(refHost) ||
-        globalThis.AgSites.byHost(embedDomain) ||
-        globalThis.AgSites.byHost(hostOf(embedRef))
-    ) : null;
-
-    try {
-        // Обёртка другого плеера между сайтом и кадром не мешает: важна только верхняя страница
-        const isAllowed = topHost ? isSiteHost(topHost) : (
-            // Браузер без ancestorOrigins: остаётся адрес источника, а сайт может его и не передать
-            !ref
-            || isSiteHost(refHost)
-            || isSiteHost(embedDomain)
-            || isSiteHost(hostOf(embedRef))
-            // Kodik внутри обёртки другого плеера: точное совпадение домена из списка в config.js
-            || window.isValidOrigin(`https://${refHost}`)
-            // Кадр перезагрузил сам себя: адрес источника теперь он сам
-            || refHost === window.location.hostname
-        );
-
-        if (!isAllowed) return;
-    } catch (e) {
-        return;
-    }
-
-    // Сообщения уходят только верхней странице сайта (modules/shared/sites.js)
-    const TOP_ORIGIN = globalThis.AgSites ? globalThis.AgSites.topOrigin() : '*';
-    const toTop = (message) => window.top.postMessage(message, TOP_ORIGIN);
-
-    // Команды плееру принимаем только от страниц поддерживаемых сайтов (точное совпадение домена)
-    const isParentSiteOrigin = (origin) => /^https:\/\//.test(origin || '') && isSiteHost(hostOf(origin));
+    // Кадр должен встроить сайт из списка: иначе оболочка не запускается (modules/player/frame/link.js)
+    const link = globalThis.AgFrameLink.connect();
+    if (!link) return;
+    const { toTop, isParentSiteOrigin } = link;
 
     toTop({ type: 'AG_GET_DATA' });
 
@@ -67,11 +26,8 @@
     // --- ЛОГИКА ВНУТРИ ПЛЕЕРА (IFRAME) ---
     // ==========================================
     let rewindSum = 0, rewindTimer = null;
-    // Смена плеера: откуда продолжить и до какого времени считаем, что этот плеер запускается сам
-    const TAKEOVER_WAIT_MS = 45000;
-    let handoff = null;
+    // Место, с которого продолжить в видео, которое ещё не появилось (смена плеера)
     let pendingSeek = null;
-    let takeoverUntil = 0;
     // Кадр, который уже показывали, после скрытия сохраняет ширину, поэтому о скрытии сообщает страница
     let hiddenByPage = false;
     const isShown = () => !!window.innerWidth && !hiddenByPage;
@@ -189,255 +145,25 @@
     }, 100);
     setTimeout(() => clearInterval(autoplayCheck), 15000);
 
-    const isJutsu = (document.referrer || '').includes('jut-su.net') || window.location.href.includes('d=jut-su.net');
-
-    // Только список серий. В Kodik три одинаковых выпадающих списка (сезоны, серии, озвучки), и общий
-    // .dropdown-content .item находит их все: активным оказывался пункт сезона, а «следующим» — всегда первая серия
-    const KODIK_SERIES_ITEMS = '.serial-series-box .dropdown-content .item, .serial-series .dropdown-content .item, .series-select .dropdown-content .item';
-
-    const hasLocalEpisodeControls = () => {
-        const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-        const items = document.querySelectorAll(KODIK_SERIES_ITEMS);
-        return !!(sel || items.length > 0);
-    };
-
-    const isDleNavSite = () => {
-        const checkHost = refHost || embedDomain || hostOf(embedRef);
-        return isJutsu || (parentSite && parentSite.platform === 'dle') ||
-            !!(globalThis.AgSites && globalThis.AgSites.isDleHost(checkHost));
-    };
-
-    const shouldUseLocalNav = () => {
-        if (isDleNavSite()) return true;
-        const checkHost = refHost || embedDomain || hostOf(embedRef);
-        const isPageNavSite = /animego\.(me|org)|yummyani\.me/.test(checkHost);
-        if (!isPageNavSite && hasLocalEpisodeControls()) return true;
-        return false;
-    };
-
-    let lastSwitchTime = 0;
-
-    /**
-     * Переключает текущую серию в Kodik плеере (вперед/назад)
-     * @param {'next'|'prev'} dir - Направление переключения
-     * @param {boolean} [force=false] - Игнорировать защитный дебаунс по времени
-     */
-    const switchKodikEpisode = (dir, force = false) => {
-        const debounceMs = (window.AG_CONSTANTS && window.AG_CONSTANTS.EPISODE_SWITCH_DEBOUNCE_MS) || 800;
-        const now = Date.now();
-        if (!force && (now - lastSwitchTime < debounceMs)) return false;
-        lastSwitchTime = now;
-        // С force переключает сам плеер в конце серии, без него зритель
-        if (force) {
+    // Серии: какая открыта, переключение и сообщения странице сайта (modules/player/frame/episodes.js)
+    const episodes = globalThis.AgFrameEpisodes.create({
+        player, isKodik, link, isShown,
+        getShell: () => playerShell,
+        // Переключает сам плеер в конце серии: следующая запускается сама. Иначе серию выбрал зритель
+        onSwitch: (force) => {
+            if (!force) return onViewerPickedEpisode();
             viewerPickedEpisode = false;
             if (releaseHold) releaseHold();
             releaseHold = null;
             ownStartTries = 0;
             ownStartAt = 0;
-        } else {
-            onViewerPickedEpisode();
         }
-
-        if (!isKodik) {
-            const list = player.read('episodes');
-            const target = list[list.findIndex(o => o.selected) + (dir === 'next' ? 1 : -1)];
-            if (!target || !list.some(o => o.selected)) return false;
-            player.choose('episodes', target.index);
-            setTimeout(reportActiveEpisode, 200);
-            return true;
-        }
-
-        // 1. Попробуем найти элементы кастомного выпадающего списка
-        const items = Array.from(document.querySelectorAll(KODIK_SERIES_ITEMS));
-        if (items.length > 0) {
-            let activeIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active') || item.classList.contains('current'));
-            if (activeIdx === -1) {
-                const curEp = getLocalEpisodeData().current;
-                if (curEp) {
-                    activeIdx = items.findIndex(item => (item.textContent || '').match(/\d+/)?.[0] === String(curEp));
-                }
-            }
-            if (activeIdx !== -1) {
-                let newIdx = activeIdx;
-                if (dir === 'next' && activeIdx < items.length - 1) {
-                    newIdx = activeIdx + 1;
-                } else if (dir === 'prev' && activeIdx > 0) {
-                    newIdx = activeIdx - 1;
-                }
-                if (newIdx !== activeIdx && items[newIdx]) {
-                    const targetItem = items[newIdx];
-                    const opts = { bubbles: true, cancelable: true, view: window };
-                    targetItem.dispatchEvent(new MouseEvent('mousedown', opts));
-                    targetItem.dispatchEvent(new MouseEvent('mouseup', opts));
-                    targetItem.click();
-                    setTimeout(() => {
-                        reportActiveEpisode();
-                    }, 200);
-                    return true;
-                }
-            }
-        }
-
-        // 2. Если кастомных элементов нет или не сработало, используем стандартный select
-        const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-        if (sel && sel.tagName === 'SELECT' && sel.options && sel.options.length > 0) {
-            let curIdx = sel.selectedIndex;
-            if (curIdx === -1) {
-                const curEp = getLocalEpisodeData().current;
-                if (curEp) {
-                    curIdx = Array.from(sel.options).findIndex(opt => (opt.text || opt.value || '').match(/\d+/)?.[0] === String(curEp));
-                }
-            }
-            let newIdx = curIdx;
-            if (dir === 'next' && curIdx < sel.options.length - 1) {
-                newIdx = curIdx + 1;
-            } else if (dir === 'prev' && curIdx > 0) {
-                newIdx = curIdx - 1;
-            }
-            if (newIdx !== curIdx && newIdx >= 0 && sel.options[newIdx]) {
-                sel.selectedIndex = newIdx;
-                sel.options[newIdx].selected = true;
-                sel.dispatchEvent(new Event('input', { bubbles: true }));
-                sel.dispatchEvent(new Event('change', { bubbles: true }));
-                setTimeout(() => {
-                    reportActiveEpisode();
-                }, 200);
-                return true;
-            }
-        }
-
-        // Список серий есть, значит мы на краю сезона: дальше переключать нечего.
-        // Нативная кнопка Kodik здесь не годится: с последней серии она уводит в следующий сезон
-        if (items.length > 0 || sel) return false;
-
-        // 3. Fallback: только для плееров без списка серий — кнопки «Дальше >» / «< Назад»
-        if (dir === 'next') {
-            const nextBtn = document.querySelector('.serial-next, [class*="next-series"], [class*="next-episode"]') ||
-                Array.from(document.querySelectorAll('button, a, div, span')).find(el => {
-                    if (el.children.length > 2 || el.id === 'ag-n') return false;
-                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-                    return t === 'дальше' || t === 'дальше >' || t === 'следующая серия';
-                });
-            if (nextBtn) {
-                const opts = { bubbles: true, cancelable: true, view: window };
-                nextBtn.dispatchEvent(new MouseEvent('mousedown', opts));
-                nextBtn.dispatchEvent(new MouseEvent('mouseup', opts));
-                nextBtn.click();
-                setTimeout(() => {
-                    reportActiveEpisode();
-                }, 200);
-                return true;
-            }
-        } else if (dir === 'prev') {
-            const prevBtn = document.querySelector('.serial-prev, [class*="prev-series"], [class*="prev-episode"]') ||
-                Array.from(document.querySelectorAll('button, a, div, span')).find(el => {
-                    if (el.children.length > 2 || el.id === 'ag-p') return false;
-                    const t = (el.innerText || el.textContent || '').trim().toLowerCase();
-                    return t === 'назад' || t === '< назад' || t === 'предыдущая серия';
-                });
-            if (prevBtn) {
-                const opts = { bubbles: true, cancelable: true, view: window };
-                prevBtn.dispatchEvent(new MouseEvent('mousedown', opts));
-                prevBtn.dispatchEvent(new MouseEvent('mouseup', opts));
-                prevBtn.click();
-                setTimeout(() => {
-                    reportActiveEpisode();
-                }, 200);
-                return true;
-            }
-        }
-        return false;
-    };
-
-    const getLocalEpisodeData = () => {
-        if (!isKodik) {
-            const own = (playerShell && playerShell.current('episodes')) || player.read('episodes').find(o => o.selected);
-            return { current: (own && own.label) || new URLSearchParams(window.location.search).get('episode') || '1', prev: '', next: '' };
-        }
-
-        const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-        if (sel && sel.tagName === 'SELECT' && sel.options && sel.options.length > 0) {
-            const curIdx = sel.selectedIndex >= 0 ? sel.selectedIndex : Array.from(sel.options).findIndex(o => o.selected);
-            const prevOpt = curIdx > 0 ? sel.options[curIdx - 1] : null;
-            const nextOpt = curIdx >= 0 && curIdx < sel.options.length - 1 ? sel.options[curIdx + 1] : null;
-            const curOpt = curIdx >= 0 ? sel.options[curIdx] : null;
-
-            if (curOpt) {
-                return {
-                    current: (curOpt.text || curOpt.value).match(/\d+/)?.[0] || "1",
-                    prev: prevOpt ? (prevOpt.text || prevOpt.value).match(/\d+/)?.[0] || "" : "",
-                    next: nextOpt ? (nextOpt.text || nextOpt.value).match(/\d+/)?.[0] || "" : ""
-                };
-            }
-        }
-
-        const items = Array.from(document.querySelectorAll(KODIK_SERIES_ITEMS));
-        if (items.length > 0) {
-            let activeIdx = items.findIndex(item => item.classList.contains('selected') || item.classList.contains('active') || item.classList.contains('current'));
-            if (activeIdx === -1) {
-                const seriesTextEl = document.querySelector('.serial-series-box .text, .series-select .text, .serial-series .text');
-                const epMatch = (seriesTextEl?.textContent || '').match(/\d+/);
-                if (epMatch) {
-                    activeIdx = items.findIndex(item => (item.textContent || '').match(/\d+/)?.[0] === epMatch[0]);
-                }
-            }
-            if (activeIdx !== -1) {
-                const curItem = items[activeIdx];
-                const prevItem = items[activeIdx - 1];
-                const nextItem = items[activeIdx + 1];
-
-                return {
-                    current: curItem ? (curItem.textContent || '').match(/\d+/)?.[0] || "1" : "1",
-                    prev: prevItem ? (prevItem.textContent || '').match(/\d+/)?.[0] || "" : "",
-                    next: nextItem ? (nextItem.textContent || '').match(/\d+/)?.[0] || "" : ""
-                };
-            }
-        }
-
-        // Fallback: Check any element in iframe DOM displaying "39 серия"
-        const allNodes = document.querySelectorAll('button, div, span, a, p, select option:checked');
-        for (const el of allNodes) {
-            if (el.children.length > 3) continue;
-            const txt = (el.innerText || el.textContent || '').trim();
-            const epMatch = txt.match(/^(\d+)\s*сери[яи]/i) || txt.match(/\b(\d+)\s*сери[яи]/i);
-            if (epMatch) {
-                const num = parseInt(epMatch[1]);
-                if (num > 0) {
-                    return { current: num.toString(), prev: (num > 1 ? (num - 1).toString() : ""), next: (num + 1).toString() };
-                }
-            }
-        }
-
-        // Check side navigation arrows in iframe
-        const nextArrow = document.querySelector('[class*="next"], .ag-next-ep');
-        const prevArrow = document.querySelector('[class*="prev"], .ag-prev-ep');
-        if (nextArrow) {
-            const nMatch = nextArrow.textContent.match(/\d+/);
-            if (nMatch && parseInt(nMatch[0]) > 1) {
-                const ep = parseInt(nMatch[0]) - 1;
-                return { current: ep.toString(), prev: (ep > 1 ? (ep - 1).toString() : ""), next: nMatch[0] };
-            }
-        }
-        if (prevArrow) {
-            const pMatch = prevArrow.textContent.match(/\d+/);
-            if (pMatch && parseInt(pMatch[0]) >= 1) {
-                const ep = parseInt(pMatch[0]) + 1;
-                return { current: ep.toString(), prev: pMatch[0], next: (ep + 1).toString() };
-            }
-        }
-
-        return { current: "1", prev: "", next: "" };
-    };
-
-    // Скрытая вкладка плеера открыта на своей серии: её номер подменил бы серию того плеера, который смотрят
-    const reportActiveEpisode = () => {
-        if (!isShown()) return;
-        const data = getLocalEpisodeData();
-        toTop({ type: 'AG_EPISODE_CHANGED', episode: data.current });
-    };
-
-    // Плеер сообщил новые списки: серию могли сменить его собственные кнопки или автопереход
-    document.addEventListener('ag-player-lists', reportActiveEpisode);
+    });
+    const getLocalEpisodeData = episodes.current;
+    const reportActiveEpisode = episodes.report;
+    const switchKodikEpisode = episodes.switchEpisode;
+    const isDleNavSite = episodes.isDleNavSite;
+    const shouldUseLocalNav = episodes.shouldUseLocalNav;
 
     // Свои клавиши Kodik перематывает сам: без перехвата нажатие срабатывало дважды, а стрелки уводили на 10-20 секунд.
     // Поэтому слушаем раньше плеера и не отдаём ему ни нажатие, ни отпускание, ни повтор при удержании
@@ -699,49 +425,6 @@
         toTop({ type: 'AG_GET_DATA' });
     }
 
-    // Серии переключаются внутри Kodik: страница сайта узнаёт номер только от нас
-    function watchLocalEpisodes() {
-        // Чужие плееры меняют серию без перезагрузки кадра и без событий: следим за самим списком
-        if (!isKodik) {
-            let last = null;
-            setInterval(() => {
-                const now = getLocalEpisodeData().current;
-                if (now !== last) {
-                    reportActiveEpisode();
-                    ownStartTries = 0;
-                }
-                last = now;
-            }, 1000);
-            return;
-        }
-        if (!shouldUseLocalNav()) return;
-        const checkInterval = setInterval(() => {
-            const sel = document.querySelector('.serial-series-box select, .serial-series select, select[name="series"], .series-select');
-            const items = document.querySelectorAll(KODIK_SERIES_ITEMS);
-            if ((sel && sel.options && sel.options.length > 0) || items.length > 0) {
-                reportActiveEpisode();
-                clearInterval(checkInterval);
-            }
-        }, 500);
-        setTimeout(() => clearInterval(checkInterval), 10000);
-
-        document.addEventListener('change', (e) => {
-            if (e.target.matches('.serial-series-box select, .serial-series select, select[name="series"], .series-select')) {
-                lastSwitchTime = Date.now();
-                setTimeout(reportActiveEpisode, 100);
-            }
-        });
-
-        document.addEventListener('click', (e) => {
-            const target = e.target.closest(`${KODIK_SERIES_ITEMS}, .serial-next-button, .serial-next, [class*="next-series"], [class*="next-episode"]`);
-            const isNextText = !target && (e.target.innerText || e.target.textContent || '').trim().toLowerCase().startsWith('дальше');
-            if (target || isNextText) {
-                lastSwitchTime = Date.now();
-                setTimeout(reportActiveEpisode, 200);
-            }
-        });
-    }
-
     let playerControlsReady = false;
     // Не отметка в разметке: плеер может подменить элемент его копией, и отметка скопируется, а обработчики нет
     const boundVideos = new WeakSet();
@@ -768,7 +451,7 @@
                 playerControlsReady = true;
                 setupSmartSkip(v);
                 setupMediaSession(v);
-                watchLocalEpisodes();
+                episodes.watch(() => { ownStartTries = 0; });
             } else if (!isKodik) {
                 setupSmartSkip(v);
             }
@@ -782,10 +465,9 @@
                     } catch (err) {}
                 }
 
-                const now = Date.now();
-                if (isHandlingEnded || (now - lastSwitchTime < 3000)) return;
+                if (isHandlingEnded || episodes.sinceSwitch() < 3000) return;
                 isHandlingEnded = true;
-                lastSwitchTime = now;
+                episodes.markSwitched();
 
                 if (settings.autoNext) {
                     if (shouldUseLocalNav()) {
@@ -900,299 +582,32 @@
     // Чужие плееры создают видео по-разному, в том числе в Shadow DOM, куда наблюдатель не заглядывает
     if (!isKodik) setInterval(onPlayerChange, 1000);
 
-    // Отчёт о прогрессе видео для учёта серий (modules/progress-tracker.js на странице сайта).
-    // Kodik создаёт <video> только после нажатия Play и пересоздаёт его при смене серии/озвучки,
-    // поэтому следим за DOM постоянно, а не 15 секунд после загрузки.
-    const trackedVideos = new WeakSet();
-    const PROGRESS_THROTTLE_MS = 2000;
-    const MIN_EPISODE_SEC = 60; // реклама короче и места остановки не запрашивает
-    const RESUME_MAX_START_SEC = 5; // зритель уже сам ушёл дальше — не перематываем
-
-    // Место остановки хранит страница сайта (modules/progress-tracker.js): серию и тайтл знает только она
-    let resumeVideo = null;
-    window.addEventListener('message', (e) => {
-        if (e.data?.type !== 'AG_RESUME' || !isParentSiteOrigin(e.origin)) return;
-        const v = resumeVideo;
-        resumeVideo = null;
-        if (!v || v.currentTime > RESUME_MAX_START_SEC) return;
-        const time = Number(e.data.time);
-        if (time > 0 && time < v.duration) v.currentTime = time;
-    });
-
-    // Браузер может не разрешить звук без нажатия в этом кадре: тогда видео идёт без звука, а звук вернётся при первом действии зрителя
-    let soundWaiting = false;
-    let soundVolume = 1;
-    // Kodik глушит себя нулевой громкостью и запоминает её, поэтому одного снятия отметки «без звука» мало
-    const isSilent = (v) => v.muted || v.volume === 0;
-    const unmute = (v) => {
-        v.muted = false;
-        if (v.volume === 0) v.volume = soundVolume;
-    };
-    const muteUntilAction = (v) => {
-        soundWaiting = true;
-        v.muted = true;
-        v.play().catch(() => {});
-        // Нажатие по самому видео только возвращает звук: паузу зритель не просил. Кнопки и ползунок работают как обычно
-        const keepPlaying = (e) => {
-            if (e.composedPath().some(n => n.closest && n.closest('button, input, a, .slider, .panel'))) return;
-            e.stopPropagation();
-            e.preventDefault();
-        };
-        const restore = (e) => {
-            soundWaiting = false;
-            document.removeEventListener('pointerdown', restore, true);
-            document.removeEventListener('keydown', restore, true);
-            if (!settings.playerMuted) unmute(v);
-            if (e.type === 'pointerdown') document.addEventListener('click', keepPlaying, { capture: true, once: true });
-        };
-        document.addEventListener('pointerdown', restore, true);
-        document.addEventListener('keydown', restore, true);
-    };
-    // Плеер мог выключить звук сам, например запустившись без нажатия. Выключенным он остаётся, только если так решил зритель
-    const SOUND_CHECK_MS = 400;
-    const keepSound = (v) => {
-        if (!isSilent(v) || soundWaiting || settings.playerMuted || v.paused || player.adState(v) !== 'none') return;
-        soundWaiting = true;
-        unmute(v);
-        setTimeout(() => {
-            soundWaiting = false;
-            // Браузер останавливает видео, которому звук не разрешён
-            if (v.paused) muteUntilAction(v);
-        }, SOUND_CHECK_MS);
-    };
-
-    const attachProgressReporter = (v) => {
-        if (trackedVideos.has(v)) return;
-        trackedVideos.add(v);
-        // Kodik обнуляет громкость и после старта, поэтому смотрим всё время, пока видео идёт
-        v.addEventListener('timeupdate', () => keepSound(v));
-        let lastSent = 0;
-        // getLocalEpisodeData в худшем случае обходит весь DOM плеера — номер серии
-        // пересчитываем не чаще раза в 10 с и при смене источника видео
-        let episodeCache = null;
-        let episodeCacheTs = 0;
-        const getEpisodeCached = () => {
-            if (!episodeCache || Date.now() - episodeCacheTs > 10000) {
-                episodeCache = getLocalEpisodeData();
-                episodeCacheTs = Date.now();
-            }
-            return episodeCache;
-        };
-        let resumeAsked = false;
-        const askResume = () => {
-            if (resumeAsked || !(v.duration >= MIN_EPISODE_SEC)) return;
-            resumeAsked = true;
-            // Плеер сменили: место известно точно, спрашивать страницу незачем
-            if (pendingSeek !== null) {
-                if (pendingSeek < v.duration) v.currentTime = pendingSeek;
-                pendingSeek = null;
-                return;
-            }
-            resumeVideo = v;
-            toTop({ type: 'AG_GET_RESUME', episode: getEpisodeCached().current });
-        };
-        v.addEventListener('loadstart', () => { episodeCache = null; resumeAsked = false; });
-        v.addEventListener('loadedmetadata', askResume);
-        v.addEventListener('durationchange', askResume);
-        askResume();
-
-        const report = (isEnded) => {
-            const data = getEpisodeCached();
-            toTop({
-                type: 'AG_VIDEO_PROGRESS',
-                episode: data.current,
-                currentTime: v.currentTime || 0,
-                duration: Number.isFinite(v.duration) ? v.duration : 0,
-                volume: v.volume,
-                isEnded
-            });
-        };
-
-        v.addEventListener('timeupdate', () => {
-            const now = Date.now();
-            if (now - lastSent < PROGRESS_THROTTLE_MS) return;
-            lastSent = now;
-            report(false);
-        });
-        v.addEventListener('ended', () => report(true));
-    };
-
-    // Реклама идёт в отдельном video: слушаем только саму серию
-    const audioBound = new WeakSet();
-    const bindAudioSkip = (v) => {
-        if (!audioSkip || audioBound.has(v)) return;
-        audioBound.add(v);
-        const check = () => { if (v.duration > 300) audioSkip.bind(v); };
-        v.addEventListener('loadedmetadata', check);
-        v.addEventListener('durationchange', check);
-        check();
-    };
-
-    const scanVideos = () => player.videos().forEach((v) => {
-        attachProgressReporter(v);
-        bindAudioSkip(v);
-    });
-    scanVideos();
-    let videoScanTimer = null;
-    new MutationObserver(() => {
-        if (videoScanTimer) return;
-        videoScanTimer = setTimeout(() => { videoScanTimer = null; scanVideos(); }, 500);
-    }).observe(document.documentElement, { childList: true, subtree: true });
-    if (!isKodik) setInterval(scanVideos, 1000);
-
-
-    // Озвучка, выбранная пользователем: плеер перезагружается при смене озвучки, поэтому выбор хранится вне страницы
-    const voiceChoice = globalThis.AgVoiceChoice;
-    const titleVoiceKey = () => {
-        // У других плееров заголовок кадра не содержит названия: их выбор хранит страница сайта
-        const name = isKodik ? (document.title || '').trim() : '';
-        return name ? `kodik:${name.toLowerCase()}` : '';
-    };
-    let chosenVoice = null;
-    let rememberChoice = () => {};
-    if (voiceChoice) {
-        rememberChoice = (voice) => {
-            chosenVoice = voiceChoice.voiceName(voice);
-            isKodikVoiceDone = true;
-            voiceChoice.set(titleVoiceKey(), voice);
-            voiceChoice.tellPage(voice);
-        };
-        const VOICE_BOX = '.serial-translations-box, .serial-translations, .translation-select, [class*="translation"]';
-        document.addEventListener('change', (e) => {
-            if (!e.isTrusted || !e.target.matches || !e.target.matches('select') || !e.target.closest(VOICE_BOX)) return;
-            const option = e.target.selectedOptions && e.target.selectedOptions[0];
-            if (option) rememberChoice(option.textContent);
-        }, true);
-        document.addEventListener('click', (e) => {
-            if (!e.isTrusted || !e.target.closest) return;
-            const item = e.target.closest('.dropdown-content .item');
-            if (item && item.closest(VOICE_BOX)) rememberChoice(item.textContent);
-        }, true);
-        chosenVoice = (await voiceChoice.get(titleVoiceKey())) || (await voiceChoice.askPage());
-    }
-
-    let isKodikVoiceDone = false;
-    const findAndSelectPriorityVoiceKodik = () => {
-        if (isKodikVoiceDone || !settings || !ownListsReady) return false;
-        // Выбор пользователя действует даже при выключенном автовыборе: это его решение, а не автоматика
-        if (!chosenVoice && settings.auto_select_voice === false) return false;
-        const savedList = settings.voice_priority_list || (window.DEFAULT_SETTINGS ? window.DEFAULT_SETTINGS.voice_priority_list : ["Anilibria", "Studio Band"]);
-        const priorityList = settings.auto_select_voice === false ? [] : savedList;
-        if (!chosenVoice && (!priorityList || priorityList.length === 0)) return false;
-
-        const clean = (s) => (s || '').toLowerCase().replace(/[^a-z0-9а-яё]/gi, '').trim();
-
-        if (!isKodik) {
-            const voices = player.read('voices');
-            if (!voices.length) return false;
-            const own = chosenVoice && voiceChoice ? voiceChoice.pick(voices, chosenVoice, o => o.title) : null;
-            const match = (name) => voices.find((o) => {
-                const a = clean(o.title);
-                const b = clean(name);
-                return a && b && (a.includes(b) || b.includes(a));
-            });
-            const hit = own || priorityList.map(match).find(Boolean);
-            if (!hit) return false;
-            isKodikVoiceDone = true;
-            if (!hit.selected) player.choose('voices', hit.index);
-            return true;
-        }
-
-        // 1. Check standard <select> elements (fastest, 0ms load)
-        const voiceSelect = document.querySelector('.serial-translations-box select, .serial-translations select, select[name="translation"], select[name="voice"], [class*="translation"] select');
-        if (voiceSelect && voiceSelect.options) {
-            const options = Array.from(voiceSelect.options);
-            if (chosenVoice && options.length > 0) {
-                const own = voiceChoice.pick(options, chosenVoice, o => o.text || o.value);
-                if (own) {
-                    isKodikVoiceDone = true;
-                    if (!own.selected) {
-                        voiceSelect.selectedIndex = options.indexOf(own);
-                        voiceSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                        voiceSelect.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                    return true;
-                }
-            }
-            for (const priorityName of priorityList) {
-                const prioClean = clean(priorityName);
-                if (!prioClean) continue;
-
-                for (let i = 0; i < options.length; i++) {
-                    const optText = clean(options[i].text || options[i].value || '');
-                    if (optText && (optText.includes(prioClean) || prioClean.includes(optText))) {
-                        isKodikVoiceDone = true;
-                        if (voiceSelect.selectedIndex !== i) {
-                            voiceSelect.selectedIndex = i;
-                            voiceSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                            voiceSelect.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-                        return true;
-                    }
-                }
-            }
-        }
-
-        // 2. Check custom Kodik dropdown items
-        const dropdownItems = Array.from(document.querySelectorAll('.serial-translations-box .dropdown-content .item, .serial-translations .dropdown-content .item, .translation-select .dropdown-content .item, [class*="translation"] .dropdown-content .item'));
-
-        if (dropdownItems.length > 0) {
-            if (chosenVoice) {
-                const own = voiceChoice.pick(dropdownItems, chosenVoice, el => el.innerText || el.textContent);
-                if (own) {
-                    isKodikVoiceDone = true;
-                    if (!own.classList.contains('selected') && !own.classList.contains('active')) own.click();
-                    return true;
-                }
-            }
-            for (const priorityName of priorityList) {
-                const prioClean = clean(priorityName);
-                if (!prioClean) continue;
-
-                for (const item of dropdownItems) {
-                    const text = clean(item.innerText || item.textContent || '');
-                    if (text && (text.includes(prioClean) || prioClean.includes(text))) {
-                        isKodikVoiceDone = true;
-                        if (!item.classList.contains('selected') && !item.classList.contains('active')) {
-                            item.click();
-                        }
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    };
-
-    findAndSelectPriorityVoiceKodik();
-
-    let kodikCheckTimer = null;
-    let lastKodikCheckTime = 0;
-
-    const voiceObserver = new MutationObserver(() => {
-        const now = Date.now();
-        if (now - lastKodikCheckTime < 300) return;
-        lastKodikCheckTime = now;
-
-        if (findAndSelectPriorityVoiceKodik()) {
-            voiceObserver.disconnect();
-            if (kodikCheckTimer) clearTimeout(kodikCheckTimer);
+    // Звук, ход просмотра и место остановки (modules/player/frame/sound.js, progress.js)
+    const sound = globalThis.AgFrameSound.create({ getSettings: () => settings, adState: (v) => player.adState(v) });
+    const MIN_EPISODE_SEC = globalThis.AgFrameProgress.MIN_EPISODE_SEC;
+    globalThis.AgFrameProgress.start({
+        player, isKodik, link, sound, audioSkip,
+        getEpisode: () => getLocalEpisodeData(),
+        takePendingSeek: () => {
+            const seek = pendingSeek;
+            pendingSeek = null;
+            return seek;
         }
     });
-    if (document.documentElement) {
-        voiceObserver.observe(document.documentElement, { childList: true, subtree: true });
-    }
 
-    kodikCheckTimer = setTimeout(() => {
-        voiceObserver.disconnect();
-    }, isKodik ? 4000 : 15000);
+    // Озвучка: выбор зрителя для тайтла, иначе по приоритетам (modules/player/frame/voice.js)
+    const voice = await globalThis.AgFrameVoice.start({ getSettings: () => settings, isKodik, player, listsReady: () => ownListsReady });
+
+    // Смена плеера или озвучки: та же серия, то же место (modules/player/frame/takeover.js)
+    const takeover = globalThis.AgFrameTakeover.create({
+        player, link, sound, getSettings: () => settings, listsReady: () => ownListsReady, minEpisodeSec: MIN_EPISODE_SEC,
+        setPendingSeek: (time) => { pendingSeek = time; }
+    });
 
     // Плеер со всеми сезонами открывает то последний сезон и серию, то первый. Страница знает, какой сезон на ней открыт и где зритель остановился
     const START_WAIT_MS = 10000;
     const START_STEP_MS = 300;
-    const STEP_SETTLE_MS = 3000;
-    const settle = () => new Promise(r => setTimeout(r, STEP_SETTLE_MS));
+    const settle = () => new Promise(r => setTimeout(r, globalThis.AgFrameTakeover.SETTLE_MS));
     // Плеер ещё подключает видео: нажатие в этот момент откатывает его к первому сезону и даёт ошибку. Ждём, пока он постоит спокойно
     const STABLE_STEPS = 8;
     const STABLE_WAIT_MS = 30000;
@@ -1221,10 +636,10 @@
         // Озвучки у сезонов разные, поэтому автовыбор идёт после сезона
         const voiceBefore = (player.read('voices').find(o => o.selected) || {}).title;
         ownListsReady = true;
-        findAndSelectPriorityVoiceKodik();
+        voice.select();
         if ((player.read('voices').find(o => o.selected) || {}).title !== voiceBefore) await settle();
         // Плеер сменили: серию выберет передача места
-        if (watching() || handoff) return;
+        if (watching() || takeover.pending()) return;
         const list = player.read('episodes');
         const stopped = last ? list.findIndex(o => o.label === String(last.episode)) : -1;
         const target = stopped >= 0 ? list[last.finished ? Math.min(stopped + 1, list.length - 1) : stopped] : list[0];
@@ -1241,7 +656,7 @@
             clearTimeout(noAnswer);
             openWantedEpisode(e.data).catch(() => {}).finally(() => {
                 ownListsReady = true;
-                if (handoff) takeOver();
+                takeover.takeOver();
                 checkAndClickPlayButton();
             });
         };
@@ -1251,101 +666,10 @@
         noAnswer = setTimeout(() => {
             window.removeEventListener('message', onStart);
             ownListsReady = true;
-            if (handoff) takeOver();
+            takeover.takeOver();
         }, START_WAIT_MS);
     }
 
-    const TAKEOVER_CHECK_MS = 1500;
-    const TAKEOVER_NEAR_SEC = 15;
-    const TAKEOVER_EXACT_SEC = 2;
-    const TAKEOVER_RESTART_MS = 6000;
-    const playOrMuted = (v) => v.play().catch((e) => {
-        if (e.name !== 'NotAllowedError' || v.muted) return;
-        muteUntilAction(v);
-    });
-    // Озвучка сменилась внутри плеера: кадр тот же, плеер перезагружает поток и может вернуться назад или встать.
-    // Сначала даём ему подключить поток: нажатия и перемотка в этот момент его ломают
-    const keepPlaceOnVoice = () => {
-        const v = player.video();
-        if (!v || !(v.duration >= MIN_EPISODE_SEC)) return;
-        handoff = { episode: null, time: v.currentTime, play: true };
-        takeoverUntil = Date.now() + TAKEOVER_WAIT_MS;
-        setTimeout(() => { if (handoff) takeOver(); }, STEP_SETTLE_MS);
-    };
-    // Новый плеер после смены: та же серия, то же место, запуск, если видео шло
-    const takeOver = async () => {
-        const { episode, time, play } = handoff;
-        handoff = null;
-        window.focus();
-        const list = player.read('episodes');
-        const target = episode === null ? null : list.find(o => o.label === String(episode));
-        if (target && !target.selected) {
-            player.choose('episodes', target.index);
-            await settle();
-        }
-        pendingSeek = time;
-        // Плеер уже открывали раньше: его видео стоит на старом месте, и догонять надо сразу, даже если разница небольшая
-        const opened = player.video();
-        if (opened && opened.duration >= MIN_EPISODE_SEC && Math.abs(opened.currentTime - time) > TAKEOVER_EXACT_SEC) {
-            opened.currentTime = time;
-            pendingSeek = null;
-        }
-        // Плееры запускаются по-разному и могут сбросить время при старте, поэтому проверяем результат, а не надеемся на одну попытку
-        const deadline = Date.now() + TAKEOVER_WAIT_MS;
-        let startedAt = 0;
-        let volumeSet = false;
-        const check = setInterval(() => {
-            const v = player.video();
-            const finish = () => {
-                clearInterval(check);
-                takeoverUntil = 0;
-            };
-            if (Date.now() > deadline) return finish();
-            // Повторное нажатие на кнопку запуска поставило бы только что запущенное на паузу: даём плееру время
-            const startOnce = () => {
-                if (Date.now() - startedAt < TAKEOVER_RESTART_MS) return;
-                startedAt = Date.now();
-                player.start(v);
-            };
-            // У Kodik видео появляется только после запуска
-            if (!v) {
-                if (play) startOnce();
-                return undefined;
-            }
-            if (player.adState(v) !== 'none') return undefined;
-            // Громкость зрителя переходит с ним в новый плеер
-            if (!settings.playerMuted && !volumeSet) {
-                volumeSet = true;
-                if (v.volume > 0) v.volume = soundVolume;
-            }
-            // Плеер ещё подключает видео: нажатие сейчас пропадёт
-            if (!player.listsStable(v)) return undefined;
-            // Вперёд видео уходит само, пока идёт, а отставать ему не от чего: плеер просто начал сначала
-            const near = v.currentTime > time - TAKEOVER_EXACT_SEC && v.currentTime - time < TAKEOVER_NEAR_SEC;
-            if (!near && v.duration >= MIN_EPISODE_SEC && !v.seeking) {
-                v.currentTime = time;
-                pendingSeek = null;
-            }
-            if (!play) return near ? finish() : undefined;
-            if (!v.paused) return near && v.readyState >= 3 ? finish() : undefined;
-            if (player.started(v)) playOrMuted(v);
-            else startOnce();
-            return undefined;
-        }, TAKEOVER_CHECK_MS);
-    };
-    window.addEventListener('message', (e) => {
-        if (!isParentSiteOrigin(e.origin)) return;
-        if (e.data?.type === 'AG_PAUSE') {
-            const v = player.video();
-            if (v && !v.paused) v.pause();
-        }
-        if (e.data?.type === 'AG_HANDOFF') {
-            handoff = { episode: e.data.episode, time: Number(e.data.time) || 0, play: !!e.data.play };
-            if (e.data.volume > 0) soundVolume = e.data.volume;
-            if (handoff.play) takeoverUntil = Date.now() + TAKEOVER_WAIT_MS;
-            if (ownListsReady) takeOver();
-        }
-    });
     // Только кадр с самим плеером: у Kodik есть и служебный невидимый кадр на том же домене. Плеер появляется не сразу
     const HANDOFF_ASK_MS = 500;
     const HANDOFF_ASK_TRIES = 40;
@@ -1408,9 +732,9 @@
             getTimings: () => skipData,
             toggleFs: () => sendFs('toggle'),
             openSettings: () => chrome.runtime.sendMessage({ action: 'open_settings' }).catch(() => {}),
-            onVoicePicked: (voice) => rememberChoice(voice),
-            takingOver: () => Date.now() < takeoverUntil,
-            onOwnVoiceChange: keepPlaceOnVoice,
+            onVoicePicked: (name) => voice.remember(name),
+            takingOver: takeover.takingOver,
+            onOwnVoiceChange: takeover.keepPlaceOnVoice,
             isShown,
             guide: globalThis.AgGuide && globalThis.AgGuideFox ? {
                 mark: globalThis.AgGuide.mark,

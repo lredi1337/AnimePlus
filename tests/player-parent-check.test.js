@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { read } = require('./helpers');
+const { loadPlayerFrame } = require('./helpers');
 
 const PANEL = '<div class="serial-panel"><div class="serial-series-box"><select><option value="1" selected>1 серия</option></select></div></div>';
 
@@ -23,7 +23,7 @@ async function startFrame(ancestors, referrer = '') {
         runtime: { id: 'test', getURL: (p) => p, sendMessage() {}, onMessage: { addListener() {} } },
         storage: { local: { get: async () => ({ ag_settings: { auto_select_voice: false } }), set: async () => {} }, onChanged: { addListener() {} } }
     };
-    for (const file of ['config.js', 'modules/shared/sites.js', 'modules/player/adapters.js', 'modules/player/skip-memory.js', 'content-player.js']) frame.eval(read(file));
+    loadPlayerFrame(frame);
     await new Promise(r => setTimeout(r, 150));
     dom.window.close();
     Object.defineProperty(toTop, 'targets', { value: [...targets] });

@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { read } = require('./helpers');
+const { loadPlayerFrame } = require('./helpers');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -20,11 +20,7 @@ async function startPlayer() {
         Object.defineProperty(v, 'currentTime', { get: () => t, set: (x) => { t = x; }, configurable: true });
         Object.defineProperty(v, 'paused', { get: () => false, configurable: true });
     }
-    frame.eval(read('config.js'));
-    frame.eval(read('modules/shared/sites.js'));
-    frame.eval(read('modules/player/adapters.js'));
-    frame.eval(read('modules/player/skip-memory.js'));
-    frame.eval(read('content-player.js'));
+    loadPlayerFrame(frame);
     await sleep(100);
     frame.document.body.appendChild(frame.document.createElement('div')); // Плеер запускается по изменению страницы
     await sleep(50);

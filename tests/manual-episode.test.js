@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { read } = require('./helpers');
+const { read, loadPlayerFrame } = require('./helpers');
 
 const tick = (ms = 150) => new Promise(r => setTimeout(r, ms));
 const PANEL = `<div class="serial-panel"><div class="serial-series-box"><select>
@@ -17,11 +17,7 @@ async function start(url) {
         runtime: { id: 'test', getURL: (p) => p, sendMessage() {}, onMessage: { addListener() {} } },
         storage: { local: { get: async () => ({ ag_settings: { auto_select_voice: false } }), set: async () => {} }, onChanged: { addListener() {} } }
     };
-    frame.eval(read('config.js'));
-    frame.eval(read('modules/shared/sites.js'));
-    frame.eval(read('modules/player/adapters.js'));
-    frame.eval(read('modules/player/skip-memory.js'));
-    frame.eval(read('content-player.js'));
+    loadPlayerFrame(frame);
     await tick();
 
     const origin = new URL(url).origin;
