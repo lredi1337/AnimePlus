@@ -192,6 +192,11 @@ AnimePlus-main/
 | `AG_MARATHON_CONFIRM`| `Top -> Iframe` | Подтверждение марафона (разрешает автоплей в плеере). | `{ type: 'AG_MARATHON_CONFIRM' }` |
 | `AS_DATA_UPDATE` | `Top -> Iframe` | Передача меток Kodik и сайта для опенинга и эндинга и ID тайтла. | `{ data: { op: {start, end}, ed: {start, end} } }` |
 | `AG_VIDEO_PROGRESS`| `Iframe -> Top` | Отчет о прогрессе видео для авто-отметки в Shikimori. | `{ episode: number, isEnded: boolean }` |
+| `AG_GET_RESUME` / `AG_RESUME` | `Iframe -> Top` / `Top -> Iframe` | Место остановки серии. Страница сравнивает своё (`localStorage`) с общим для всех сайтов (`ag_shared_progress` в фоне, по ID Shikimori и номеру серии) и отдаёт то, где серию смотрели последней. | `{ episode }` / `{ time }` |
+| `AG_EPISODE_END` | `Iframe -> Top` | Серия дошла до конца (событие `ended` гасит `handleEndedEvent`, а последняя серия останавливается за мгновение до конца). Страница спрашивает фон (`get_title_finale`), последняя ли это серия тайтла. | `{ episode, duration }` |
+| `AG_FINALE` | `Top -> Iframe` | Тайтл досмотрен: оболочка показывает карточку с оценкой и продолжением. | `{ canRate, sequel: { title, kind, year } \| null }` |
+| `AG_FINALE_RATE` / `AG_FINALE_RATED` | `Iframe -> Top` / `Top -> Iframe` | Оценка из карточки уходит в Shikimori (`shiki_set_score`), карточка получает итог. | `{ score }` / `{ ok, score }` |
+| `AG_FINALE_NEXT` | `Iframe -> Top` | Открыть продолжение на этом же сайте (`resolve_site_url`), иначе страницу Shikimori. | `{}` |
 | `AG_EPISODE_CHANGED`| `Iframe -> Top` | Оповещение о смене серии внутри селекта Kodik. | `{ episode: string }` |
 
 ---

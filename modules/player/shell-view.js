@@ -373,6 +373,22 @@
         .guide button { width: auto; height: auto; padding: 5px 10px; border: none; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; color: #b6bcc9; background: none; }
         .guide button[hidden] { display: none; }
         .guide button.go { color: var(--go-fg); font-weight: 600; background: var(--go-bg); border: var(--go-border); border-radius: var(--go-radius); }
+        .finale { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; width: min(420px, calc(100% - 32px)); padding: 18px 20px; box-sizing: border-box; border-radius: var(--guide-radius); background: var(--guide-bg); border: var(--guide-border); backdrop-filter: var(--guide-blur); -webkit-backdrop-filter: var(--guide-blur); box-shadow: 0 20px 50px rgba(0,0,0,.45); text-align: center; pointer-events: auto; }
+        .finale[hidden] { display: none; }
+        .finale h3 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+        .finale p { margin: 0 0 12px; font-size: 13px; line-height: 1.35; color: var(--dim); }
+        .finale p[hidden], .finale .stars[hidden], .finale .sequel[hidden] { display: none; }
+        .finale .stars { display: flex; justify-content: center; gap: 4px; margin: 0 0 14px; }
+        .finale .stars button { width: 30px; height: 30px; padding: 0; border: 1px solid rgba(255,255,255,.16); border-radius: 6px; background: none; color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .finale .stars button:hover:not(:disabled), .finale .stars button.on { background: var(--go-bg); color: var(--go-fg); border-color: transparent; }
+        .finale .stars button:disabled { cursor: default; opacity: .6; }
+        .finale .stars button.on:disabled { opacity: 1; }
+        .finale .sequel { margin: 0 0 14px; font-size: 13px; color: var(--dim); }
+        .finale .sequel b { display: block; margin-top: 2px; font-size: 15px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .finale .row { display: flex; justify-content: center; gap: 10px; }
+        .finale .row button { width: auto; height: auto; padding: 7px 14px; border: none; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; color: #b6bcc9; background: none; }
+        .finale .row button.go { color: var(--go-fg); font-weight: 600; background: var(--go-bg); border: var(--go-border); border-radius: var(--go-radius); }
+        .finale .row button[hidden] { display: none; }
         .guide-spot { outline: 2px solid var(--spot) !important; outline-offset: 3px; border-radius: 6px; }
         .panel .guide-spot { outline-offset: -2px; }
         .spinner { display: none; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: var(--spin); animation: ag-spin .8s linear infinite; }
@@ -639,6 +655,7 @@
             <div class="spinner" role="status" aria-label="Загрузка"></div>
             <div class="note"></div>
             <div class="guide" role="dialog" aria-label="Подсказки лисы" hidden></div>
+            <div class="finale" role="dialog" aria-label="Тайтл досмотрен" hidden></div>
             <button type="button" id="ag-smart-skip"></button>
             <button type="button" id="ag-skip-undo">↩ Вернуться</button>
             <div class="panel" role="dialog"></div>

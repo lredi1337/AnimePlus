@@ -92,7 +92,7 @@
 
     window.AgFeatures = window.AgFeatures || {};
 
-    window.AgFeatures.playerBridge = function ({ provider, scope, settings }) {
+    window.AgFeatures.playerBridge = function ({ provider, scope, settings, site }) {
         injectStyle();
         let fsContainer = null;
         let savedScrollY = 0;
@@ -257,6 +257,36 @@
             broadcast({ type: 'AS_DATA_UPDATE', data: skipCache.data, malId: skipCache.malId, episode }, target);
         };
 
+        // Досмотрена последняя серия тайтла: плеер предлагает оценить его и открыть продолжение
+        let finale = null;
+        const showFinale = async (target, episode) => {
+            const tracker = window.__agProgressTrackerActive;
+            if (!tracker || !tracker.titleId) return;
+            try {
+                const id = await tracker.titleId();
+                if (!id) return;
+                const res = await window.agSendMessage({ action: 'get_title_finale', id, episode: provider.getEpisode(episode != null ? String(episode) : null) });
+                if (scope.disposed || !res || !res.finished) return;
+                finale = { id, sequel: res.sequel || null };
+                post(target, { type: 'AG_FINALE', canRate: !!res.canRate, sequel: finale.sequel ? { title: finale.sequel.title, kind: finale.sequel.kind, year: finale.sequel.year } : null });
+            } catch (e) {}
+        };
+        // Продолжение открывается на этом же сайте. Если его здесь нет, остаётся страница Shikimori: кнопка Anime+ на ней найдёт его на других сайтах
+        const openSequel = async () => {
+            if (!finale || !finale.sequel) return;
+            const { id } = finale.sequel;
+            let url = null;
+            try {
+                const res = site ? await window.agSendMessage({ action: 'resolve_site_url', siteId: site.id, shikimoriId: id }) : null;
+                const found = res && res.url ? new URL(res.url) : null;
+                const foundSite = found && found.protocol === 'https:' ? window.AgSites.byHost(found.hostname) : null;
+                if (foundSite && foundSite.id === site.id) url = found.href;
+            } catch (e) {}
+            if (scope.disposed) return;
+            // Нажатие было в кадре плеера, и новую вкладку отсюда браузер заблокировал бы: открываем в этой
+            location.href = url || `https://shikimori.io/animes/${id}`;
+        };
+
         // Команды принимаются только от плееров и сайтов из списка: любой кадр страницы не годится, реклама тоже кадр
         const fromPlayer = (e) => !!(window.isValidOrigin && window.isValidOrigin(e.origin));
 
@@ -284,7 +314,10 @@
                 }
                 case 'AG_GET_START': {
                     const about = await provider.getTitleInfo();
-                    post(e.source, { type: 'AG_START', season: provider.getWantedSeason(about), last: window.agLastWatched ? window.agLastWatched() : null });
+                    // Серию могли смотреть и на другом сайте: учёт просмотра знает место остановки на всех
+                    const tracker = window.__agProgressTrackerActive;
+                    const last = tracker && tracker.lastWatched ? await tracker.lastWatched() : (window.agLastWatched ? window.agLastWatched() : null);
+                    post(e.source, { type: 'AG_START', season: provider.getWantedSeason(about), last });
                     break;
                 }
                 // Плеер потерял одноразовую ссылку на видео: новую выдаёт только страница сайта
@@ -336,6 +369,18 @@
                     }
                     break;
                 }
+                case 'AG_EPISODE_END':
+                    if (data.duration >= MIN_EPISODE_SEC) showFinale(e.source, data.episode);
+                    break;
+                case 'AG_FINALE_RATE': {
+                    if (!finale) break;
+                    const res = await window.agSendMessage({ action: 'shiki_set_score', id: finale.id, score: Number(data.score) });
+                    post(e.source, { type: 'AG_FINALE_RATED', ok: !!(res && res.success), score: Number(data.score) });
+                    break;
+                }
+                case 'AG_FINALE_NEXT':
+                    openSequel();
+                    break;
                 case 'AG_START_MARATHON': {
                     const started = await provider.getTitleInfo();
                     if (started) sessionStorage.setItem(MARATHON_KEY, String(started.pageKey));

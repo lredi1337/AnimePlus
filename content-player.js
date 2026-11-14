@@ -249,6 +249,16 @@
             canAutoPlay = true;
             checkAndClickPlayButton();
         }
+        // Досмотрена последняя серия тайтла (features/player-bridge.js)
+        if (e.data?.type === 'AG_FINALE' && playerShell && playerShell.showFinale) {
+            playerShell.showFinale({ canRate: !!e.data.canRate, sequel: e.data.sequel || null }, {
+                rate: (score) => toTop({ type: 'AG_FINALE_RATE', score }),
+                next: () => toTop({ type: 'AG_FINALE_NEXT' })
+            });
+        }
+        if (e.data?.type === 'AG_FINALE_RATED' && playerShell && playerShell.finaleRated) {
+            playerShell.finaleRated(!!e.data.ok, Number(e.data.score));
+        }
         if (e.data?.type === 'AG_FS_STATE') {
             document.body.dataset.agFsState = e.data.active;
         }
@@ -456,6 +466,15 @@
                 setupSmartSkip(v);
             }
 
+            // Серия дошла до конца. Событие ended до других обработчиков не доходит (его гасит handleEndedEvent),
+            // а на последней серии видео останавливается за мгновение до конца, поэтому страница узнаёт о конце отсюда
+            let endReportedAt = 0;
+            const reportEpisodeEnd = () => {
+                if (!(v.duration >= globalThis.AgFrameProgress.MIN_EPISODE_SEC) || Date.now() - endReportedAt < 5000) return;
+                endReportedAt = Date.now();
+                toTop({ type: 'AG_EPISODE_END', episode: getLocalEpisodeData().current, duration: v.duration });
+            };
+
             let isHandlingEnded = false;
             const handleEndedEvent = (e) => {
                 if (e) {
@@ -467,6 +486,7 @@
 
                 if (isHandlingEnded || episodes.sinceSwitch() < 3000) return;
                 isHandlingEnded = true;
+                reportEpisodeEnd();
                 episodes.markSwitched();
 
                 if (settings.autoNext) {
@@ -494,6 +514,7 @@
                         v.pause();
                         v.currentTime = Math.max(0, v.duration - 0.1);
                     } catch (err) {}
+                    reportEpisodeEnd();
                 }
             }, true);
         }

@@ -26,7 +26,7 @@ function parseArgs(argv) {
         const value = rest[i + 1];
         if (rest[i] === '--proxy') opts.proxy = value;
         else if (rest[i] === '--adblock') opts.adblock = value;
-        else if (rest[i] === '--sites') opts.sites = value.split(',');
+        else if (rest[i] === '--sites') { opts.sites = value.split(','); opts.sitesGiven = true; }
         else if (rest[i] === '--url') opts.url = value;
         else if (rest[i] === '--count') opts.count = Number(value);
         else if (rest[i] === '--out') opts.out = value;
@@ -948,7 +948,157 @@ async function synthetic(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins };
+/**
+ * Серия продолжается на другом сайте с той же секунды, а после последней серии плеер предлагает продолжение.
+ * Вход в Shikimori на стенде не выполняется, поэтому оценка здесь не проверяется: её покрывают tests/title-finale.test.js
+ */
+async function resume(opts) {
+    const r = reporter();
+    const { b, worker } = await startBrowser(opts);
+    const SEEK_TO = 400;
+    const STATE = "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; return v ? { t: Math.round(v.currentTime), d: Math.round(v.duration || 0), paused: v.paused, ended: v.ended } : null; })()";
+    const SEEK = (to) => `(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.currentTime = ${to}; })()`;
+    const shellText = (frame, selector) => b.ev(frame, `(() => { const h = document.getElementById('ag-shell'); const el = h && h.shadowRoot.querySelector(${JSON.stringify(selector)}); return el ? el.textContent : null; })()`);
+    /** Видимый кадр плеера с оболочкой на открытой странице */
+    const playerFrame = async () => {
+        for (let i = 0; i < 20; i++) {
+            for (const t of (await b.targets('iframe')).filter(x => /kodik|thealloha|aksor|cdnvideohub|ceramet|aniboom|vost/.test(x.url))) {
+                const session = await b.attach(t.targetId);
+                try {
+                    if (await b.ev(session, "innerWidth > 0 && !!document.getElementById('ag-shell')")) return { session, host: new URL(t.url).hostname };
+                } catch (e) { /* кадр уже заменён */ }
+            }
+            await wait(1500);
+        }
+        return null;
+    };
+    /** Запускает серию настоящим нажатием и ждёт, пока пройдёт реклама */
+    const play = async (frame, test = (st) => !st.paused && st.t > 2 && st.d > 300) => {
+        let st = null;
+        for (let i = 0; i < 60; i++) {
+            st = await b.ev(frame, STATE);
+            if (process.env.STAND_DEBUG) r.info(`шаг ${i}`, st);
+            if (st && test(st)) return st;
+            if (i % 12 === 0 && (!st || st.paused)) await pressShell(b, frame, '.big');
+            await wait(2000);
+        }
+        if (process.env.STAND_DEBUG) {
+            r.info('серия не пошла', await b.ev(frame, `(() => { const h = document.getElementById('ag-shell'); return { body: document.body.className, root: h && h.shadowRoot.querySelector('.root').className, big: h && getComputedStyle(h.shadowRoot.querySelector('.big')).display, videos: [...document.querySelectorAll('video')].map(v => ({ c: v.className, t: Math.round(v.currentTime), d: Math.round(v.duration || 0), p: v.paused, rs: v.readyState, ns: v.networkState, err: v.error && v.error.code })), w: innerWidth, vis: document.visibilityState }; })()`).catch(e => String(e.message)));
+            if (opts.out) {
+                fs.mkdirSync(opts.out, { recursive: true });
+                for (const t of await b.targets('page')) {
+                    if (!/^https/.test(t.url)) continue;
+                    const session = await b.attach(t.targetId);
+                    const shot = await b.send('Page.captureScreenshot', { format: 'png' }, session);
+                    fs.writeFileSync(path.join(opts.out, `stuck-${Date.now()}.png`), Buffer.from(shot.data, 'base64'));
+                }
+            }
+        }
+        return st;
+    };
+    try {
+        // Сайт первый: смотрим серию и останавливаемся посреди неё
+        const first = await openTitle(b, opts.url || 'https://jut-su.net/67-magicheskaja-bitva-r1.html');
+        const one = await playerFrame();
+        r.check('первый сайт: кадр плеера с оболочкой', !!one, one && one.host);
+        if (!one) return r.failed;
+        const started = await play(one.session);
+        r.check('первый сайт: серия запущена', !!started && !started.paused, started);
+        const episodeOne = await shellText(one.session, '.sub');
+        await b.ev(one.session, SEEK(SEEK_TO));
+        // Место сохраняется раз в 15 секунд, а после перемотки плеер может показать рекламу
+        let saved = {};
+        let key = null;
+        let place = 0;
+        // STAND_SAME: место остановки на том же сайте после повторного открытия (так работала и версия без общего места)
+        if (process.env.STAND_SAME) {
+            await wait(25000);
+            const firstUrl = await b.ev(first.session, 'location.href');
+            await b.closePage(first);
+            await wait(1500);
+            await openTitle(b, firstUrl);
+            const again = await playerFrame();
+            const st = again ? await play(again.session, (x) => !x.paused && x.d > 300 && x.t >= SEEK_TO) : null;
+            r.check('тот же сайт: серия продолжилась и идёт', !!st && !st.paused && st.t >= SEEK_TO, st);
+            return r.failed;
+        }
+        for (let i = 0; i < 30 && place < SEEK_TO; i++) {
+            await wait(3000);
+            saved = await b.ev(worker, "chrome.storage.local.get(['ag_shared_progress']).then(x => x.ag_shared_progress || {})");
+            key = Object.keys(saved)[0] || null;
+            place = key ? saved[key].position : 0;
+            if (process.env.STAND_DEBUG) r.info(`запись ${i}`, { saved, video: await b.ev(one.session, STATE) });
+        }
+        r.check('место остановки ушло в общее хранилище', !!key && place >= SEEK_TO && place <= SEEK_TO + 60, saved);
+        if (!key) return r.failed;
+        const [id, episode] = key.split('#');
+        await b.closePage(first);
+        await wait(1500);
+
+        // Сайт второй: тот же тайтл находит само расширение
+        let second = null;
+        for (const siteId of (opts.sitesGiven ? opts.sites : ['animego_online', 'yummyanime_tv', 'yammy_club', 'animego'])) {
+            const url = await b.ev(worker, `resolveSiteUrl(${JSON.stringify(siteId)}, { shikimoriId: ${Number(id)} }).catch(() => null)`);
+            r.info(`адрес на ${siteId}`, url);
+            if (!url) continue;
+            const page = await openTitle(b, url);
+            const frame = await playerFrame();
+            if (frame) { second = { page, frame, siteId }; break; }
+            await b.closePage(page);
+        }
+        r.check('второй сайт: кадр плеера с оболочкой', !!second, second && { site: second.siteId, player: second.frame.host });
+        if (!second) return r.failed;
+        const two = second.frame.session;
+        const resumed = await play(two, (st) => !st.paused && st.d > 300 && st.t >= place - 3);
+        r.check('второй сайт: серия продолжилась с того же места', !!resumed && resumed.t >= place - 3 && resumed.t <= place + 90, { place, video: resumed });
+        r.check('второй сайт: открыта та же серия', new RegExp(`Серия ${episode}(\\D|$)`).test(await shellText(two, '.sub') || ''), { first: episodeOne, second: await shellText(two, '.sub') });
+
+        // Последняя серия: досматриваем до конца настоящего видео
+        await pressShell(b, two, '[data-act="episodes"]');
+        await wait(900);
+        const last = await b.ev(two, `(() => { const eps = [...${SHELL}.querySelectorAll('.panel .ep')]; const e = eps[eps.length - 1]; if (!e) return null; e.scrollIntoView({ block: 'center' }); const q = e.getBoundingClientRect(); return { label: e.textContent, count: eps.length, x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+        if (!last) r.info('оболочка', await b.ev(two, `(() => { const h = document.getElementById('ag-shell'); if (!h) return 'нет оболочки'; const s = h.shadowRoot; return { url: location.href.slice(0, 80), root: s.querySelector('.root').className, shown: h.style.display, bar: [...s.querySelectorAll('.bar button')].map(x => x.dataset.act + ':' + getComputedStyle(x).display), panel: s.querySelector('.panel').className, panelText: s.querySelector('.panel').textContent.slice(0, 200) }; })()`).catch(e => String(e.message)));
+        r.check('список серий открыт', !!last && last.count > 1, last && { count: last.count, last: last.label });
+        if (!last) return r.failed;
+        await b.clickAt(two, last);
+        await wait(9000);
+        // Сайт мог заменить кадр плеера при смене серии
+        const end = (await playerFrame()) || second.frame;
+        const lastPlaying = await play(end.session, (st) => !st.paused && st.d > 300 && st.t > 1 && st.t < st.d - 30);
+        r.check('последняя серия запущена', !!lastPlaying && !lastPlaying.paused, { sub: await shellText(end.session, '.sub'), video: lastPlaying });
+        r.info('ответ Shikimori о конце тайтла', await b.ev(worker, `getTitleFinale({ id: ${Number(id)}, episode: ${JSON.stringify(last.label)} })`));
+        await b.ev(end.session, SEEK('v.duration - 5'));
+        let card = null;
+        for (let i = 0; i < 20 && !card; i++) {
+            await wait(1500);
+            if (process.env.STAND_DEBUG) r.info(`конец ${i}`, { video: await b.ev(end.session, STATE).catch(e => String(e.message)), videos: await b.ev(end.session, "document.querySelectorAll('video').length").catch(() => null), page: await b.ev(second.page.session, 'location.href').catch(() => null) });
+            card = await b.ev(end.session, `(() => { const c = ${SHELL}.querySelector('.finale'); return c && !c.hidden ? { sequel: (c.querySelector('.sequel b') || {}).textContent, stars: !c.querySelector('.stars').hidden } : null; })()`);
+        }
+        r.check('после последней серии показана карточка с продолжением', !!card && !!card.sequel, card);
+        if (!card) return r.failed;
+        if (opts.out) {
+            fs.mkdirSync(opts.out, { recursive: true });
+            const shot = await b.send('Page.captureScreenshot', { format: 'png' }, second.page.session);
+            fs.writeFileSync(path.join(opts.out, 'finale.png'), Buffer.from(shot.data, 'base64'));
+        }
+        r.check('без входа в аккаунт оценку не предлагаем', card.stars === false);
+        const before = await b.ev(second.page.session, 'location.href');
+        const go = await rectOf(b, end.session, '.finale .go');
+        r.check('кнопка продолжения видна', !!go);
+        if (go) await b.clickAt(end.session, go);
+        let after = before;
+        for (let i = 0; i < 20 && after === before; i++) {
+            await wait(1500);
+            after = await b.ev(second.page.session, 'location.href').catch(() => before);
+        }
+        r.check('продолжение открылось', after !== before, { before, after });
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins, resume };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

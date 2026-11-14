@@ -9,6 +9,8 @@
 // Серия засчитывается один раз: при 80% длительности (и реально просмотренной половине) либо по событию ended.
 // Просмотренные участки и место остановки хранятся в localStorage сайта, поэтому серию можно досмотреть
 // после перезагрузки или смены озвучки: плеер спрашивает место сообщением AG_GET_RESUME и получает AG_RESUME.
+// Место остановки ещё и общее для всех сайтов: фон хранит его по ID Shikimori и номеру серии (modules/bg-shiki.js),
+// поэтому серию, начатую на одном сайте, плеер другого сайта продолжает с той же секунды.
 
 (function () {
     'use strict';
@@ -24,6 +26,7 @@
     const MIN_RESUME_SEC = 10; // первые секунды продолжать незачем
     const HISTORY_AFTER_SEC = 60; // открыл и сразу ушёл — это ещё не просмотр
     const FINISHED_RATIO = 0.9; // досмотренная серия при новом запуске идёт сначала
+    const SHARED_WAIT_MS = 1500; // дольше плеер общее место не ждёт: отвечаем тем, что помнит сам сайт
 
     // Участки [начало, конец] без пересечений: один и тот же кусок серии дважды не считается
     function addRange(ranges, from, to) {
@@ -136,6 +139,8 @@
         let lastSaveTime = 0;
         let shikiIdPromise = null;
         let shikiIdPageKey = null;
+        // Место остановки этого тайтла на всех сайтах: { id, episodes: { [серия]: { position, ts } }, promise }
+        let shared = null;
 
         const getSourceState = (source, stream) => {
             let streams = sources.get(source);
@@ -151,7 +156,7 @@
             let watched = watchedEpisodes.get(key);
             if (!watched) {
                 const saved = readSaved()[key];
-                watched = { ranges: Array.isArray(saved?.ranges) ? saved.ranges : [], position: Number(saved?.position) || 0, dirty: false, done: false };
+                watched = { ranges: Array.isArray(saved?.ranges) ? saved.ranges : [], position: Number(saved?.position) || 0, stamp: Number(saved?.ts) || 0, dirty: false, done: false };
                 watchedEpisodes.set(key, watched);
             }
             return watched;
@@ -167,6 +172,25 @@
                     : null;
             }
             if (Object.keys(changes).length > 0) writeSaved(changes);
+            saveShared();
+        };
+
+        // Общее место уходит в фон вместе с местным: одна запись на тайтл
+        const saveShared = () => {
+            const byTitle = new Map();
+            for (const watched of watchedEpisodes.values()) {
+                // ID тайтла ещё определяется: запись уйдёт, когда он станет известен
+                if (!watched.share || !watched.share.title.id) continue;
+                const { title, episode } = watched.share;
+                watched.share = null;
+                const item = { episode, position: watched.position, ts: watched.at || Date.now() };
+                if (!byTitle.has(title.id)) byTitle.set(title.id, []);
+                byTitle.get(title.id).push(item);
+                title.episodes[episode] = { position: item.position, ts: item.ts };
+            }
+            for (const [id, items] of byTitle) {
+                Promise.resolve(window.agSendMessage({ action: 'save_shared_progress', id, items })).catch(() => {});
+            }
         };
 
         const resolveShikiId = (info) => {
@@ -184,6 +208,37 @@
                 kind: info.kind || ''
             }).then(res => (res && res.id) ? res : null);
             return shikiIdPromise;
+        };
+
+        const titleId = async () => {
+            const info = await adapter.getTitleInfo();
+            if (!info || (!info.shikimoriId && (!info.titles || info.titles.length === 0))) return null;
+            const anime = await resolveShikiId(info);
+            return anime && anime.id ? anime.id : null;
+        };
+
+        const loadShared = () => {
+            if (shared) return shared.promise;
+            const state = { id: null, episodes: {}, promise: null };
+            state.promise = (async () => {
+                const id = await titleId();
+                if (!id) return state;
+                state.id = id;
+                saveShared();
+                const res = await window.agSendMessage({ action: 'get_shared_progress', id });
+                // Пока шёл запрос, серию могли уже смотреть здесь: свежие записи не затираем
+                if (res && res.episodes) state.episodes = { ...res.episodes, ...state.episodes };
+                return state;
+            })().catch(() => state);
+            // То, что посмотрели, пока определялся ID
+            state.promise.then(saveShared);
+            shared = state;
+            return state.promise;
+        };
+        // Ответ плееру не должен зависеть от сети: не дождались общего места — работаем с местным
+        const sharedSoon = () => {
+            const loading = loadShared();
+            return Promise.race([loading, new Promise(resolve => setTimeout(() => resolve(shared), SHARED_WAIT_MS))]);
         };
 
         // Карточка «Продолжить» в окне расширения: последний тайтл, который зритель действительно смотрел
@@ -251,13 +306,25 @@
             }
         };
 
+        const markShared = (watched, episode) => {
+            if (!shared) loadShared();
+            watched.share = { title: shared, episode };
+        };
+
         const onMessage = (e) => {
             if (e.origin !== location.origin && !(window.isValidOrigin && window.isValidOrigin(e.origin))) return;
             if (e.data?.type === 'AG_GET_RESUME') {
                 if (!e.source) return;
                 const episode = adapter.getEpisode(e.data.episode != null ? String(e.data.episode) : null) || '1';
-                const { position } = getWatched(`${location.pathname}#${episode}`);
-                if (position >= MIN_RESUME_SEC) e.source.postMessage({ type: 'AG_RESUME', time: position }, e.origin);
+                const key = `${location.pathname}#${episode}`;
+                const { source, origin } = e;
+                sharedSoon().then((state) => {
+                    const local = getWatched(key);
+                    const far = state && state.episodes[episode];
+                    // Свежее то место, где серию смотрели последней, на каком бы сайте это ни было
+                    const position = far && far.ts > (local.at || local.stamp) ? Number(far.position) || 0 : local.position;
+                    if (position >= MIN_RESUME_SEC) source.postMessage({ type: 'AG_RESUME', time: position }, origin);
+                }).catch(() => {});
                 return;
             }
             const ev = parsePlayerMessage(e.data);
@@ -293,11 +360,15 @@
                     // Несколько серий сохраняются разом: по этому времени видно, какую смотрели последней
                     watched.at = Date.now();
                     watched.dirty = true;
+                    // Первые секунды другим сайтам не сообщаем: место 0 для них значит «серия досмотрена»
+                    if (watched.position >= MIN_RESUME_SEC || ev.currentTime / st.duration >= FINISHED_RATIO) markShared(watched, episode);
                 }
             }
             if (ev.ended && ev.stream === 'ag' && longEnough) {
                 watched.position = 0;
+                watched.at = Date.now();
                 watched.dirty = true;
+                markShared(watched, episode);
             }
 
             if (Date.now() - lastSaveTime >= SAVE_INTERVAL_MS) {
@@ -330,9 +401,22 @@
             },
             // Сброс кэша ID при смене тайтла без перезагрузки
             resetTitle() {
+                saveWatched();
                 shikiIdPromise = null;
                 shikiIdPageKey = null;
+                shared = null;
                 sources = new WeakMap();
+            },
+            /** ID тайтла на Shikimori или null */
+            titleId,
+            /** Серия, на которой зритель остановился, с учётом других сайтов: { episode, finished } или null */
+            async lastWatched() {
+                let last = window.agLastWatched();
+                const state = await sharedSoon().catch(() => null);
+                for (const [episode, item] of Object.entries((state && state.episodes) || {})) {
+                    if (!last || item.ts > last.ts) last = { episode, finished: !(Number(item.position) > 0), ts: item.ts };
+                }
+                return last;
             }
         };
         window.__agProgressTrackerActive = api;

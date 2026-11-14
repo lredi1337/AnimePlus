@@ -789,7 +789,10 @@
             if (video === v) return;
             video = v;
             seenMarked = false;
+            closeFinale();
             ['play', 'pause', 'volumechange'].forEach(ev => v.addEventListener(ev, onVideoEvent));
+            // Зритель запустил серию заново: карточка конца тайтла больше не к месту
+            v.addEventListener('play', closeFinale);
             ['timeupdate', 'progress'].forEach(ev => v.addEventListener(ev, onTime));
             ['durationchange', 'loadedmetadata'].forEach(ev => v.addEventListener(ev, renderZones));
             renderState();
@@ -997,6 +1000,69 @@
             showGuideTip(first, tips);
         }
 
+        // Карточка после последней серии: оценка для Shikimori и продолжение. Присланный текст вставляется как текст, не как разметка
+        let finaleHandlers = null;
+        function closeFinale() {
+            finaleHandlers = null;
+            $('.finale').hidden = true;
+        }
+
+        function showFinale(data, handlers) {
+            const box = $('.finale');
+            const sequel = data && data.sequel && data.sequel.title ? data.sequel : null;
+            const canRate = !!(data && data.canRate);
+            // Ни оценить, ни продолжить: карточка только заслоняла бы последний кадр
+            if (!sequel && !canRate) return;
+            finaleHandlers = handlers || {};
+            box.innerHTML = '<h3>Тайтл досмотрен</h3><p class="ask"></p><div class="stars" role="group" aria-label="Оценка"></div><div class="sequel">Продолжение<b></b></div><div class="row"><button type="button" class="skip">Закрыть</button><button type="button" class="go">Смотреть продолжение</button></div>';
+            const ask = box.querySelector('.ask');
+            const stars = box.querySelector('.stars');
+            ask.textContent = 'Оцените его для своего списка на Shikimori';
+            ask.hidden = stars.hidden = !canRate;
+            if (canRate) {
+                for (let score = 1; score <= 10; score++) {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.textContent = String(score);
+                    b.dataset.score = String(score);
+                    b.setAttribute('aria-label', `Оценка ${score}`);
+                    b.addEventListener('click', () => {
+                        if (b.disabled || !finaleHandlers || !finaleHandlers.rate) return;
+                        stars.querySelectorAll('button').forEach((x) => { x.disabled = true; x.classList.toggle('on', x === b); });
+                        ask.textContent = 'Сохраняем оценку…';
+                        finaleHandlers.rate(score);
+                    });
+                    stars.appendChild(b);
+                }
+            }
+            const meta = sequel ? [sequel.kind, sequel.year].filter(Boolean).join(', ') : '';
+            box.querySelector('.sequel').hidden = !sequel;
+            if (sequel) box.querySelector('.sequel b').textContent = meta ? `${sequel.title} (${meta})` : sequel.title;
+            const go = box.querySelector('.go');
+            go.hidden = !sequel;
+            go.addEventListener('click', () => {
+                if (go.disabled || !finaleHandlers || !finaleHandlers.next) return;
+                go.disabled = true;
+                go.textContent = 'Открываем…';
+                finaleHandlers.next();
+            });
+            box.querySelector('.skip').addEventListener('click', closeFinale);
+            box.hidden = false;
+        }
+
+        function finaleRated(ok, score) {
+            const box = $('.finale');
+            if (box.hidden) return;
+            const ask = box.querySelector('.ask');
+            if (ok) {
+                ask.textContent = `Оценка ${score} сохранена на Shikimori`;
+                return;
+            }
+            // Не получилось: оценку можно поставить ещё раз
+            ask.textContent = 'Не удалось сохранить оценку. Попробуйте ещё раз';
+            box.querySelectorAll('.stars button').forEach((x) => { x.disabled = false; x.classList.remove('on'); });
+        }
+
         function destroy() {
             if (destroyed) return;
             destroyed = true;
@@ -1065,6 +1131,9 @@
             skipButtons: () => (destroyed ? null : { skip: $('#ag-smart-skip'), undo: $('#ag-skip-undo') }),
             /** Выбранный пункт списка, откуда бы он ни был: со страницы сайта или из самого плеера */
             current: (kind) => listOf(kind).find(o => o.selected) || null,
+            /** Последняя серия досмотрена: { canRate, sequel: { title, kind, year } | null }, handlers: { rate(score), next() } */
+            showFinale: (data, handlers) => { if (!destroyed) guarded(showFinale)(data, handlers); },
+            finaleRated: (ok, score) => { if (!destroyed) guarded(finaleRated)(ok, score); },
             /** Списки со страницы сайта для плееров на одну серию */
             setSite(data) {
                 // Перерисовка панели заменяет её кнопки: если это случится под курсором, нажатие зрителя потеряется

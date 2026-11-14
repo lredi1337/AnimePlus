@@ -1028,6 +1028,106 @@ async function addToWatchHistory(item) {
     }
 }
 
+// ---------- Общее место остановки ----------
+// Серия одного тайтла на разных сайтах продолжается с одного места: оно хранится по ID Shikimori и номеру серии.
+// Страницы сайтов пишут сюда через фон: параллельная запись из нескольких вкладок теряла бы данные друг друга.
+// Место 0 значит «серия досмотрена»: другой сайт не вернёт зрителя на старую секунду
+
+const SHARED_PROGRESS_KEY = 'ag_shared_progress';
+const SHARED_PROGRESS_MAX = 400;
+const SHARED_PROGRESS_TTL = 30 * 24 * 60 * 60 * 1000;
+const SHARED_EPISODE = /^[\w.-]{1,12}$/;
+
+async function getSharedProgress(id) {
+    const animeId = parseInt(id, 10);
+    if (!animeId) return { episodes: {} };
+    const { [SHARED_PROGRESS_KEY]: all = {} } = await chrome.storage.local.get([SHARED_PROGRESS_KEY]);
+    const prefix = `${animeId}#`;
+    const now = Date.now();
+    const episodes = {};
+    for (const [key, item] of Object.entries(all)) {
+        if (!key.startsWith(prefix) || !item || now - item.ts >= SHARED_PROGRESS_TTL) continue;
+        episodes[key.slice(prefix.length)] = { position: Number(item.position) || 0, ts: item.ts };
+    }
+    return { episodes };
+}
+
+async function saveSharedProgress({ id, items }) {
+    const animeId = parseInt(id, 10);
+    const now = Date.now();
+    const clean = (Array.isArray(items) ? items : []).slice(0, 50).map((item) => {
+        const episode = String(item && item.episode != null ? item.episode : '');
+        const position = Number(item && item.position);
+        const ts = Number(item && item.ts);
+        if (!SHARED_EPISODE.test(episode) || !(position >= 0) || !Number.isFinite(position)) return null;
+        // Часы вкладки не должны уводить запись в будущее: иначе её не перекроет ни один сайт
+        return { episode, position: Math.round(position), ts: ts > 0 && ts <= now ? ts : now };
+    }).filter(Boolean);
+    if (!animeId || clean.length === 0) return { success: false };
+    await updateStorageObject(SHARED_PROGRESS_KEY, (all) => {
+        for (const item of clean) {
+            const key = `${animeId}#${item.episode}`;
+            if (!all[key] || all[key].ts <= item.ts) all[key] = { position: item.position, ts: item.ts };
+        }
+    }, { maxEntries: SHARED_PROGRESS_MAX });
+    return { success: true };
+}
+
+// ---------- Конец тайтла ----------
+// Досмотрена последняя серия: оболочка плеера предлагает оценить тайтл и открыть продолжение
+
+async function getTitleFinale({ id, episode }) {
+    const animeId = parseInt(id, 10);
+    const epNumber = parseInt(episode, 10);
+    if (!animeId || !epNumber) return { finished: false };
+    const anime = await fetchShikimoriApi(`/api/animes/${animeId}`);
+    // У онгоинга без объявленного числа серий (episodes: 0) последней серии нет
+    const total = parseInt(anime && anime.episodes, 10) || 0;
+    if (total <= 0 || epNumber < total) return { finished: false };
+
+    const related = await fetchShikimoriApi(`/api/animes/${animeId}/related`);
+    const next = (Array.isArray(related) ? related : []).find(r => r && r.anime && r.relation === 'Sequel' && parseInt(r.anime.id, 10));
+    const tokens = await getShikiTokens();
+    return {
+        finished: true,
+        canRate: !!(tokens.shiki_access_token && tokens.shiki_user && tokens.shiki_user.id),
+        sequel: next ? {
+            id: parseInt(next.anime.id, 10),
+            title: String(next.anime.russian || next.anime.name || ''),
+            kind: String(next.anime.kind || '').toUpperCase(),
+            year: (String(next.anime.aired_on || '').match(/^\d{4}/) || [''])[0]
+        } : null
+    };
+}
+
+async function setShikiScore({ id, score }) {
+    const targetId = parseInt(id, 10);
+    const cleanScore = parseInt(score, 10);
+    if (!targetId || !(cleanScore >= 1 && cleanScore <= 10)) return { success: false, reason: 'invalid' };
+    const tokens = await getShikiTokens();
+    if (!tokens.shiki_access_token || !tokens.shiki_user || !tokens.shiki_user.id) return { success: false, reason: 'not_logged_in' };
+    const userId = tokens.shiki_user.id;
+
+    const getRes = await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates?user_id=${userId}&target_id=${targetId}&target_type=Anime`);
+    // Без записи из списка новая запись создалась бы поверх существующей
+    if (!getRes.ok) return { success: false, status: getRes.status };
+    const rates = await getRes.json();
+    const existing = Array.isArray(rates) && rates.length > 0 ? rates[0] : null;
+
+    const saveRes = existing && existing.id
+        ? await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates/${existing.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_rate: { score: cleanScore } })
+        })
+        : await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_rate: { user_id: userId, target_id: targetId, target_type: 'Anime', status: 'completed', score: cleanScore } })
+        });
+    return saveRes.ok ? { success: true, score: cleanScore } : { success: false, status: saveRes.status };
+}
+
 // Повтор неотправленного прогресса.
 // chrome.alarms.create с тем же именем отменяет существующий alarm и запускает отсчёт заново,
 // а service worker просыпается на каждое сообщение: создаём, только если его нет

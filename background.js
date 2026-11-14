@@ -160,6 +160,12 @@ const MESSAGE_HANDLERS = {
     get_shikimori_anime_related: [(m) => getShikiRelated(m.id), () => ({ related: [] })],
     add_watch_history: [async (m) => { await addToWatchHistory(m.item); return { success: true }; }, () => ({ success: false })],
 
+    // Место остановки, общее для всех сайтов, и конец тайтла (modules/bg-shiki.js)
+    get_shared_progress: [(m) => getSharedProgress(m.id), () => ({ episodes: {} })],
+    save_shared_progress: [(m) => saveSharedProgress(m), failure],
+    get_title_finale: [(m) => getTitleFinale(m), () => ({ finished: false })],
+    shiki_set_score: [(m) => setShikiScore(m), failure],
+
     // Jut-Su и расписание
     search_jutsu_direct: [async (m) => ({ url: await findJutsuDirectUrl(m.queryTitle, m.origTitle, m.targetYear) }), (err) => {
         console.error('Error in search_jutsu_direct:', err);

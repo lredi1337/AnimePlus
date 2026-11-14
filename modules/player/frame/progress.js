@@ -66,7 +66,9 @@
             v.addEventListener('durationchange', askResume);
             askResume();
 
-            const report = (isEnded) => link.toTop({
+            // Реклама идёт в отдельном video и бывает длиннее минуты: её время не место остановки серии, а её конец не конец серии
+            const isEpisode = () => { const main = player.video(); return !main || main === v; };
+            const report = (isEnded) => isEpisode() && link.toTop({
                 type: 'AG_VIDEO_PROGRESS',
                 episode: episodeNow().current,
                 currentTime: v.currentTime || 0,
