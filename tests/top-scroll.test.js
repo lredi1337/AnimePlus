@@ -21,6 +21,7 @@ function open(respond) {
     });
     w.agBindPostersIn = () => {};
     w.scrollTo = () => {};
+    w.eval(read('modules/shared/ext-page.js'));
     w.eval(read('top/top.js'));
     return { doc: w.document, urls, w };
 }

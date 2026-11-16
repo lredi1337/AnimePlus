@@ -20,6 +20,7 @@ function openTop(query, { onMessage = () => null, store = {}, realNavigate = fal
     w.scrollTo = () => {};
     const posted = [];
     w.parent.postMessage = (data) => posted.push(data);
+    w.eval(read('modules/shared/ext-page.js'));
     w.eval(read('top/top.js'));
     const visited = [];
     if (!realNavigate) w.AgTopPage.navigate = (url) => visited.push(url);

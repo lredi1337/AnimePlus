@@ -306,16 +306,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderSitesList();
 
     // Топ Shikimori в новой вкладке с выбором сайта. Выбор запоминает сама вкладка; без него — сайт, открытый сейчас
+    const openExtPage = (pageUrl) => {
+        const here = currentSite && AgSites.isEnabled(settings, currentSite.id) ? currentSite : null;
+        let origin = '';
+        try { origin = here ? new URL(activeTab.url).origin : ''; } catch (e) {}
+        const url = pageUrl({ pick: '1', site: here ? here.id : '', origin });
+        chrome.tabs.create({ url }).catch(() => {}).finally(() => window.close());
+    };
     const btnTop = document.getElementById('btnTop');
-    if (btnTop) {
-        btnTop.addEventListener('click', () => {
-            const here = currentSite && AgSites.isEnabled(settings, currentSite.id) ? currentSite : null;
-            let origin = '';
-            try { origin = here ? new URL(activeTab.url).origin : ''; } catch (e) {}
-            const url = AgSites.topPageUrl({ pick: '1', site: here ? here.id : '', origin });
-            chrome.tabs.create({ url }).catch(() => {}).finally(() => window.close());
-        });
-    }
+    if (btnTop) btnTop.addEventListener('click', () => openExtPage(AgSites.topPageUrl));
+    // Расписание онгоингов: та же вкладка с выбором сайта
+    const btnSchedule = document.getElementById('btnSchedule');
+    if (btnSchedule) btnSchedule.addEventListener('click', () => openExtPage(AgSites.schedulePageUrl));
 
     const panelsList = [
         { btn: btnMusic, panel: panelMusic }

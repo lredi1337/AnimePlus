@@ -24,8 +24,6 @@
     const PROBE_INTERVAL_MS = 220; // лимит Shikimori — 5 запросов в секунду
     const START_PAGES_KEY = 'ag_top_band_pages';
     const START_PAGE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-    const PICK_KEY = 'ag_top_site';
-    const MESSAGE_SOURCE = 'anime-plus-top';
     const KINDS = [['', 'Все'], ['tv', 'Сериалы'], ['movie', 'Фильмы'], ['ova', 'OVA'], ['ona', 'ONA'], ['special', 'Спешлы']];
 
     const h = (tag, attrs = {}, ...children) => {
@@ -78,46 +76,8 @@
         return lo;
     };
 
-    // Адрес из параметров принимаем, только если он ведёт на этот же сайт (в том числе на его новое зеркало)
-    const sameSiteUrl = (raw, site) => {
-        try {
-            const url = new URL(raw);
-            if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-            const owner = window.AgSites.byHost(url.hostname);
-            return owner && owner.id === site.id ? url : null;
-        } catch (e) {
-            return null;
-        }
-    };
-
-    /** Режим и сайт из адреса страницы. Без сайта и без выбора сайта — null */
-    function readContext(search) {
-        const params = new URLSearchParams(search);
-        const embed = params.get('embed') === '1';
-        const pick = !embed && params.get('pick') === '1';
-        const site = window.AgSites.byId(params.get('site') || '');
-        if (!site) return pick ? { site: null, origin: '', embed, pick } : null;
-        const origin = (sameSiteUrl(params.get('origin') || '', site) || new URL(site.home)).origin;
-        return { site, origin, embed, pick };
-    }
-
-    /** Сайты, из которых можно выбирать во вкладке: включённые в настройках */
-    async function pickableSites() {
-        const settings = (await chrome.storage.local.get(['ag_settings'])).ag_settings || {};
-        return window.AgSites.searchable().filter(s => window.AgSites.isEnabled(settings, s.id));
-    }
-
-    // Рабочий адрес сайта: у переезжающих сайтов это последний открытый зрителем (providers/vost.js)
-    async function workingOrigin(site) {
-        const { ag_site_home: homes = {} } = await chrome.storage.local.get(['ag_site_home']);
-        const url = sameSiteUrl(homes[site.id] || '', site);
-        return (url || new URL(site.home)).origin;
-    }
-
-    /** Сообщение значку на странице сайта (только в режиме поверх сайта) */
-    // Только странице сайта, на которой открыт значок: ближайший внешний кадр
-    const parentOrigin = (() => { try { return location.ancestorOrigins[0] || '*'; } catch (e) { return '*'; } })();
-    const tellDock = (message) => window.parent.postMessage({ source: MESSAGE_SOURCE, ...message }, parentOrigin);
+    // Режимы страницы, выбор сайта и поиск тайтла на сайте общие с расписанием: modules/shared/ext-page.js
+    const { readContext, workingOrigin, pickContext, rememberPick, tellDock, findOnSite } = window.AgExtPage;
 
     function render(ctx, sites = []) {
         let { site, origin } = ctx;
@@ -181,7 +141,7 @@
                 showCurrent();
                 hint.textContent = `Тайтл откроется на ${x.name}`;
                 grid.querySelectorAll('.top__busy, .top__choices').forEach(el => el.remove());
-                chrome.storage.local.set({ [PICK_KEY]: x.id }).catch(() => {});
+                rememberPick(x);
             }));
             hint.hidden = true;
             headSide = picker;
@@ -216,14 +176,9 @@
             const titles = [item.name, item.russian].filter(Boolean);
             const year = item.aired_on ? String(item.aired_on).slice(0, 4) : '';
             const target = site;
-            const here = await window.agSendMessage({ action: 'resolve_site_url', siteId: target.id, titles, year, shikimoriId: item.id });
+            const url = await findOnSite(target, origin, { id: item.id, titles, year });
             if (target !== site) { busy.remove(); return; } // пока искали, зритель выбрал другой сайт
-            const found = here && here.url ? sameSiteUrl(new URL(here.url, origin).href, site) : null;
-            // Сайт с зеркалами: открываем на том адресе, где зритель сейчас
-            if (found) { window.AgTopPage.navigate(site.mirrors ? origin + found.pathname + found.search : found.href); return; }
-
-            // AnimeGO: тайтла нет в каталоге — страница из данных Shikimori (modules/animego/ag-synthetic.js)
-            if (site.shikiPage) { window.AgTopPage.navigate(origin + site.shikiPage.replace('{id}', item.id)); return; }
+            if (url) { window.AgTopPage.navigate(url); return; }
 
             busy.remove();
             poster.append(h('div', { class: 'top__choices' },
@@ -363,15 +318,12 @@
             render(ctx);
             return;
         }
-        // Вкладка из окна расширения: сайт из прошлого выбора, иначе тот, что открыт рядом, иначе первый включённый
-        const sites = await pickableSites();
-        const { [PICK_KEY]: saved } = await chrome.storage.local.get([PICK_KEY]);
-        const site = sites.find(x => x.id === saved) || sites.find(x => ctx.site && x.id === ctx.site.id) || sites[0];
-        if (!site) {
+        const picked = await pickContext(ctx);
+        if (!picked) {
             app.replaceChildren(h('p', { class: 'top__note' }, 'Все сайты выключены: включите хотя бы один в окне расширения.'));
             return;
         }
-        render({ ...ctx, site, origin: ctx.site && ctx.site.id === site.id ? ctx.origin : await workingOrigin(site) }, sites);
+        render(picked.ctx, picked.sites);
     }
 
     // Переход на тайтл. Поверх сайта его делает значок: кадр не может сам увести страницу сайта.

@@ -14,13 +14,10 @@
         playerSkin: 'compact',
         // Свои темы из редактора на странице настроек: [{ id, name, base, values }], проверяет AgShellView.cleanCustom
         custom_skins: [],
-        ongoing_enabled: true,
-        ongoing_hide_chinese: true,
-        ongoing_hide_long_running: false,
-        ongoing_min_score: 0,
+        // Фильтры расписания (schedule/schedule.js): значения по умолчанию и разбор в modules/shared/schedule-core.js
+        schedule: {},
         random_min_score: 6.0,
         random_kinds: ["tv", "movie", "ona", "ova", "special"],
-        ongoing_types: ["TV", "ONA", "OVA"],
         auto_select_voice: true,
         voice_priority_list: [
             "Anilibria",

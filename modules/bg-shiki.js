@@ -727,6 +727,21 @@ async function getShikiWatchingList(targetStatus = 'watching') {
     return { success: false, reason: 'fetch_failed', items: [] };
 }
 
+/** Список «Смотрю» одним запросом: { [id тайтла]: просмотрено серий }. Без входа или при сбое сети — null */
+async function getShikiWatchingProgress() {
+    try {
+        const tokens = await getShikiTokens();
+        if (!tokens.shiki_access_token || !tokens.shiki_user || !tokens.shiki_user.id) return null;
+        const res = await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates?user_id=${tokens.shiki_user.id}&target_type=Anime&status=watching&limit=${SHIKI_LIST_LIMIT}`);
+        if (!res.ok) return null;
+        const rates = await res.json();
+        if (!Array.isArray(rates)) return null;
+        return Object.fromEntries(rates.filter(r => r && r.target_id).map(r => [r.target_id, r.episodes || 0]));
+    } catch (e) {
+        return null;
+    }
+}
+
 // Локальная дата (а не UTC из toISOString), иначе «сегодня» сбрасывается в 03:00 по Москве
 function localDateKey(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

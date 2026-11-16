@@ -122,19 +122,53 @@ test('fetch_shikimori не становится открытым прокси', 
     assert.equal((await send({ action: 'fetch_shikimori' })).response.status, 400);
 });
 
-test('расписание применяет настройки зрителя', async () => {
-    const anime = (id, extra = {}) => ({ next_episode: 2, next_episode_at: '2026-11-06T10:00:00Z', anime: { id, name: `Name ${id}`, russian: `Рус ${id}`, kind: 'tv', score: '7.5', aired_on: '2026-01-01', image: { preview: `/p/${id}.jpg` }, ...extra } });
-    const routes = { '/api/calendar': [anime(1), anime(2, { kind: 'movie' }), anime(3, { score: '5.0' }), anime(4, { episodes: 100 })] };
-    const { send } = loadBackground({ routes });
-    const { response } = await send({ action: 'get_ongoing_schedule', settings: { ongoing_min_score: 6, ongoing_hide_long_running: true, ongoing_hide_chinese: false } });
-    const out = plain(response.schedule);
-    assert.deepEqual(out.map(x => x.id), [1]);
-    assert.equal(out[0].poster, 'https://shikimori.io/p/1.jpg');
-    assert.equal(out[0].kind, 'TV');
-    assert.equal(out[0].jutsuUrl, undefined, 'тайтл открывается синтетической страницей AnimeGO по id, а не на Jut-Su');
+test('неделя расписания: серии со сведениями о тайтлах, вышедшая серия остаётся после переключения календаря', async () => {
+    const now = Date.now();
+    const d = new Date(now);
+    const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
+    // Середина сегодняшнего дня: серия точно на этой неделе, в какой бы день ни шёл тест
+    const today = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
+    const entry = (id, ep, at, extra = {}) => ({ next_episode: ep, next_episode_at: new Date(at).toISOString(), anime: { id, name: `Name ${id}`, russian: `Рус ${id}`, kind: 'tv', score: '7.5', episodes: 12, aired_on: '2026-10-01', image: { preview: `/p/${id}.jpg` }, ...extra } });
+    let calendar = [entry(1, 6, today), entry(2, 3, today + 30 * 864e5)];
+    const gql = { data: { animes: [
+        { id: '1', japanese: '薬屋のひとりごと', rating: 'pg_13', score: 8.6, episodes: 12, episodesAired: 5, duration: 23, airedOn: { date: '2026-10-03' }, poster: { mainUrl: 'https://shikimori.io/m/1.webp' }, genres: [{ russian: 'Драма' }] },
+        { id: '2', japanese: '武动乾坤 第七季', rating: 'pg_13', score: 0, episodes: 24, episodesAired: 0, duration: 0, airedOn: { date: '2026-11-29' }, poster: null, genres: [] }
+    ] } };
+    const { send, seen, local } = loadBackground({ routes: { '/api/calendar': () => calendar, '/api/graphql': gql } });
+    const first = plain((await send({ action: 'get_week_schedule' })).response);
+    assert.equal(first.loaded, true);
+    assert.equal(first.weekStart, monday);
+    assert.equal(first.watching, null, 'без входа в Shikimori списка нет');
+    assert.deepEqual(first.entries.map(e => [e.id, e.ep]), [[1, 6]], 'серия через месяц в эту неделю не попадает');
+    const one = first.entries[0];
+    assert.equal(one.poster, 'https://shikimori.io/m/1.webp');
+    assert.deepEqual(one.genres, ['Драма']);
+    assert.equal(one.duration, 23);
+    assert.equal(one.kind, 'TV');
+    assert.equal(one.cn, false);
+    assert.equal(local.ag_schedule_details[2].cn, true, 'китайское узнаётся по оригинальному названию');
 
-    const off = await send({ action: 'get_ongoing_schedule', settings: { ongoing_enabled: false } });
-    assert.deepEqual(plain(off.response), { schedule: [] });
+    // Серия вышла: календарь отдаёт уже следующую, через неделю
+    calendar = [entry(1, 7, today + 7 * 864e5)];
+    const graphqlCalls = seen.fetched.filter(f => f.url.includes('/api/graphql')).length;
+    const { getWeekSchedule } = loadBackground({ routes: { '/api/calendar': () => calendar, '/api/graphql': gql }, store: local }).context;
+    const second = plain(await getWeekSchedule());
+    assert.deepEqual(second.entries.map(e => [e.id, e.ep]), [[1, 6]], '6-я серия осталась в своём дне');
+    assert.equal(graphqlCalls, 1, 'сведения о тайтлах запрашиваются одним запросом на всю неделю');
+});
+
+test('неделя расписания: сеть не ответила — серии из памяти, без памяти честное «не загружено»', async () => {
+    const empty = plain((await loadBackground().send({ action: 'get_week_schedule' })).response);
+    assert.deepEqual(empty.entries, []);
+    assert.equal(empty.loaded, false);
+    const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 12).getTime();
+    const store = {
+        ag_schedule_seen: { 7: [{ ep: 4, at: today }] },
+        ag_schedule_details: { 7: { id: 7, russian: 'Из памяти', name: 'Kept', kind: 'TV', score: 7, genres: [], ts: 1 } }
+    };
+    const kept = plain((await loadBackground({ store }).send({ action: 'get_week_schedule' })).response);
+    assert.equal(kept.loaded, false);
+    assert.deepEqual(kept.entries.map(e => [e.id, e.ep, e.russian]), [[7, 4, 'Из памяти']]);
 });
 
 test('случайное аниме: нет подходящих — честный ответ, есть — ссылка', async () => {

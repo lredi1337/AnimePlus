@@ -165,6 +165,12 @@
         topPageUrl(params = {}) {
             const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
             return chrome.runtime.getURL(`top/top.html?${query}`);
+        },
+
+        /** Страница расписания (schedule/schedule.html) с теми же параметрами, что у Топа (см. modules/shared/ext-page.js) */
+        schedulePageUrl(params = {}) {
+            const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
+            return chrome.runtime.getURL(`schedule/schedule.html?${query}`);
         }
     };
 

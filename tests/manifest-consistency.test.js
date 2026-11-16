@@ -69,7 +69,7 @@ test('Client ID Shikimori записан в одном месте', () => {
 });
 
 test('экранирование HTML не копируется по файлам', () => {
-    for (const file of ['popup/popup.js', 'modules/ui-utils.js', 'modules/animego/ag-jutsu-search.js', 'modules/animego/ag-schedule.js', 'modules/animego/ag-synthetic.js']) {
+    for (const file of ['popup/popup.js', 'modules/ui-utils.js', 'modules/animego/ag-jutsu-search.js', 'modules/animego/ag-synthetic.js']) {
         assert.equal(/\.replace\(\/&\/g|\[&<>"'\]/.test(read(file)), false, file);
     }
 });

@@ -1,5 +1,5 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
-importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/bg-diag.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js', './modules/bg-schedule.js', './modules/bg-random.js', './modules/bg-mirrors.js');
+importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/shared/schedule-core.js', './modules/bg-diag.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js', './modules/bg-schedule.js', './modules/bg-random.js', './modules/bg-mirrors.js');
 
 // Хосты, к которым content-скрипты могут обращаться через fetch_shikimori.
 // Без белого списка обработчик был открытым прокси с правами расширения на любой URL
@@ -173,9 +173,9 @@ const MESSAGE_HANDLERS = {
     }],
     resolve_direct_jutsu_url: [resolveDirectJutsuUrl, (err, m) => ({ url: m.fallbackUrl })],
     resolve_jutsu_cover: [resolveJutsuCover, () => ({ poster: null, url: null })],
-    get_ongoing_schedule: [getOngoingSchedule, (err) => {
-        console.error('Error in get_ongoing_schedule:', err);
-        return { schedule: [] };
+    get_week_schedule: [() => getWeekSchedule(), (err) => {
+        console.error('Error in get_week_schedule:', err);
+        return { entries: [], loaded: false, watching: null };
     }],
     get_random_shikimori_anime: [getRandomShikimoriAnime, (err) => {
         console.error('Error in get_random_shikimori_anime:', err);

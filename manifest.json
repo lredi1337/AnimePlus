@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anime+",
-  "version": "16.0.1",
+  "version": "16.1.0",
   "description": "Все плееры в одной оболочке на AnimeGO, Jut-Su и YummyAnime: смена плеера без перерыва, пропуск опенингов, учёт в Shikimori 🚀",
   "homepage_url": "https://github.com/lredi1337/AnimePlus",
   "minimum_chrome_version": "111",
@@ -119,7 +119,6 @@
         "modules/ui-utils.js",
         "modules/site-selectors.js",
         "modules/progress-tracker.js",
-        "modules/animego/ag-schedule.js",
         "modules/animego/ag-voice.js",
         "modules/animego/ag-synthetic.js",
         "modules/animego/ag-jutsu-search.js",
@@ -369,7 +368,8 @@
     },
     {
       "resources": [
-        "top/frame.html"
+        "top/frame.html",
+        "schedule/frame.html"
       ],
       "matches": [
         "https://*/*"

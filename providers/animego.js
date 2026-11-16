@@ -244,7 +244,6 @@
                 safeRun(() => window.ensureAgLogoPlus(), 'LogoPlus');
                 safeRun(() => window.checkNoVideoAndInjectJutsuButton(), 'NoVideoJutsuButton');
                 safeRun(() => window.agInitVoiceAutoSelect(settings), 'VoiceAutoSelect');
-                safeRun(() => window.agInitScheduleEnhancer(), 'ScheduleEnhancer');
                 safeRun(() => window.agBindPostersIn(document), 'Posters');
             };
 

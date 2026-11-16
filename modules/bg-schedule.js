@@ -88,49 +88,6 @@ function schedulePoster(anime) {
     return poster.replace('shikimori.one', 'shikimori.io').replace('shikimori.me', 'shikimori.io');
 }
 
-function scheduleFilters(settings) {
-    const parsedMin = parseFloat(settings.ongoing_min_score);
-    return {
-        enabled: settings.ongoing_enabled !== undefined ? settings.ongoing_enabled : true,
-        hideChinese: settings.ongoing_hide_chinese !== undefined ? settings.ongoing_hide_chinese : (settings.schedule_hide_chinese === true),
-        hideLongRunning: settings.ongoing_hide_long_running || settings.schedule_hide_long === true,
-        minScore: (settings.ongoing_min_score !== undefined && !isNaN(parsedMin)) ? parsedMin : (settings.schedule_min_score ? parseFloat(settings.schedule_min_score) : 0),
-        allowedTypes: Array.isArray(settings.ongoing_types) ? settings.ongoing_types : (Array.isArray(settings.schedule_types) ? settings.schedule_types : ['TV', 'ONA', 'OVA'])
-    };
-}
-
-function passesScheduleFilters(item, filters) {
-    const anime = item.anime;
-    const kind = anime.kind ? anime.kind.toUpperCase() : 'TV';
-    if (filters.allowedTypes.length > 0 && !filters.allowedTypes.includes(kind)) return false;
-    if (filters.hideChinese && isChineseAnime(anime)) return false;
-    if (filters.hideLongRunning && item.next_episode && item.next_episode > 24) return false;
-    if (filters.hideLongRunning && ((anime.episodes && anime.episodes > 24) || (anime.episodes_aired && anime.episodes_aired > 24))) return false;
-    const score = parseFloat(anime.score || 0);
-    return !(filters.minScore > 0 && score > 0 && score < filters.minScore);
-}
-
-async function toScheduleEntry(item) {
-    const anime = item.anime;
-    const russian = anime.russian || anime.name;
-    const origTitle = anime.name;
-    const kind = anime.kind ? anime.kind.toUpperCase() : 'TV';
-    const year = anime.aired_on ? parseInt(anime.aired_on.split('-')[0]) : null;
-    const nextEpisodeAt = item.next_episode_at || null;
-    return {
-        id: anime.id,
-        russian,
-        name: origTitle,
-        poster: schedulePoster(anime),
-        score: anime.score || null,
-        kind,
-        year,
-        nextEpisode: item.next_episode || null,
-        nextEpisodeAt,
-        dayOfWeek: nextEpisodeAt ? new Date(nextEpisodeAt).getDay() : null
-    };
-}
-
 async function fetchCalendar() {
     const now = Date.now();
     if (cachedScheduleData && now - cachedScheduleTime <= 300000) return cachedScheduleData;
@@ -152,16 +109,80 @@ async function fetchCalendar() {
     return cachedScheduleData;
 }
 
-async function getOngoingSchedule(message) {
-    const { ag_settings: stored } = await chrome.storage.local.get(['ag_settings']);
-    const filters = scheduleFilters(message.settings || stored || {});
-    if (!filters.enabled) return { schedule: [] };
 
+// ---------- Неделя расписания ----------
+// Страница расписания (schedule/schedule.js) получает серии текущей недели вместе со сведениями о тайтлах.
+// Правила недели, памяти о сериях и фильтров: modules/shared/schedule-core.js
+
+const SCHEDULE_SEEN_KEY = 'ag_schedule_seen';
+const SCHEDULE_DETAILS_KEY = 'ag_schedule_details';
+const SCHEDULE_DETAILS_TTL = 24 * 60 * 60 * 1000;
+const SCHEDULE_DETAILS_MAX = 400;
+const SCHEDULE_GQL_CHUNK = 50;
+
+// Жанры, длина серии, возрастной рейтинг и оригинальное название есть только в GraphQL
+async function fetchScheduleExtras(ids) {
+    const extras = {};
+    for (let i = 0; i < ids.length; i += SCHEDULE_GQL_CHUNK) {
+        const chunk = ids.slice(i, i + SCHEDULE_GQL_CHUNK);
+        try {
+            const res = await shikiRateFetch(`${SHIKI_API_BASE}/api/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ query: `{ animes(ids: "${chunk.join(',')}", limit: ${chunk.length}) { id japanese rating score episodes episodesAired duration airedOn { date } poster { mainUrl } genres { russian } } }` })
+            });
+            if (!res.ok) continue;
+            const json = await res.json();
+            for (const a of (json && json.data && json.data.animes) || []) extras[parseInt(a.id, 10)] = a;
+        } catch (e) { /* без этих сведений тайтл показывается по данным календаря */ }
+    }
+    return extras;
+}
+
+function scheduleDetail(anime, extra, now) {
+    const more = extra || {};
+    return {
+        id: anime.id,
+        russian: anime.russian || anime.name || '',
+        name: anime.name || '',
+        kind: String(anime.kind || 'tv').toUpperCase(),
+        score: parseFloat(more.score || anime.score) || 0,
+        episodes: more.episodes || anime.episodes || 0,
+        episodesAired: more.episodesAired || anime.episodes_aired || 0,
+        duration: more.duration || 0,
+        rating: more.rating || '',
+        genres: (more.genres || []).map(g => g.russian).filter(Boolean),
+        cn: AgSchedule.isChinese(more.japanese) || isChineseAnime(anime),
+        airedOn: (more.airedOn && more.airedOn.date) || anime.aired_on || '',
+        poster: (more.poster && more.poster.mainUrl) || schedulePoster(anime),
+        // Без ответа GraphQL запись считается устаревшей сразу: в следующий раз сведения запросятся снова
+        ts: extra ? now : 0
+    };
+}
+
+/** Сведения о тайтлах календаря: свежие из сети, остальные из хранилища. Возвращает всё, что известно */
+async function scheduleDetails(items, now) {
+    const { [SCHEDULE_DETAILS_KEY]: known = {} } = await chrome.storage.local.get([SCHEDULE_DETAILS_KEY]);
+    const stale = items.filter(item => !known[item.anime.id] || now - known[item.anime.id].ts > SCHEDULE_DETAILS_TTL);
+    if (stale.length === 0) return known;
+    const extras = await fetchScheduleExtras(stale.map(item => item.anime.id));
+    const fresh = Object.fromEntries(stale.map(item => [item.anime.id, scheduleDetail(item.anime, extras[item.anime.id], now)]));
+    return updateStorageObject(SCHEDULE_DETAILS_KEY, (all) => {
+        for (const [id, detail] of Object.entries(fresh)) {
+            // Сеть не ответила: прежние полные сведения лучше новых неполных
+            if (detail.ts || !all[id]) all[id] = detail;
+        }
+    }, { maxEntries: SCHEDULE_DETAILS_MAX });
+}
+
+async function getWeekSchedule() {
+    const now = Date.now();
     const calendar = await fetchCalendar();
-    if (!Array.isArray(calendar)) return { schedule: [] };
-
-    const items = calendar.filter(item => item && item.anime && passesScheduleFilters(item, filters));
-    const schedule = await Promise.all(items.map(toScheduleEntry));
-    await fillShikiPosters(schedule);
-    return { schedule };
+    const items = (Array.isArray(calendar) ? calendar : []).filter(item => item && item.anime && item.anime.id);
+    const details = await scheduleDetails(items, now);
+    const seen = await updateStorageObject(SCHEDULE_SEEN_KEY, (old) => AgSchedule.remember(old, items, now));
+    const entries = AgSchedule.weekEntries(seen, now)
+        .filter(e => details[e.id])
+        .map(e => ({ ...details[e.id], ep: e.ep, at: e.at, day: e.day }));
+    return { entries, weekStart: AgSchedule.weekStart(now), loaded: items.length > 0, watching: await getShikiWatchingProgress() };
 }

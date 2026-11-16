@@ -1,8 +1,8 @@
 // features/fox-dock.js
-// Значок Anime+ с лисой в углу страницы и его меню: «Shikimori ★» (на странице тайтла), «Топ Shikimori», «Случайное аниме».
+// Значок Anime+ с лисой в углу страницы и его меню: «Shikimori ★» (на странице тайтла), «Расписание», «Топ Shikimori», «Случайное аниме».
 // Значок не ищет элементы сайта: он прикреплён к <html> и живёт в собственном Shadow DOM со своими стилями,
 // поэтому обновление вёрстки сайта его не ломает. Привязан к сайту, на котором открыт: Топ и случайный тайтл
-// открываются на этом же сайте. Топ открывается поверх страницы кадром расширения (top/frame.html?embed=1) внутри
+// открываются на этом же сайте. Топ и расписание открываются поверх страницы кадром расширения (top/frame.html, schedule/frame.html с ?embed=1) внутри
 // значка: зритель не уходит с сайта, а вёрстка сайта по-прежнему не трогается. Значок можно перетащить в другой угол, угол запоминается (ag_fox_corner).
 // В полноэкранном просмотре (настоящем и псевдо, html.ag-pfs-root) значок прячется.
 // Один раз лиса сама рассказывает, что в значке (ag_guide.dockTipDone): так о нём узнают и те, кто прошёл экскурсию
@@ -120,12 +120,13 @@
         const note = el('div', { class: 'note', role: 'status' });
         const ratingItem = el('a', { class: 'item', href: SHIKI, target: '_blank', rel: 'noopener', hidden: '' },
             el('span', { class: 'star' }, '★'), el('span', { class: 'label' }, 'Shikimori'), el('span', { class: 'side' }, '↗'));
+        const scheduleItem = el('button', { class: 'item', type: 'button' }, icon('calendar'), 'Расписание');
         const topItem = el('button', { class: 'item', type: 'button' }, icon('trophy'), 'Топ Shikimori');
         const randomLabel = el('span', {}, 'Случайное аниме');
         const randomItem = el('button', { class: 'item', type: 'button' }, icon('refresh'), randomLabel);
         const menu = el('div', { class: 'menu', role: 'menu', hidden: '' },
             el('div', { class: 'head' }, 'Anime+ ·', el('b', {}, site.name)),
-            ratingItem, topItem, randomItem, note);
+            ratingItem, scheduleItem, topItem, randomItem, note);
         const tipLater = el('button', { class: 'later', type: 'button' }, 'Понятно');
         const tipGo = el('button', { class: 'go', type: 'button' }, 'Показать');
         const tip = el('div', { class: 'tip', role: 'dialog', 'aria-label': 'Подсказка Anime+', hidden: '' },
@@ -187,7 +188,7 @@
         scope.listen(tipLater, 'click', closeTip);
         scope.listen(tipGo, 'click', () => { setOpen(true); });
 
-        // Топ поверх страницы: на время показа страница сайта не прокручивается
+        // Топ или расписание поверх страницы: на время показа страница сайта не прокручивается
         let topFrame = null;
         let pageOverflow = '';
         const closeTop = () => {
@@ -198,12 +199,14 @@
             document.documentElement.style.overflow = pageOverflow;
             fab.focus({ preventScroll: true });
         };
-        const openTop = () => {
+        const FRAMES = { top: ['top/frame.html', 'Топ Shikimori'], schedule: ['schedule/frame.html', 'Расписание'] };
+        const openFrame = (name) => {
             setOpen(false);
             tip.hidden = true;
             if (topFrame) return;
+            const [path, title] = FRAMES[name];
             const params = new URLSearchParams({ embed: '1', site: site.id, origin: location.origin });
-            topFrame = el('iframe', { class: 'top-frame', src: `${chrome.runtime.getURL('top/frame.html')}?${params}`, title: 'Топ Shikimori' });
+            topFrame = el('iframe', { class: 'top-frame', src: `${chrome.runtime.getURL(path)}?${params}`, title });
             root.append(topFrame);
             host.dataset.top = '1';
             pageOverflow = document.documentElement.style.overflow;
@@ -212,7 +215,7 @@
         };
         scope.add(closeTop);
 
-        // Кадр Топа просит закрыть его или открыть тайтл. Принимаем только от своего кадра и только адрес этого сайта
+        // Кадр Топа или расписания просит закрыть его или открыть тайтл. Принимаем только от своего кадра и только адрес этого сайта
         scope.listen(window, 'message', (e) => {
             const data = e.data;
             if (!topFrame || e.source !== topFrame.contentWindow || !data || data.source !== TOP_SOURCE) return;
@@ -251,7 +254,8 @@
                 : `Не удалось подобрать тайтл на ${site.name}, попробуйте ещё раз`);
         };
 
-        scope.listen(topItem, 'click', openTop);
+        scope.listen(topItem, 'click', () => openFrame('top'));
+        scope.listen(scheduleItem, 'click', () => openFrame('schedule'));
         scope.listen(randomItem, 'click', () => { openRandom().catch(() => {}); });
 
         // Нажатие открывает меню, перетаскивание переносит значок в ближайший угол
@@ -309,7 +313,7 @@
         // Старые закладки на Топ (…#ag-top-shikimori, /top-shikimori) открывают Топ поверх страницы
         if (location.hash === '#ag-top-shikimori') {
             history.replaceState(null, '', location.pathname + location.search);
-            openTop();
+            openFrame('top');
         }
     };
 })();

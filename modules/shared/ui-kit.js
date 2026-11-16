@@ -6,6 +6,7 @@
     'use strict';
 
     const PATHS = {
+        calendar: '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
         check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
         close: '<path d="m6 6 12 12M18 6 6 18"/>',
         external: '<path d="M14 5h5v5M19 5l-8.5 8.5"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 18V8a1.5 1.5 0 0 1 1.5-1.5H10"/>',
