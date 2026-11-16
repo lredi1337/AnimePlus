@@ -211,6 +211,10 @@ AnimeVost часто меняет адрес. Все зеркала на vost.pw
 | :---: | :---: |
 | <img src="assets/player_switch_before.jpg" width="450" alt="Серия в плеере Kodik в полном экране" /> | <img src="assets/player_switch_after.jpg" width="450" alt="Та же серия продолжается в плеере CVH" /> |
 
+| После последней серии: продолжение на этом же сайте |
+| :---: |
+| <img src="assets/player_finale.jpg" width="600" alt="Карточка «Тайтл досмотрен» с кнопкой «Смотреть продолжение»" /> |
+
 </details>
 
 <details>
@@ -273,7 +277,21 @@ AnimeVost часто меняет адрес. Все зеркала на vost.pw
 
 | Меню лисы на странице тайтла |
 | :---: |
-| <img src="assets/fox_dock.jpg" width="700" alt="Значок лисы с открытым меню: оценка Shikimori, Топ и случайное аниме" /> |
+| <img src="assets/fox_dock.jpg" width="700" alt="Значок лисы с открытым меню: оценка Shikimori, расписание, Топ и случайное аниме" /> |
+
+</details>
+
+<details>
+<summary><b>📅 Расписание</b></summary>
+<br>
+
+| Поверх сайта из значка лисы | Фильтры |
+| :---: | :---: |
+| <img src="assets/schedule_overlay.jpg" width="450" alt="Расписание недели поверх страницы Jut-Su, вышедшие серии с меткой" /> | <img src="assets/schedule_filters.jpg" width="450" alt="Панель фильтров расписания: китайское, детское, длинные сериалы, оценка, жанры" /> |
+
+| Вкладка из окна расширения с выбором сайта |
+| :---: |
+| <img src="assets/schedule_tab.jpg" width="700" alt="Вкладка расписания: дни недели, сегодняшние серии и время выхода" /> |
 
 </details>
 
