@@ -18,6 +18,8 @@
         schedule: {},
         random_min_score: 6.0,
         random_kinds: ["tv", "movie", "ona", "ova", "special"],
+        // Скорость видео: выбор в меню плеера или клавишами, новая серия и новый плеер продолжают с ней
+        playbackRate: 1,
         auto_select_voice: true,
         voice_priority_list: [
             "Anilibria",
@@ -33,8 +35,51 @@
             prev: "p",
             skip: "s",
             rewind: "arrowleft",
-            forward: "arrowright"
+            forward: "arrowright",
+            mute: "m",
+            volUp: "arrowup",
+            volDown: "arrowdown",
+            speedUp: "shift+.",
+            speedDown: "shift+,"
         }
+    };
+
+    // Шаги скорости в меню плеера и для клавиш скорости
+    window.AG_SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+
+    // Клавиша по месту на клавиатуре, чтобы F, S и другие работали и в русской раскладке
+    const CODE_KEYS = {
+        Period: '.', Comma: ',', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']',
+        Minus: '-', Equal: '=', Backquote: '`', Backslash: '\\'
+    };
+    const codeKey = (code) => {
+        const m = /^(?:Key([A-Z])|Digit(\d))$/.exec(code || '');
+        if (m) return (m[1] || m[2]).toLowerCase();
+        return CODE_KEYS[code] || null;
+    };
+    const keyName = (key) => (key === ' ' ? 'space' : String(key || '').toLowerCase());
+    const MODIFIERS = ['control', 'alt', 'shift', 'meta'];
+
+    /** Названия нажатия для сравнения с настройками keys: по символу и по месту клавиши. Пустой список у одиночного модификатора */
+    window.agKeyCombos = function (e) {
+        if (!e.key || MODIFIERS.includes(e.key.toLowerCase())) return [];
+        const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift'].filter(Boolean);
+        const join = (k) => mods.concat(k).join('+');
+        const combos = [join(keyName(e.key))];
+        const byPlace = codeKey(e.code);
+        if (byPlace && !combos.includes(join(byPlace))) combos.push(join(byPlace));
+        return combos;
+    };
+
+    /** Действие из настроек keys для нажатия или null */
+    window.agKeyAction = function (e, keys) {
+        const combos = window.agKeyCombos(e);
+        if (!combos.length || e.metaKey) return null;
+        for (const combo of combos) {
+            const action = Object.keys(keys || {}).find(a => keys[a] === combo);
+            if (action) return action;
+        }
+        return null;
     };
 
     // Настройки меняются из плеера и со страницы настроек: открытые вкладки подхватывают их без перезагрузки

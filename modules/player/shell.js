@@ -8,7 +8,8 @@
 
     const { MANUAL_SKIP_SEC, icon, paintSkin, STYLE, TEMPLATE } = root.AgShellView;
     const EPISODE_GROUP = 100;
-    const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+    // Шаги скорости общие с клавишами скорости (config.js)
+    const SPEEDS = globalThis.AG_SPEEDS || [0.75, 1, 1.25, 1.5, 2];
     const SEEN_KEY = 'ag_seen_eps';
     const SEEN_MAX_TITLES = 300;
     const SEEN_AT = 0.8;
@@ -517,6 +518,8 @@
                 cap('Скорость');
                 const box = chips(SPEEDS.map(s => ({ label: `${s}x`, on: video.playbackRate === s, s })), (it) => {
                     video.playbackRate = it.s;
+                    // Новая серия и новый плеер продолжают с этой скоростью (content-player.js)
+                    options.patchSettings({ playbackRate: it.s });
                     renderSettings();
                 });
                 box.style.margin = '4px 8px 0';
@@ -1134,6 +1137,8 @@
             /** Последняя серия досмотрена: { canRate, sequel: { title, kind, year } | null }, handlers: { rate(score), next() } */
             showFinale: (data, handlers) => { if (!destroyed) guarded(showFinale)(data, handlers); },
             finaleRated: (ok, score) => { if (!destroyed) guarded(finaleRated)(ok, score); },
+            /** Короткая подпись поверх видео: громкость, скорость */
+            note: (text) => { if (!destroyed) note(text); },
             /** Списки со страницы сайта для плееров на одну серию */
             setSite(data) {
                 // Перерисовка панели заменяет её кнопки: если это случится под курсором, нажатие зрителя потеряется

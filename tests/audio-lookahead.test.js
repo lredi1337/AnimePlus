@@ -265,3 +265,68 @@ test('MP4: кадры AAC получают заголовки ADTS', () => {
     assert.strictEqual(((adts[10 + 3] & 3) << 11) | (adts[10 + 4] << 3) | (adts[10 + 5] >> 5), 9);
     assert.deepStrictEqual([...adts.subarray(17)], [4, 5]);
 });
+
+// Замер 2026-11-17: в каждой пачке из 10 кусков один отвечал 8-14 с при остальных 1-5 с, а один зависший кусок
+// обрывал весь поиск опенинга («signal timed out»). Повторный запрос такого куска приходит быстро
+const timeoutError = () => Object.assign(new Error('signal timed out'), { name: 'TimeoutError' });
+
+test('застрявший кусок запрашивается снова, и каждая попытка ждёт дольше прежней', async () => {
+    const tries = [];
+    const data = await ahead.fetchRetry('seg-4.ts', 'buffer', null, {
+        fetchImpl: async (url, ms) => {
+            tries.push(ms);
+            if (tries.length === 1) throw timeoutError();
+            return new ArrayBuffer(8);
+        }
+    });
+    assert.strictEqual(data.byteLength, 8);
+    assert.strictEqual(tries.length, 2);
+    assert.ok(tries[0] < 20000, `первая попытка ждёт меньше прежних 20 с: ${tries[0]}`);
+    assert.ok(tries[1] > tries[0]);
+});
+
+test('куска нет на сервере: повторять незачем', async () => {
+    let calls = 0;
+    await assert.rejects(ahead.fetchRetry('seg-4.ts', 'buffer', null, {
+        fetchImpl: async () => { calls++; throw Object.assign(new Error('статус 404'), { status: 404 }); }
+    }), /404/);
+    assert.strictEqual(calls, 1);
+});
+
+test('кусок так и не пришёл: ошибка после нескольких попыток, а не бесконечно', async () => {
+    let calls = 0;
+    await assert.rejects(ahead.fetchRetry('seg-4.ts', 'buffer', null, {
+        fetchImpl: async () => { calls++; throw timeoutError(); }
+    }), /timed out/);
+    assert.ok(calls >= 2 && calls <= 4, `попыток ${calls}`);
+});
+
+test('потерянная минута не обрывает поиск, две подряд обрывают', () => {
+    assert.strictEqual(ahead.batchFailed(0), 'next');
+    assert.strictEqual(ahead.batchFailed(1), 'stop');
+});
+
+test('куски пачки качаются не больше чем по 4 сразу, порядок ответов сохраняется', async () => {
+    let now = 0;
+    let most = 0;
+    const out = await ahead.fetchPool([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], async (x) => {
+        now++;
+        most = Math.max(most, now);
+        await new Promise(r => setTimeout(r, (11 - x) * 3));
+        now--;
+        return x * 10;
+    });
+    assert.deepStrictEqual(out, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+    assert.ok(most <= 4 && most > 1, `одновременно ${most}`);
+});
+
+test('один кусок не пришёл: пачка сообщает об ошибке и не ждёт остальных зря', async () => {
+    let started = 0;
+    await assert.rejects(ahead.fetchPool([1, 2, 3, 4, 5, 6, 7, 8], async (x) => {
+        started++;
+        if (x === 2) throw new Error('signal timed out');
+        await new Promise(r => setTimeout(r, 5));
+        return x;
+    }), /timed out/);
+    assert.ok(started < 8, `после ошибки новые куски не запрашиваются: начато ${started}`);
+});

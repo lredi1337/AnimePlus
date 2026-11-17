@@ -30,6 +30,7 @@ function parseArgs(argv) {
         else if (rest[i] === '--url') opts.url = value;
         else if (rest[i] === '--count') opts.count = Number(value);
         else if (rest[i] === '--out') opts.out = value;
+        else if (rest[i] === '--speed') opts.speed = Number(value);
         else if (rest[i] === '--no-extension') { opts.noExtension = true; i -= 1; }
         else throw new Error(`неизвестный параметр ${rest[i]}`);
     }
@@ -497,12 +498,41 @@ async function follow(opts) {
     const from = '        const nativeFor = (part, video) => {\n';
     const code = fs.readFileSync(skipFile, 'utf8').replace(/\r\n/g, '\n');
     if (!code.includes(from)) throw new Error('в audio-skip.js изменилось: nativeFor');
-    fs.writeFileSync(skipFile, code.replace(from, from + '            if (part) return null;\n'));
+    let patched = code.replace(from, from + '            if (part) return null;\n');
+    // --speed: песню может найти только прослушивание на этой скорости, анализ заранее выключен
+    const ahead = '        const startAhead = async (video) => {\n';
+    if (opts.speed) {
+        if (!patched.includes(ahead)) throw new Error('в audio-skip.js изменилось: startAhead');
+        patched = patched.replace(ahead, ahead + '            if (video) return;\n');
+    }
+    fs.writeFileSync(skipFile, patched);
+    // STAND_DEBUG: журнал запросов анализа заранее в атрибуте страницы кадра.
+    // STAND_STALL: первый запрос куска 4 зависает, а вторая минута (куски 11-20) не приходит совсем
+    if (process.env.STAND_DEBUG || process.env.STAND_STALL) {
+        const aheadFile = path.join(dir, 'modules/audio/lookahead.js');
+        const fetchFrom = '    async function fetchWith(url, ms, type, range) {\n';
+        const aheadCode = fs.readFileSync(aheadFile, 'utf8').replace(/\r\n/g, '\n');
+        if (!aheadCode.includes(fetchFrom)) throw new Error('в lookahead.js изменилось: fetchWith');
+        const logged = [
+            '    async function fetchWith(url, ms, type, range) {',
+            '        const t0 = performance.now();',
+            "        const log = (res) => { const all = JSON.parse(document.documentElement.dataset.agFetch || '[]'); all.push({ u: String(url).split('?')[0].slice(-30), at: Math.round(t0), ms: Math.round(performance.now() - t0), res }); document.documentElement.dataset.agFetch = JSON.stringify(all); };",
+            '        const seg = Number((/seg-(\\d+)-/.exec(String(url)) || [])[1]);',
+            `        const stall = ${process.env.STAND_STALL ? 'true' : 'false'} && ((seg === 4 && !(globalThis.agStalled = globalThis.agStalled || new Set()).has(4) && globalThis.agStalled.add(4)) || (seg >= 11 && seg <= 20));`,
+            "        const run = stall ? new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('signal timed out'), { name: 'TimeoutError' })), ms)) : fetchWithReal(url, ms, type, range);",
+            '        try { const out = await run; log(out.byteLength || out.length); return out; } catch (e) { log(String(e.message).slice(0, 30)); throw e; }',
+            '    }',
+            '    async function fetchWithReal(url, ms, type, range) {',
+            ''
+        ].join('\n');
+        fs.writeFileSync(aheadFile, aheadCode.replace(fetchFrom, logged));
+    }
     const b = launch({ proxy: opts.proxy });
     try {
         const extId = await b.loadExtension(dir);
         const worker = await b.serviceWorker(extId);
-        await b.ev(worker, "chrome.storage.local.set({ ag_guide: { tourDone: true, tipsDone: true, switchTipDone: true, questHidden: true }, ag_settings: { audioDebug: true } })");
+        const startSettings = { audioDebug: true, ...(opts.speed ? { playbackRate: opts.speed } : {}) };
+        await b.ev(worker, `chrome.storage.local.set({ ag_guide: { tourDone: true, tipsDone: true, switchTipDone: true, questHidden: true }, ag_settings: ${JSON.stringify(startSettings)} })`);
         const page = await openTitle(b, opts.url || 'https://jut-su.net/67-magicheskaja-bitva-r1.html');
         let frame = null;
         for (const t of (await b.targets('iframe')).filter(x => /kodikplayer|kodik./.test(x.url))) {
@@ -511,7 +541,7 @@ async function follow(opts) {
         }
         r.check('кадр Kodik на экране', !!frame);
         if (!frame) return r.failed;
-        const STATE = "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; if (!v) return null; let a = null; try { a = JSON.parse(v.dataset.agAudio || 'null'); } catch (e) {} return { t: v.currentTime, d: v.duration || 0, paused: v.paused, a }; })()";
+        const STATE = "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; if (!v) return null; let a = null; try { a = JSON.parse(v.dataset.agAudio || 'null'); } catch (e) {} return { t: v.currentTime, d: v.duration || 0, paused: v.paused, rate: v.playbackRate, a }; })()";
         const waitFor = async (test, tries, ms = 2000) => {
             for (let i = 0; i < tries; i++) {
                 const st = await b.ev(frame, STATE);
@@ -535,26 +565,46 @@ async function follow(opts) {
         const started = !!st && !st.paused && st.d > 120;
         r.check('серия запустилась', started, st && { t: st.t, d: st.d });
         if (!started) return r.failed;
+        if (process.env.STAND_DEBUG) r.info('Kodik о пропуске', await b.ev(frame, "(() => ({ ls: Object.keys(localStorage).map(k => k + '=' + String(localStorage.getItem(k)).slice(0, 80)), scripts: [...document.scripts].map(s => (s.textContent.match(/.{0,120}(skip|Skip).{0,160}/g) || []).join(' | ')).filter(Boolean).map(x => x.slice(0, 600)) }))()"));
         // Зритель начинает с 4-й минуты: первые 5 минут проверены сразу, дальше поиск идёт впереди просмотра
         await b.ev(frame, "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.currentTime = 240; })()");
         const log = [];
         let prev = null;
         let jump = null;
+        let kodikJump = null;
         for (let i = 0; i < 400 && !jump; i++) {
             st = await b.ev(frame, STATE);
             if (!st) { await wait(500); continue; }
             const a = st.a || {};
-            const line = { t: +st.t.toFixed(1), анализ: a.ahead && a.ahead.status, найдено: a.found && a.found.op, когда: a.foundAt && a.foundAt.op, источник: a.timings && a.timings.op && a.timings.op.source };
+            const line = { t: +st.t.toFixed(1), скорость: st.rate, анализ: a.ahead && a.ahead.status, найдено: a.found && a.found.op, когда: a.foundAt && a.foundAt.op, источник: a.timings && a.timings.op && a.timings.op.source };
             if (!prev || line.анализ !== prev.анализ || line.найдено !== prev.найдено) log.push(line);
+            if (process.env.STAND_DEBUG && i % 20 === 0) r.info(`состояние ${line.t}`, { songs: a.songs, listening: a.listening, passive: a.passive, feed: a.feed, blocked: a.blocked, analysisOff: a.analysisOff, timings: a.timings });
             if (prev && st.t - prev.t > 20) jump = { из: prev.t, в: line.t, источник: prev.источник, найдено: prev.найдено, когда: prev.когда };
+            // Kodik сам перескакивает песню по своей метке, даже когда мы её не берём: возвращаемся в начало песни один раз
+            if (jump && opts.speed && !jump.найдено && !kodikJump) {
+                kodikJump = jump;
+                jump = null;
+                await b.ev(frame, `(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.currentTime = ${kodikJump.из + 0.5}; })()`);
+                await wait(1000);
+                prev = null;
+                continue;
+            }
             prev = line;
             if (st.t > 600) break;
             await wait(500);
         }
         r.info('ход анализа', log);
+        if (process.env.STAND_DEBUG) r.info('запросы анализа', await b.ev(frame, "JSON.parse(document.documentElement.dataset.agFetch || '[]')"));
         r.info('прыжок', jump);
-        r.check('песню нашёл анализ заранее до её начала', !!jump && jump.найдено > 0 && jump.когда < jump.найдено, jump);
-        r.check('прыжок по узнанной песне в первые 2 с', !!jump && /^audio/.test(jump.источник || '') && jump.из - jump.найдено < 2, jump);
+        if (opts.speed) {
+            r.info('прыжок самого Kodik по его метке', kodikJump);
+            r.check(`видео шло на скорости ${opts.speed}x`, !!prev && prev.скорость === opts.speed, prev && prev.скорость);
+            r.check('песню узнало прослушивание на этой скорости', !!jump && jump.найдено > 0 && jump.когда >= jump.найдено && /^audio/.test(jump.источник || ''), jump);
+            r.check('прыжок вскоре после начала песни', !!jump && jump.из - jump.найдено < 30, jump && { слушали: +(jump.из - jump.найдено).toFixed(1) });
+        } else {
+            r.check('песню нашёл анализ заранее до её начала', !!jump && jump.найдено > 0 && jump.когда < jump.найдено, jump);
+            r.check('прыжок по узнанной песне в первые 2 с', !!jump && /^audio/.test(jump.источник || '') && jump.из - jump.найдено < 2, jump);
+        }
         await b.closePage(page);
     } finally {
         await b.close();
@@ -1098,7 +1148,115 @@ async function resume(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins, resume };
+/** Клавиши плеера: звук, громкость, скорость, русская раскладка, нажатия на странице мимо плеера, скорость после смены серии */
+async function keys(opts) {
+    const r = reporter();
+    const { b, worker } = await startBrowser(opts);
+    const STATE = "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; return v ? { t: Math.round(v.currentTime), d: Math.round(v.duration || 0), paused: v.paused, muted: v.muted, vol: Math.round(v.volume * 100), rate: v.playbackRate } : null; })()";
+    const settings = () => b.ev(worker, "chrome.storage.local.get(['ag_settings']).then(x => x.ag_settings || {})");
+    // Настоящее нажатие: браузер отдаёт его тому кадру, где фокус
+    const VK = { KeyM: 77, KeyS: 83, KeyN: 78, KeyQ: 81, Period: 190, Comma: 188, ArrowUp: 38, ArrowDown: 40 };
+    const press = async (session, key, code, shift = false) => {
+        const base = { key, code, windowsVirtualKeyCode: VK[code], modifiers: shift ? 8 : 0 };
+        const text = key.length === 1 ? { text: key } : {};
+        await b.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...text }, session);
+        await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }, session);
+        await wait(700);
+    };
+    const playerFrame = async () => {
+        for (let i = 0; i < 20; i++) {
+            for (const t of (await b.targets('iframe')).filter(x => /kodik|thealloha|aksor|cdnvideohub|ceramet|aniboom|vost/.test(x.url))) {
+                const session = await b.attach(t.targetId);
+                try {
+                    if (await b.ev(session, "innerWidth > 0 && !!document.getElementById('ag-shell')")) return { session, host: new URL(t.url).hostname };
+                } catch (e) { /* кадр уже заменён */ }
+            }
+            await wait(1500);
+        }
+        return null;
+    };
+    const play = async (frame) => {
+        let st = null;
+        for (let i = 0; i < 60; i++) {
+            st = await b.ev(frame, STATE).catch(() => null);
+            if (st && !st.paused && st.t > 2 && st.d > 300) return st;
+            if (i % 12 === 0 && (!st || st.paused)) await pressShell(b, frame, '.big');
+            await wait(2000);
+        }
+        return st;
+    };
+    try {
+        const page = await openTitle(b, opts.url || DOCK_TITLE);
+        const one = await playerFrame();
+        r.check('кадр плеера с оболочкой', !!one, one && one.host);
+        if (!one) return r.failed;
+        const f = one.session;
+        const started = await play(f);
+        r.check('серия запущена нажатием в плеере', !!started && !started.paused, started);
+        if (!started || started.paused) return r.failed;
+
+        await press(page.session, 'm', 'KeyM');
+        let st = await b.ev(f, STATE);
+        r.check('M выключает звук', st.muted === true, st);
+        r.check('выключенный звук запомнен как выбор зрителя', (await settings()).playerMuted === true);
+        await press(page.session, 'm', 'KeyM');
+        st = await b.ev(f, STATE);
+        r.check('M возвращает звук', st.muted === false && st.vol > 0, st);
+
+        await b.ev(f, "(() => { const v = [...document.querySelectorAll('video')].sort((a, c) => (c.duration || 0) - (a.duration || 0))[0]; v.volume = 0.5; })()");
+        await press(page.session, 'ArrowUp', 'ArrowUp');
+        st = await b.ev(f, STATE);
+        r.check('стрелка вверх: громче на 5%', st.vol === 55, st);
+        await press(page.session, 'ArrowDown', 'ArrowDown');
+        await press(page.session, 'ArrowDown', 'ArrowDown');
+        st = await b.ev(f, STATE);
+        r.check('стрелка вниз: тише на 5%', st.vol === 45, st);
+
+        await press(page.session, '>', 'Period', true);
+        st = await b.ev(f, STATE);
+        r.check('Shift+> ускоряет до 1.25x', st.rate === 1.25, st);
+        r.check('скорость запомнена', (await settings()).playbackRate === 1.25);
+
+        const before = (await b.ev(f, STATE)).t;
+        await press(page.session, 'ы', 'KeyS');
+        st = await b.ev(f, STATE);
+        r.check('S в русской раскладке перематывает вперёд', st.t - before >= 60, { before, after: st.t });
+
+        // Зритель нажал на страницу мимо плеера: фокус уходит из кадра
+        await b.ev(page.session, "(() => { document.activeElement && document.activeElement.blur(); window.focus(); return document.activeElement && document.activeElement.tagName; })()");
+        r.info('фокус на странице', await b.ev(page.session, "document.activeElement && document.activeElement.tagName"));
+        const scrolled = await b.ev(page.session, 'scrollY');
+        await press(page.session, 'ArrowDown', 'ArrowDown');
+        st = await b.ev(f, STATE);
+        r.check('стрелка на странице прокручивает её, громкость не трогает', st.vol === 45, { vol: st.vol, scrollBefore: scrolled, scrollAfter: await b.ev(page.session, 'scrollY') });
+        await press(page.session, 'm', 'KeyM');
+        st = await b.ev(f, STATE);
+        r.check('M на странице выключает звук плеера', st.muted === true, st);
+        await press(page.session, 'm', 'KeyM');
+        await press(page.session, '<', 'Comma', true);
+        st = await b.ev(f, STATE);
+        r.check('Shift+< на странице замедляет до 1x', st.rate === 1, st);
+        await press(page.session, '>', 'Period', true);
+        await press(page.session, '>', 'Period', true);
+        r.check('скорость 1.5x запомнена', (await settings()).playbackRate === 1.5);
+
+        // Следующая серия: плеер начинает её с 1x, расширение ставит запомненную
+        const sub = async (frame) => b.ev(frame, `(() => { const h = document.getElementById('ag-shell'); const el = h && h.shadowRoot.querySelector('.sub'); return el ? el.textContent : null; })()`).catch(() => null);
+        const episodeBefore = await sub(f);
+        await press(page.session, 'n', 'KeyN');
+        await wait(9000);
+        const next = (await playerFrame()) || one;
+        const nextSt = await play(next.session);
+        r.check('следующая серия открыта клавишей N на странице', (await sub(next.session)) !== episodeBefore, { before: episodeBefore, after: await sub(next.session) });
+        r.check('следующая серия идёт с запомненной скоростью 1.5x', !!nextSt && nextSt.rate === 1.5, nextSt);
+    } finally {
+        await b.ev(worker, "chrome.storage.local.get(['ag_settings']).then(x => x.ag_settings)").then(x => r.info('настройки в конце', x && { playbackRate: x.playbackRate, playerMuted: x.playerMuted })).catch(() => {});
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins, resume, keys };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

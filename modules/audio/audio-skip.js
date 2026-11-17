@@ -70,6 +70,27 @@
      * Прослушивание одного элемента video. Источник создаётся один раз на элемент и с этого момента
      * звук идёт через AudioContext, поэтому подключаемся только когда контекст точно работает.
      */
+    // Скорость, до которой узнавание ещё работает: дальше звук браузер искажает сильнее
+    const LIVE_SPEED_MIN = 0.5;
+    const LIVE_SPEED_MAX = 2;
+    const SEGMENT_GAP_SEC = 0.6;
+
+    /**
+     * Участок непрерывного прослушивания. Кусок звука длиной chunkSec на скорости speed покрывает chunkSec * speed секунд видео.
+     * Новый участок после перемотки и после смены скорости: сдвиг считается во времени видео, поэтому голоса остаются в силе.
+     * segment: { base, expected, speed } или null, если на такой скорости не слушаем; expected — конец этого куска
+     */
+    function liveSegment(segment, { currentTime, chunkSec, speed }) {
+        const rate = Math.round((Number(speed) || 1) * 1000) / 1000;
+        if (rate < LIVE_SPEED_MIN || rate > LIVE_SPEED_MAX) return { segment: null, fresh: false };
+        const startTime = currentTime - chunkSec * rate;
+        if (segment && segment.speed === rate && Math.abs(startTime - segment.expected) <= SEGMENT_GAP_SEC * Math.max(1, rate)) {
+            segment.expected = currentTime;
+            return { segment, fresh: false };
+        }
+        return { segment: { base: startTime, expected: currentTime, speed: rate }, fresh: true };
+    }
+
     async function createListener(video, onChunk) {
         // Видео с другого домена без CORS в графе становится тишиной и пользователь потерял бы звук
         if (!String(video.currentSrc || '').startsWith('blob:')) return null;
@@ -397,18 +418,15 @@
             if (silence.rescue && !blocked) rescueSound(v);
             if (analysisOff || !matcher) return;
 
-            // На другой скорости звук растянут и отпечатки не совпадут
-            if (Math.abs(v.playbackRate - 1) > 0.01) { segment = null; return; }
             if (rate !== resampleRate) {
                 resampler = createResampler(rate);
                 resampleRate = rate;
             }
-            const startTime = v.currentTime - chunkSec;
-            // Новый участок после перемотки: сдвиг считается во времени видео, поэтому голоса остаются в силе
-            if (!segment || Math.abs(startTime - segment.expected) > 0.6) {
-                segment = { base: startTime, expected: startTime };
-                hasher = FP.createHasher(onHash);
-            }
+            // На другой скорости браузер сжимает звук во времени: шаг кадров хэшера подстраивается под неё (fingerprint.js)
+            const step = liveSegment(segment, { currentTime: v.currentTime, chunkSec, speed: v.playbackRate });
+            if (!step.segment) { segment = null; return; }
+            if (step.fresh) hasher = FP.createHasher(onHash, { speed: step.segment.speed });
+            segment = step.segment;
             const t0 = performance.now();
             hasher.push(resampler(data));
             loadSpent += (performance.now() - t0) / 1000;
@@ -422,7 +440,6 @@
                 loadSpent = 0;
                 loadTotal = 0;
             }
-            segment.expected = startTime + chunkSec;
         };
 
         const resetEpisode = () => {
@@ -538,5 +555,5 @@
         };
     }
 
-    globalThis.AgAudioSkip = { create, silenceStep, parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings };
+    globalThis.AgAudioSkip = { create, liveSegment, silenceStep, parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings };
 })();

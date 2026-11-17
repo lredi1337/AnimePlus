@@ -121,20 +121,47 @@ test('случайное аниме: оценка сохраняется, а п�
 test('клавиша назначается, а Esc отменяет назначение', async () => {
     const { w, doc, store } = await openPage({});
     const button = () => doc.querySelector('.key-btn');
-    assert.equal(button().textContent, 'f');
+    assert.equal(button().textContent, 'F');
 
     button().click();
     doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await tick();
-    assert.equal(button().textContent, 'f');
+    assert.equal(button().textContent, 'F');
     assert.deepEqual({ ...store.ag_settings }, {}, 'отмена ничего не сохраняет');
 
     button().click();
     doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'g', bubbles: true }));
     await tick();
-    assert.equal(button().textContent, 'g');
+    assert.equal(button().textContent, 'G');
     assert.equal(store.ag_settings.keys.fs, 'g');
     assert.equal(store.ag_settings.keys.next, 'n', 'остальные клавиши на месте');
+    w.close();
+});
+
+test('клавиша сохраняется по месту на клавиатуре, с Shift, а занятая меняется местами', async () => {
+    const { w, doc, store } = await openPage({});
+    const button = (action) => doc.querySelector(`.key-btn[data-action="${action}"]`);
+    const press = async (action, init) => {
+        button(action).click();
+        doc.dispatchEvent(new w.KeyboardEvent('keydown', { bubbles: true, ...init }));
+        await tick();
+    };
+
+    await press('fs', { key: 'а', code: 'KeyF' });
+    assert.equal(store.ag_settings.keys.fs, 'f', 'русская раскладка сохраняет латинскую клавишу');
+
+    // Shift сам по себе ещё не клавиша: назначение ждёт следующую
+    button('speedUp').click();
+    doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Shift', code: 'ShiftLeft', shiftKey: true, bubbles: true }));
+    doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: '>', code: 'Period', shiftKey: true, bubbles: true }));
+    await tick();
+    assert.equal(store.ag_settings.keys.speedUp, 'shift+.');
+    assert.equal(button('speedUp').textContent, 'Shift + >');
+    assert.equal(button('volUp').textContent, '↑');
+
+    await press('fs', { key: 'n', code: 'KeyN' });
+    assert.equal(store.ag_settings.keys.fs, 'n');
+    assert.equal(store.ag_settings.keys.next, 'f', 'одна клавиша не делает двух дел: прежняя ушла соседу');
     w.close();
 });
 

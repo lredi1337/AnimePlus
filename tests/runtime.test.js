@@ -479,6 +479,51 @@ test('runtime: переключение серии (AG_NAV) на yummyanime.tv �
 
     w.close();
 });
+test('мост плеера: клавиши плеера, нажатые на странице, уходят в кадр, который показывает видео', async () => {
+    const { w } = await startRuntime({
+        url: 'https://yummyanime.tv/8522-monolog-farmacevta-3-sezon-r1.html',
+        html: read('tests/fixtures/yummyanime_tv-title.html')
+    });
+    const doc = w.document;
+    await tick(300);
+    const replies = [];
+    const kodikWin = { postMessage: (m) => replies.push(m) };
+    const keys = () => replies.filter(r => r.type === 'AG_KEY').map(r => r.action);
+    const press = (key, code, target = doc.body, extra = {}) => {
+        const e = new w.KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...extra });
+        target.dispatchEvent(e);
+        return e;
+    };
+
+    press('s', 'KeyS');
+    assert.deepEqual(keys(), [], 'видео ещё не шло: странице клавиши не нужны');
+
+    w.dispatchEvent(new w.MessageEvent('message', {
+        data: { type: 'AG_VIDEO_PROGRESS', episode: 1, currentTime: 100, duration: 1400, volume: 1 },
+        origin: 'https://kodikplayer.com',
+        source: kodikWin
+    }));
+    await tick(50);
+
+    const e = press('s', 'KeyS');
+    assert.deepEqual(keys(), ['skip']);
+    assert.equal(e.defaultPrevented, true);
+    press('ь', 'KeyM');
+    assert.deepEqual(keys(), ['skip', 'mute'], 'русская раскладка');
+
+    const input = doc.createElement('textarea');
+    doc.body.appendChild(input);
+    press('s', 'KeyS', input);
+    press('q', 'KeyQ');
+    press('s', 'KeyS', doc.body, { ctrlKey: true });
+    assert.deepEqual(keys(), ['skip', 'mute'], 'текст в поле, чужие клавиши и сочетания странице не мешают');
+
+    const arrow = press('ArrowDown', 'ArrowDown');
+    assert.deepEqual(keys(), ['skip', 'mute'], 'стрелки вне полного экрана прокручивают страницу');
+    assert.equal(arrow.defaultPrevented, false);
+    w.close();
+});
+
 // Разметка шапки снята с живого ru.yummyani.me (сокращена)
 const RU_HEADER = `
     <header><nav class="bo">

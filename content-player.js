@@ -168,66 +168,76 @@
     // Свои клавиши Kodik перематывает сам: без перехвата нажатие срабатывало дважды, а стрелки уводили на 10-20 секунд.
     // Поэтому слушаем раньше плеера и не отдаём ему ни нажатие, ни отпускание, ни повтор при удержании
     const interceptedKeys = new Set();
-    document.addEventListener('keydown', (e) => {
-        // Поля ввода плеера (поиск серии) получают клавиши как обычно
-        if (e.composedPath().some(n => n.tagName === 'INPUT')) return;
-
-        const pressed = [];
-        if (e.ctrlKey) pressed.push('ctrl');
-        if (e.altKey) pressed.push('alt');
-        if (e.shiftKey) pressed.push('shift');
-        if (!['control', 'alt', 'shift', 'meta'].includes(e.key.toLowerCase())) {
-            pressed.push(e.key.toLowerCase());
-        }
-        const combo = pressed.join('+');
-
-        // Первым в кадре бывает пустой служебный элемент video: серия идёт в fp-engine
-        const v = player.video() || document.querySelector('video');
-        if (!v) return;
-
-        if (Object.values(settings.keys).includes(combo)) {
-            interceptedKeys.add(e.code);
-            if (e.repeat) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-        } else if (e.repeat) {
-            return;
-        }
-
-        if (combo === settings.keys.fs) {
-            e.preventDefault(); e.stopPropagation();
-            toTop({ type: 'AG_PSEUDO_FS', action: 'toggle' });
-        }
-        else if (combo === settings.keys.forward) {
-            e.preventDefault(); e.stopPropagation();
-            doRewind(5, v);
-        }
-        else if (combo === settings.keys.rewind) {
-            e.preventDefault(); e.stopPropagation();
-            doRewind(-5, v);
-        }
-        else if (combo === settings.keys.next) {
-            e.preventDefault(); e.stopPropagation();
-            if (shouldUseLocalNav()) { switchKodikEpisode('next'); }
+    const VOLUME_KEY_STEP = 0.05;
+    const patchSettings = async (patch) => { settings = await window.agPatchSettings(patch); };
+    const note = (text) => { if (playerShell && playerShell.note) playerShell.note(text); };
+    const nextSpeed = (rate, dir) => {
+        const speeds = window.AG_SPEEDS;
+        // Ближайший шаг к нынешней скорости: плеер мог поставить свою, которой нет в списке
+        const near = speeds.reduce((best, s, i) => (Math.abs(s - rate) < Math.abs(speeds[best] - rate) ? i : best), 0);
+        return speeds[Math.max(0, Math.min(speeds.length - 1, near + dir))];
+    };
+    const setSpeed = (v, rate) => {
+        v.playbackRate = rate;
+        note(`Скорость ${rate}x`);
+        patchSettings({ playbackRate: rate });
+    };
+    const setVolumeBy = (v, step) => {
+        v.muted = false;
+        v.volume = Math.round(Math.max(0, Math.min(1, v.volume + step)) * 100) / 100;
+        if (settings.playerMuted) patchSettings({ playerMuted: false });
+        note(`Громкость ${Math.round(v.volume * 100)}%`);
+    };
+    // Действия клавиш из настроек keys. Их же присылает страница сайта, когда нажатие было вне кадра (AG_KEY)
+    const KEY_ACTIONS = {
+        fs: () => toTop({ type: 'AG_PSEUDO_FS', action: 'toggle' }),
+        forward: (v) => doRewind(5, v),
+        rewind: (v) => doRewind(-5, v),
+        next: () => {
+            if (shouldUseLocalNav()) switchKodikEpisode('next');
             else toTop({ type: 'AG_NAV', dir: 'next' });
-        }
-        else if (combo === settings.keys.prev) {
-            e.preventDefault(); e.stopPropagation();
-            if (shouldUseLocalNav()) { switchKodikEpisode('prev'); }
+        },
+        prev: () => {
+            if (shouldUseLocalNav()) switchKodikEpisode('prev');
             else toTop({ type: 'AG_NAV', dir: 'prev' });
-        }
-        else if (combo === settings.keys.skip) {
-            e.preventDefault(); e.stopPropagation();
+        },
+        skip: (v) => {
             if (currentSkipTarget) {
                 markSongSkipped();
                 v.currentTime = currentSkipTarget;
             } else {
                 v.currentTime += 89;
             }
-        }
-        else if (e.key === 'Escape') {
+        },
+        mute: (v) => {
+            const muted = !(v.muted || v.volume === 0);
+            v.muted = muted;
+            if (!muted && v.volume === 0) v.volume = 0.5;
+            // Звук выключил сам зритель: плеер не вернёт его сам (modules/player/frame/sound.js)
+            if (!!settings.playerMuted !== muted) patchSettings({ playerMuted: muted });
+            note(muted ? 'Без звука' : `Громкость ${Math.round(v.volume * 100)}%`);
+        },
+        volUp: (v) => setVolumeBy(v, VOLUME_KEY_STEP),
+        volDown: (v) => setVolumeBy(v, -VOLUME_KEY_STEP),
+        speedUp: (v) => setSpeed(v, nextSpeed(v.playbackRate, 1)),
+        speedDown: (v) => setSpeed(v, nextSpeed(v.playbackRate, -1))
+    };
+    // Первым в кадре бывает пустой служебный элемент video: серия идёт в fp-engine
+    const keyVideo = () => player.video() || document.querySelector('video');
+    document.addEventListener('keydown', (e) => {
+        // Поля ввода плеера (поиск серии) получают клавиши как обычно
+        if (e.composedPath().some(n => n.tagName === 'INPUT')) return;
+
+        const v = keyVideo();
+        if (!v) return;
+
+        const action = window.agKeyAction(e, settings.keys);
+        if (action && KEY_ACTIONS[action]) {
+            interceptedKeys.add(e.code);
+            e.preventDefault();
+            e.stopPropagation();
+            if (!e.repeat || action.startsWith('vol')) KEY_ACTIONS[action](v);
+        } else if (e.key === 'Escape' && !e.repeat) {
             toTop({ type: 'AG_PSEUDO_FS', action: 'disable' });
         }
     }, true);
@@ -284,11 +294,28 @@
             switchKodikEpisode(e.data.dir, true);
         }
 
+        if (e.data?.type === 'AG_KEY' && Object.hasOwn(KEY_ACTIONS, e.data.action)) {
+            const v = keyVideo();
+            if (v) KEY_ACTIONS[e.data.action](v);
+        }
+
     });
 
     window.agOnSettingsChange((fresh) => {
+        const speedChanged = fresh.playbackRate !== settings.playbackRate;
         settings = fresh;
+        if (speedChanged) keepSpeed(keyVideo());
     });
+
+    // Запомненная скорость: плеер сбрасывает её на новой серии, а новый плеер начинает с 1x. Реклама идёт как есть
+    function keepSpeed(v) {
+        const rate = Number(settings.playbackRate) || 1;
+        if (!v || v !== keyVideo() || player.adState(v) !== 'none' || v.playbackRate === rate) return;
+        v.playbackRate = rate;
+    }
+    for (const type of ['loadedmetadata', 'playing']) {
+        document.addEventListener(type, (e) => { if (e.target instanceof HTMLVideoElement) keepSpeed(e.target); }, true);
+    }
 
     const syncFsState = () => {
         const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);

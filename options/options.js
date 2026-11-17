@@ -13,8 +13,27 @@
         ['next', 'Следующая серия'],
         ['prev', 'Предыдущая серия'],
         ['forward', 'Вперёд на 5 секунд'],
-        ['rewind', 'Назад на 5 секунд']
+        ['rewind', 'Назад на 5 секунд'],
+        ['mute', 'Выключить и вернуть звук'],
+        ['volUp', 'Громче на 5%'],
+        ['volDown', 'Тише на 5%'],
+        ['speedUp', 'Быстрее'],
+        ['speedDown', 'Медленнее']
     ];
+    // Подпись клавиши так, как она нарисована на клавиатуре
+    const KEY_LABELS = {
+        arrowleft: '←', arrowright: '→', arrowup: '↑', arrowdown: '↓', space: 'Пробел', escape: 'Esc',
+        ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift'
+    };
+    const SHIFTED = { '.': '>', ',': '<', '/': '?', ';': ':', "'": '"', '[': '{', ']': '}', '-': '_', '=': '+', '`': '~' };
+    const keyLabel = (combo) => {
+        const parts = String(combo).split('+').filter(Boolean);
+        if (!parts.length) parts.push('+');
+        const key = parts.pop();
+        const shifted = parts.includes('shift') && SHIFTED[key];
+        const label = KEY_LABELS[key] || shifted || (key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1));
+        return parts.map(p => KEY_LABELS[p] || p).concat(label).join(' + ');
+    };
 
     // Перетаскивание (озвучки, кнопки панели) начинается, когда указатель ушёл дальше этого
     const DRAG_START_PX = 4;
@@ -667,8 +686,9 @@
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'key-btn';
-            btn.textContent = settings.keys[action];
-            btn.setAttribute('aria-label', `${title}: ${settings.keys[action]}`);
+            btn.dataset.action = action;
+            btn.textContent = keyLabel(settings.keys[action]);
+            btn.setAttribute('aria-label', `${title}: ${keyLabel(settings.keys[action])}`);
             btn.addEventListener('click', () => {
                 if (stopListening) stopListening();
                 btn.classList.add('listening');
@@ -676,10 +696,18 @@
                 const onKey = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    // Shift, Ctrl и Alt сами по себе ещё не клавиша: ждём ту, что нажмут вместе с ними
+                    const combos = window.agKeyCombos(e);
+                    if (!combos.length) return;
                     stopListening();
                     if (e.key === 'Escape') return;
-                    const key = e.key === ' ' ? 'space' : e.key.toLowerCase();
-                    save({ keys: { ...settings.keys, [action]: key } }).then(renderKeys);
+                    // По месту на клавиатуре, если оно известно: так клавиша работает в любой раскладке
+                    const key = combos[combos.length - 1];
+                    const keys = { ...settings.keys, [action]: key };
+                    // Одна клавиша не делает двух дел: у соседа, который её занимал, оказывается прежняя клавиша этого действия
+                    const taken = Object.keys(settings.keys).find(a => a !== action && settings.keys[a] === key);
+                    if (taken) keys[taken] = settings.keys[action];
+                    save({ keys }).then(renderKeys);
                 };
                 stopListening = () => {
                     document.removeEventListener('keydown', onKey, true);

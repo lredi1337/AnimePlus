@@ -18,6 +18,12 @@
     const BATCH_SEC = 60;
     const BATCH_PAUSE_MS = 300;
     const FETCH_TIMEOUT_MS = 20000;
+    // Куски серии: в пачке один часто отвечает в разы дольше остальных, а повторный запрос приходит быстро.
+    // Вторая попытка ждёт дольше: медленному каналу большой кусок всё равно успевают отдать. Замер 2026-11-17:
+    // отстающие куски приходили за 7-12 с, повтор зависшего за 1-2 с, мёртвая минута стоит 32 с вместо 62 с при трёх попытках
+    const SEGMENT_TIMEOUTS_MS = [12000, 20000];
+    // Десять загрузок сразу делили канал, и на медленной сети не успевали даже исправные куски
+    const SEGMENT_CONCURRENCY = 4;
     const PROBE_TIMEOUT_MS = 4000;
     // Больше на одну серию не качаем, что бы ни случилось
     const MAX_BYTES = 70 * 1024 * 1024;
@@ -465,9 +471,46 @@
 
     async function fetchWith(url, ms, type, range) {
         const r = await fetch(url, { signal: AbortSignal.timeout(ms), headers: range ? { Range: `bytes=${range}` } : undefined });
-        if (!r.ok) throw new Error(`статус ${r.status}`);
+        if (!r.ok) throw Object.assign(new Error(`статус ${r.status}`), { status: r.status });
         return type === 'text' ? r.text() : r.arrayBuffer();
     }
+
+    /** Кусок серии с повторами: зависший запрос обрывается и уходит заново. Ответ 4xx не повторяем, кроме 429 */
+    async function fetchRetry(url, type, range, { timeouts = SEGMENT_TIMEOUTS_MS, fetchImpl = fetchWith } = {}) {
+        let last = null;
+        for (const ms of timeouts) {
+            try {
+                return await fetchImpl(url, ms, type, range);
+            } catch (e) {
+                last = e;
+                if (e.status >= 400 && e.status < 500 && e.status !== 429) break;
+            }
+        }
+        throw last;
+    }
+
+    /** Ответы для всех items по порядку, не больше limit запросов сразу. Первая ошибка останавливает новые запросы */
+    async function fetchPool(items, work, limit = SEGMENT_CONCURRENCY) {
+        const out = new Array(items.length);
+        let next = 0;
+        let failed = false;
+        const lane = async () => {
+            while (!failed && next < items.length) {
+                const i = next++;
+                try {
+                    out[i] = await work(items[i]);
+                } catch (e) {
+                    failed = true;
+                    throw e;
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+        return out;
+    }
+
+    /** Пачка не скачалась и после повторов: одну минуту пропускаем, вторая подряд значит, что сервер не отдаёт */
+    const batchFailed = (failedBefore) => (failedBefore >= 1 ? 'stop' : 'next');
 
     /** Kodik: то же самое в 360p, сколько бы ни смотрел зритель */
     const kodikLightUrl = (url) => (/\/\d+\.mp4:hls:/.test(url) ? url.replace(/\/\d+\.mp4:hls:/, '/360.mp4:hls:') : null);
@@ -626,6 +669,7 @@
             }
             const matcher = FP.createMatcher(options.songs);
             const started = performance.now();
+            let failedBatches = 0;
             for (const batch of batchesFor(stream.segments, from, to)) {
                 if (stopped || !options.wanted(part)) break;
                 if (state.bytes >= MAX_BYTES) return report({ status: 'лимит' });
@@ -642,7 +686,16 @@
                     if (state.bytes >= FOLLOW_MAX_BYTES) break;
                 }
                 report({ status: `${part}: ${Math.round(batch.at)} с` });
-                const buffers = await Promise.all(batch.segments.map(s => fetchWith(s.url, FETCH_TIMEOUT_MS, 'buffer', s.range)));
+                let buffers;
+                try {
+                    buffers = await fetchPool(batch.segments, s => fetchRetry(s.url, 'buffer', s.range));
+                } catch (e) {
+                    if (globalThis.AgDiag) globalThis.AgDiag.note('lookahead_batch', e);
+                    if (batchFailed(failedBatches++) === 'stop') throw e;
+                    // Песня длиннее минуты: её остаток попадёт в соседнюю пачку
+                    continue;
+                }
+                failedBatches = 0;
                 state.bytes += buffers.reduce((sum, b) => sum + b.byteLength, 0);
                 if (stopped) break;
                 const pcm = await decodeBatch(init, buffers, FP.SAMPLE_RATE, stream.aac ? { segments: batch.segments, aac: stream.aac } : null);
@@ -693,7 +746,7 @@
         };
     }
 
-    const api = { create, opPlan, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
+    const api = { create, fetchRetry, fetchPool, batchFailed, opPlan, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
     root.AgLookahead = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

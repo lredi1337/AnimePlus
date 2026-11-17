@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const FP = require('../modules/audio/fingerprint.js');
 
 require('../modules/audio/audio-skip.js');
-const { parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings } = globalThis.AgAudioSkip;
+const { liveSegment, parseNativeMarks, marksFromSite, siteMarkFits, extendEnding, splitNativeMarks, songInEpisode, chooseTimings } = globalThis.AgAudioSkip;
 
 const SR = FP.SAMPLE_RATE;
 
@@ -136,6 +136,62 @@ test('песня узнаётся в середине серии, и начал�
     assert.strictEqual(hits.length, 1);
     assert.ok(Math.abs(hits[0].start - 73) < 0.3, `начало ${hits[0].start}`);
     assert.ok(hits[0].at - 73 < 30, `узнано через ${hits[0].at - 73} с`);
+});
+
+// Так браузер играет видео на другой скорости: звук короче во столько же раз, а высота та же (наложение окон)
+function stretch(pcm, speed) {
+    const W = 1024;
+    const out_hop = 256;
+    const in_hop = out_hop * speed;
+    const frames = Math.floor((pcm.length - W) / in_hop);
+    const out = new Float32Array(frames * out_hop + W);
+    const norm = new Float32Array(out.length);
+    for (let f = 0; f < frames; f++) {
+        const from = Math.round(f * in_hop);
+        for (let i = 0; i < W; i++) {
+            const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (W - 1));
+            out[f * out_hop + i] += pcm[from + i] * w;
+            norm[f * out_hop + i] += w;
+        }
+    }
+    for (let i = 0; i < out.length; i++) if (norm[i] > 1e-3) out[i] /= norm[i];
+    return out;
+}
+
+function liveAt(pcm, songs, speed, hasherOptions) {
+    const matcher = FP.createMatcher(songs);
+    const hits = [];
+    const hasher = FP.createHasher((h, t) => {
+        const sec = t * FP.FRAME_SEC;
+        const r = matcher.feed(h, sec);
+        if (r) hits.push({ start: r.start, at: sec });
+    }, hasherOptions);
+    for (let i = 0; i < pcm.length; i += SR) hasher.push(pcm.subarray(i, i + SR));
+    hasher.finish();
+    return hits;
+}
+
+test('песня узнаётся на скорости 1.25x, 1.5x, 2x и 0.75x: кадры считаются по шкале видео', () => {
+    const op = song(31, 90);
+    const ep = episode(32, 240, [{ pcm: op, at: 73 }]);
+    const songs = [prepared('OP1', op)];
+    for (const speed of [1.25, 1.5, 2, 0.75]) {
+        const played = stretch(ep, speed);
+        assert.strictEqual(liveAt(played, songs, speed).length, 0, `${speed}x без поправки не узнаётся: проверка имеет смысл`);
+        const hits = liveAt(played, songs, speed, { speed });
+        assert.strictEqual(hits.length, 1, `${speed}x: узнано ${hits.length}`);
+        assert.ok(Math.abs(hits[0].start - 73) < 0.6, `${speed}x: начало ${hits[0].start}`);
+        assert.ok(hits[0].at - 73 < 30, `${speed}x: узнано через ${hits[0].at - 73} с видео`);
+    }
+});
+
+test('скорость 1x даёт те же хэши, что и раньше: база песен не меняется', () => {
+    const pcm = song(33, 20);
+    const got = [];
+    const h = FP.createHasher((x, t) => got.push({ h: x, t }), { speed: 1 });
+    for (let i = 0; i < pcm.length; i += 777) h.push(pcm.subarray(i, i + 777));
+    h.finish();
+    assert.deepStrictEqual(got, FP.hashes(pcm));
 });
 
 test('время считается по шкале видео: запись может начаться не с нуля', () => {
@@ -274,4 +330,26 @@ test('тишина ломает звук, только если звук это�
     assert.strictEqual(s.rescue, false);
     for (let i = 0; i < 40; i++) s = silenceStep(s, { peak: 0, sec: 1, src: 'blob:c', passive: true, quiet: false });
     assert.strictEqual(s.rescue, false);
+});
+
+test('прослушивание на скорости: кусок звука покрывает больше времени видео, участок не рвётся', () => {
+    const chunk = 4096 / 44100;
+    let step = liveSegment(null, { currentTime: 100, chunkSec: chunk, speed: 1.5 });
+    assert.ok(step.fresh);
+    assert.ok(Math.abs(step.segment.base - (100 - chunk * 1.5)) < 1e-9, 'начало куска по шкале видео');
+    const first = step.segment;
+    for (let i = 1; i <= 50; i++) {
+        step = liveSegment(step.segment, { currentTime: 100 + i * chunk * 1.5, chunkSec: chunk, speed: 1.5 });
+        assert.ok(!step.fresh, `кусок ${i} продолжает участок`);
+    }
+    assert.strictEqual(step.segment, first);
+
+    // Зритель сменил скорость: кадры прежнего участка шли с другим шагом, начинаем новый
+    step = liveSegment(step.segment, { currentTime: 100 + 51 * chunk * 1.5, chunkSec: chunk, speed: 1 });
+    assert.ok(step.fresh);
+    assert.strictEqual(step.segment.speed, 1);
+
+    // Перемотка рвёт участок на любой скорости
+    step = liveSegment(step.segment, { currentTime: 500, chunkSec: chunk, speed: 1 });
+    assert.ok(step.fresh);
 });

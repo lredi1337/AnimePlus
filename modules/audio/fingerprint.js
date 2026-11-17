@@ -57,7 +57,12 @@
      * Потоковый расчёт хэшей. push() принимает звук 11025 Гц, onHash получает (хэш, номер кадра).
      * Пара пиков готова, когда второй пик уже прошёл, поэтому хэши приходят с задержкой меньше секунды.
      */
-    function createHasher(onHash) {
+    function createHasher(onHash, options) {
+        // Видео на другой скорости: браузер сжимает звук во времени, а высоту сохраняет. Шаг кадра делим на скорость,
+        // тогда каждый кадр — те же HOP отсчётов шкалы видео, что и в образце, и хэши совпадают с базой
+        const speed = options && options.speed > 0 ? options.speed : 1;
+        const hop = HOP / speed;
+        let pos = 0;
         const re = new Float64Array(WINDOW);
         const im = new Float64Array(WINDOW);
         const mags = new Float32Array(WINDOW / 2);
@@ -113,9 +118,11 @@
                 const buf = new Float32Array(tail.length + pcm.length);
                 buf.set(tail);
                 buf.set(pcm, tail.length);
-                let off = 0;
-                for (; off + WINDOW <= buf.length; off += HOP) processFrame(buf, off);
-                tail = buf.slice(off);
+                let off = pos;
+                for (; Math.floor(off) + WINDOW <= buf.length; off += hop) processFrame(buf, Math.floor(off));
+                const cut = Math.min(Math.floor(off), buf.length);
+                tail = buf.slice(cut);
+                pos = off - cut;
                 flushPending(frame);
             },
             finish() { flushPending(null); },

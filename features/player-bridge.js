@@ -119,6 +119,8 @@
         // Старый плеер при смене плеера сразу замолкает, чтобы не играть параллельно. При смене озвучки его кадр сайт заменит сам
         let lastPlayed = null;
         let handoff = null;
+        // Кадр, который последним показывал видео: ему уходят клавиши, нажатые на странице
+        let keyTarget = null;
         const rememberHandoff = () => {
             if (!lastPlayed) return;
             const now = Date.now();
@@ -334,6 +336,7 @@
                     if (provider.getShellSite) post(e.source, { type: 'AG_SHELL_SITE', site: await provider.getShellSite() });
                     break;
                 case 'AG_VIDEO_PROGRESS':
+                    keyTarget = e.source;
                     if (data.isEnded) lastPlayed = null;
                     else if (data.duration >= MIN_EPISODE_SEC) lastPlayed = { episode: data.episode, time: data.currentTime, volume: data.volume, at: Date.now() };
                     break;
@@ -392,6 +395,28 @@
         scope.listen(document, 'keydown', (e) => {
             if (e.key === 'Escape' && fsContainer) setPseudoFs('disable');
         });
+
+        // Клавиши плеера работают, даже если зритель нажал на страницу мимо плеера: нажатие уходит в кадр,
+        // который последним показывал видео. Стрелки вне полного экрана остаются странице: ими её прокручивают
+        let keys = settings.keys || {};
+        const onStorage = (changes, area) => {
+            if (area === 'local' && changes.ag_settings) window.getSettings().then((fresh) => { keys = fresh.keys; });
+        };
+        chrome.storage.onChanged.addListener(onStorage);
+        scope.add(() => chrome.storage.onChanged.removeListener && chrome.storage.onChanged.removeListener(onStorage));
+        const PAGE_KEYS = /^(arrow|page|home|end|space)/;
+        scope.listen(window, 'keydown', (e) => {
+            if (!keyTarget || e.defaultPrevented) return;
+            // Поле внутри Shadow DOM (значок лисы) снаружи выглядит его хозяином: смотрим настоящую цель
+            const t = e.composedPath()[0];
+            if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+            const action = window.agKeyAction(e, keys);
+            if (!action) return;
+            if (PAGE_KEYS.test(keys[action]) && !fsContainer && !document.fullscreenElement) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (!e.repeat || action.startsWith('vol')) post(keyTarget, { type: 'AG_KEY', action });
+        }, true);
 
         // Сайт пересоздаёт iframe при смене серии (ru.yummyani.me) — переносим режим на новый контейнер
         scope.observe(() => {
