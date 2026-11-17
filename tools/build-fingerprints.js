@@ -6,6 +6,7 @@
 //   node tools/build-fingerprints.js --out fingerprints --top 3000 --ongoing 300    онгоинги и популярное с Shikimori
 //   --animethemes                                                          затем все остальные тайтлы с AnimeThemes
 //   --limit-minutes 300 --audio-cache <папка>                              ограничение времени и кэш скачанного звука
+//   --max-errors 20                                                        столько ошибок подряд останавливают сборку с кодом 1
 //
 // Нужен ffmpeg в PATH. Уже собранные тайтлы пропускаются, поэтому прервать и продолжить можно в любой момент.
 
@@ -33,15 +34,43 @@ async function json(url) {
     return r.json();
 }
 
-async function themesOf(id) {
-    const u = `https://api.animethemes.moe/anime?filter[has]=resources&filter[site]=MyAnimeList&filter[external_id]=${id}&include=animethemes.animethemeentries.videos.audio&fields[audio]=link&fields[video]=filename`;
-    const anime = (await json(u)).anime || [];
-    if (!anime[0]) return [];
-    return (anime[0].animethemes || []).map((t) => {
+// AnimeThemes отвечает только через GraphQL: старый REST api.animethemes.moe с ноября 2026 отдаёт 503.
+// Ошибки GraphQL приходят со статусом 200 в поле errors
+const GQL_URL = 'https://graphql.animethemes.moe/';
+
+function gqlData(body) {
+    if (body.errors && body.errors.length) throw new Error(`GraphQL: ${body.errors.map(e => e.message).join('; ')}`);
+    return body.data;
+}
+
+async function gql(query, variables = {}) {
+    const r = await fetch(GQL_URL, {
+        method: 'POST',
+        headers: { 'User-Agent': UA, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables }),
+        signal: AbortSignal.timeout(60000)
+    });
+    if (!r.ok) throw new Error(`${GQL_URL}: ${r.status}`);
+    return gqlData(await r.json());
+}
+
+const THEMES_QUERY = `query ($id: [Int!]) {
+  findAnimeByExternalSite(site: MAL, id: $id) {
+    animethemes { type slug animethemeentries { episodes videos { nodes { audio { link } } } } }
+  }
+}`;
+
+function themesFromAnime(anime) {
+    return ((anime && anime.animethemes) || []).map((t) => {
         const entries = t.animethemeentries || [];
-        const audio = entries.flatMap(e => e.videos || []).map(v => v.audio && v.audio.link).find(Boolean);
+        const audio = entries.flatMap(e => (e.videos && e.videos.nodes) || []).map(v => v.audio && v.audio.link).find(Boolean);
         return { type: t.type, slug: t.slug, episodes: (entries[0] && entries[0].episodes) || '', audio };
     }).filter(t => t.audio && (t.type === 'OP' || t.type === 'ED'));
+}
+
+async function themesOf(id) {
+    const found = (await gql(THEMES_QUERY, { id: [id] })).findAnimeByExternalSite || [];
+    return themesFromAnime(found[0]);
 }
 
 // Сервер отдаёт файлы медленно: несколько диапазонов параллельно и лимит времени
@@ -98,22 +127,28 @@ async function listIds(count, status) {
     return ids.slice(0, count);
 }
 
-// Все тайтлы AnimeThemes со ссылкой на MyAnimeList: /resource отдаёт их страницами по 100, около 60 запросов.
+// Все тайтлы AnimeThemes со ссылкой на MyAnimeList: animePagination страницами по 100, около 50 запросов.
 // Сбой сервера не роняет сборку: остаётся очередь с Shikimori
-async function animeThemesIds(getJson = json, pauseMs = PAUSE_MS) {
+const LIST_QUERY = `query ($page: Int) {
+  animePagination(first: 100, page: $page) {
+    paginatorInfo { hasMorePages }
+    data { resources(site: MAL) { nodes { externalId } } }
+  }
+}`;
+
+async function animeThemesIds(getGql = gql, pauseMs = PAUSE_MS) {
     const ids = new Set();
-    let url = 'https://api.animethemes.moe/resource?' + new URLSearchParams({
-        'filter[site]': 'MyAnimeList', 'filter[has]': 'anime', 'fields[resource]': 'external_id,site', 'page[size]': '100'
-    });
     try {
-        while (url) {
-            const page = await getJson(url);
-            for (const r of page.resources || []) {
-                const id = Number(r.external_id);
-                if (r.site === 'MyAnimeList' && Number.isInteger(id) && id > 0) ids.add(id);
+        for (let page = 1; ; page++) {
+            const p = (await getGql(LIST_QUERY, { page })).animePagination;
+            for (const a of p.data || []) {
+                for (const r of (a.resources && a.resources.nodes) || []) {
+                    const id = Number(r.externalId);
+                    if (Number.isInteger(id) && id > 0) ids.add(id);
+                }
             }
-            url = page.links && page.links.next;
-            if (url) await sleep(pauseMs);
+            if (!p.paginatorInfo || !p.paginatorInfo.hasMorePages) break;
+            await sleep(pauseMs);
         }
     } catch (e) {
         console.log(`список AnimeThemes: ${e.message}, собрано ${ids.size}`);
@@ -136,6 +171,14 @@ function needsBuild(file, ongoing) {
     const age = Date.now() - (saved.built || 0);
     if (ongoing && age > ONGOING_REFRESH_MS) return true;
     return !saved.songs.length && age > EMPTY_REFRESH_MS;
+}
+
+// Серия ошибок подряд значит, что источник недоступен: сборка останавливается и прогон краснеет, а не молча ничего не делает
+class Stopper {
+    constructor(limit) { this.limit = limit; this.streak = 0; }
+    ok() { this.streak = 0; }
+    fail() { this.streak++; }
+    get stopped() { return this.streak >= this.limit; }
 }
 
 async function buildTitle(id, outDir, cacheDir) {
@@ -175,21 +218,26 @@ async function main() {
     }
     const started = Date.now();
     let built = 0;
+    const stopper = new Stopper(Number(arg('max-errors', 20)));
     for (const id of ids) {
         if (limitMin && Date.now() - started > limitMin * 60000) break;
         if (!needsBuild(path.join(outDir, `${id}.json`), ongoing.has(id))) continue;
         try {
             const n = await buildTitle(id, outDir, cacheDir);
             built++;
+            stopper.ok();
             console.log(`${id}: песен ${n}`);
         } catch (e) {
+            stopper.fail();
             console.log(`${id}: ошибка ${e.message}`);
+            if (stopper.stopped) break;
         }
     }
     console.log(`готово, собрано тайтлов: ${built}`);
-    process.exit(0);
+    if (stopper.stopped) console.log(`остановлено: ${stopper.streak} ошибок подряд, источник недоступен`);
+    process.exit(stopper.stopped ? 1 : 0);
 }
 
 if (require.main === module) main();
 
-module.exports = { animeThemesIds, buildQueue };
+module.exports = { animeThemesIds, buildQueue, themesFromAnime, gqlData, Stopper };

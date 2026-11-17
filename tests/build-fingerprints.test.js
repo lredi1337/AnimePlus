@@ -1,42 +1,63 @@
 // Сборка базы песен: очередь тайтлов. Онгоинги и популярное с Shikimori идут первыми, затем всё остальное с AnimeThemes
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { animeThemesIds, buildQueue } = require('../tools/build-fingerprints.js');
+const { animeThemesIds, buildQueue, themesFromAnime, gqlData, Stopper } = require('../tools/build-fingerprints.js');
 
-// Ответ /resource страницами: ссылка next ведёт на следующую, у последней её нет
+// GraphQL animePagination страницами: hasMorePages говорит, есть ли следующая
 function pages(list, size = 2) {
     const calls = [];
-    const json = async (url) => {
-        calls.push(url);
-        const page = Number((url.match(/page%5Bnumber%5D=(\d+)/) || [])[1] || 1);
-        const chunk = list.slice((page - 1) * size, page * size);
-        const last = page * size >= list.length;
-        return { resources: chunk, links: { next: last ? null : `https://api.animethemes.moe/resource?page%5Bnumber%5D=${page + 1}` } };
+    const gql = async (query, vars) => {
+        calls.push({ query, vars });
+        const chunk = list.slice((vars.page - 1) * size, vars.page * size);
+        return { animePagination: { paginatorInfo: { hasMorePages: vars.page * size < list.length }, data: chunk } };
     };
-    return { json, calls };
+    return { gql, calls };
 }
+const mal = (...ids) => ({ resources: { nodes: ids.map(externalId => ({ externalId, site: 'MAL' })) } });
 
-test('список AnimeThemes: все страницы, только ID MyAnimeList, без повторов и мусора', async () => {
-    const { json, calls } = pages([
-        { external_id: 5114, site: 'MyAnimeList' },
-        { external_id: 1535, site: 'MyAnimeList' },
-        { external_id: 5114, site: 'MyAnimeList' },
-        { external_id: null, site: 'MyAnimeList' },
-        { external_id: 777, site: 'AniList' },
-        { external_id: 20, site: 'MyAnimeList' }
-    ]);
-    const ids = await animeThemesIds(json, 0);
-    assert.deepEqual(ids, [5114, 1535, 20]);
-    assert.equal(calls.length, 3, 'прошли все страницы по ссылке next');
-    assert.match(calls[0], /\/resource\?/);
-    assert.match(decodeURIComponent(calls[0]), /filter\[site\]=MyAnimeList/);
-    assert.match(decodeURIComponent(calls[0]), /filter\[has\]=anime/);
-    assert.match(decodeURIComponent(calls[0]), /page\[size\]=100/);
+test('список AnimeThemes: все страницы GraphQL, только ID MyAnimeList, без повторов и мусора', async () => {
+    const { gql, calls } = pages([mal(5114), mal(1535), mal(5114), mal(null), mal(), mal(20, 21)]);
+    const ids = await animeThemesIds(gql, 0);
+    assert.deepEqual(ids, [5114, 1535, 20, 21]);
+    assert.equal(calls.length, 3, 'прошли все страницы, пока hasMorePages');
+    assert.deepEqual(calls.map(c => c.vars.page), [1, 2, 3]);
+    assert.match(calls[0].query, /animePagination/);
+    assert.match(calls[0].query, /resources\(site: MAL\)/);
 });
 
 test('список AnimeThemes: сбой сервера не роняет сборку, остаётся очередь с Shikimori', async () => {
-    const json = async () => { throw new Error('https://api.animethemes.moe/resource: 503'); };
-    assert.deepEqual(await animeThemesIds(json, 0), []);
+    const gql = async () => { throw new Error('https://graphql.animethemes.moe/: 503'); };
+    assert.deepEqual(await animeThemesIds(gql, 0), []);
+});
+
+test('ответ GraphQL с errors при статусе 200 считается ошибкой', () => {
+    assert.throws(() => gqlData({ errors: [{ message: 'Cannot query field' }] }), /Cannot query field/);
+    assert.deepEqual(gqlData({ data: { a: 1 } }), { a: 1 });
+});
+
+test('песни тайтла из GraphQL: только OP и ED со звуком, серии из первой записи', () => {
+    const anime = { animethemes: [
+        { type: 'OP', slug: 'OP1', animethemeentries: [
+            { episodes: '1-14', videos: { nodes: [{ audio: null }, { audio: { link: 'https://a.animethemes.moe/X-OP1.ogg' } }] } },
+            { episodes: '15', videos: { nodes: [{ audio: { link: 'https://a.animethemes.moe/X-OP1v2.ogg' } }] } }
+        ] },
+        { type: 'ED', slug: 'ED1', animethemeentries: [{ episodes: null, videos: { nodes: [{ audio: { link: 'https://a.animethemes.moe/X-ED1.ogg' } }] } }] },
+        { type: 'IN', slug: 'IN1', animethemeentries: [{ episodes: '3', videos: { nodes: [{ audio: { link: 'https://a.animethemes.moe/X-IN1.ogg' } }] } }] },
+        { type: 'OP', slug: 'OP2', animethemeentries: [{ episodes: '15-26', videos: { nodes: [] } }] }
+    ] };
+    assert.deepEqual(themesFromAnime(anime), [
+        { type: 'OP', slug: 'OP1', episodes: '1-14', audio: 'https://a.animethemes.moe/X-OP1.ogg' },
+        { type: 'ED', slug: 'ED1', episodes: '', audio: 'https://a.animethemes.moe/X-ED1.ogg' }
+    ]);
+    assert.deepEqual(themesFromAnime(undefined), []);
+});
+
+test('сборка останавливается после серии ошибок подряд, успех сбрасывает счёт', () => {
+    const s = new Stopper(3);
+    s.fail(); s.fail(); s.ok(); s.fail(); s.fail();
+    assert.equal(s.stopped, false);
+    s.fail();
+    assert.equal(s.stopped, true);
 });
 
 test('очередь: онгоинги, затем топ Shikimori, затем остальное с AnimeThemes от новых к старым, без повторов', () => {
