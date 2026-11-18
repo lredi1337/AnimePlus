@@ -3,7 +3,7 @@ importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared
 
 // Хосты, к которым content-скрипты могут обращаться через fetch_shikimori.
 // Без белого списка обработчик был открытым прокси с правами расширения на любой URL
-const PROXY_ALLOWED_HOSTS = /^(?:[a-z0-9-]+\.)*(?:shikimori\.(?:io|one|me|org)|api\.animethemes\.moe|kitsu\.io)$/i;
+const PROXY_ALLOWED_HOSTS = /^(?:[a-z0-9-]+\.)*(?:shikimori\.(?:io|one|me|org)|kitsu\.io)$/i;
 
 function isAllowedProxyUrl(urlStr) {
     try {
@@ -144,6 +144,7 @@ const MESSAGE_HANDLERS = {
 
     // Пропуск опенингов
     get_audio_fingerprints: [(m) => getAudioFingerprints(m.id), () => null],
+    audio_song_list: [(m) => getSongList(m.id), () => []],
     get_kodik_marks: [findKodikMarks, () => null],
     get_remote_config: [() => getRemoteConfig(), () => null],
     get_episode_prints: [getEpisodePrints, () => []],

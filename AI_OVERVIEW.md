@@ -12,7 +12,7 @@
 - **Целевые онлайн-кинотеатры**: AnimeGO (`animego.me`, `animego.org`), Jut-Su (`jut-su.net`), YummyAnime (`ru.yummyani.me`, `old.yummyani.me`), `yummyanime.tv`, `animego.online`, `yammyanime.club`. Полный список — `modules/shared/sites.js`.
 - **База метаданных и трекер**: [Shikimori](https://shikimori.one / `shikimori.io` / `shikimori.me`).
 - **Видеоплееры и CDN**: Сеть плееров **Kodik** (`*.kodik.info`, `*.kodikplayer.com`, `*.dbcode.info`, `*.anivod.com` и др.).
-- **Сторонние API**: [AnimeThemes](https://api.animethemes.moe) (распознавание музыки), [Kitsu.io](https://kitsu.io) (фолбэк постеров).
+- **Сторонние API**: [Kitsu.io](https://kitsu.io) (фолбэк постеров).
 
 ### Ключевые возможности
 1. **Умный автовыбор озвучки** (AniLibria, Studio Band, Dream Cast, Дубляж и др.) по настраиваемому пользователем списку приоритетов на AnimeGO, Jut-Su и в плеере Kodik.
@@ -328,7 +328,7 @@ AniSkip и общая база таймингов убраны 2026-11-08. AniSk
 - **Вкладки Popup**:
   1. **Быстрый доступ и статус**: Отображение статуса работы расширения, переключатель сайтов, кнопка ручной принудительной инъекции плеера (`scripting.executeScript`).
   2. **Shikimori Профиль & Список**: Отображение аватара, никнейма, дневного счетчика серий, переключение списков *«Смотрю»* / *«Пересматриваю»*, мгновенный поиск по списку и фильтрация по типам (TV, Movie, OVA, ONA).
-  3. **Music Finder (OP/ED)**: Отображение распознанных опенингов и эндингов текущей серии с прямыми ссылками на видео в YouTube через интеграцию с базой `api.animethemes.moe`.
+  3. **Music Finder (OP/ED)**: Кнопка открывает ролик опенинга и эндинга текущей серии на YouTube (`modules/shared/music-link.js`). Номер песни для серии берётся из базы песен (`audio_song_list` в фоне), ID ролика находит воркер `animeplus-timings` по адресу `/v1/yt` (`server/timings/src/youtube.js`) и кэширует на 30 дней. При сбое кнопка ведёт на обычный поиск YouTube.
   4. **Глобальный тумблер (Master Switch)**: Мгновенное включение/отключение расширения с перезагрузкой активных вкладок.
 
 ### 6.2. Настройки

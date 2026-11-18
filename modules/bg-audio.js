@@ -64,6 +64,12 @@ async function getAudioFingerprints(id) {
     return cachedAudioFile(String(id), `${id}.json`, AUDIO_FP_TTL, AUDIO_FP_MISS_TTL);
 }
 
+/** Песни тайтла без отпечатков: окну расширения нужны только тип, номер и серии */
+async function getSongList(id) {
+    const data = await getAudioFingerprints(id);
+    return ((data && data.songs) || []).map(s => ({ type: s.type, slug: s.slug, episodes: s.episodes || '' }));
+}
+
 // ---------- Отпечатки серий для сравнения между собой ----------
 // Только необратимые отпечатки начала и конца серии, в браузере зрителя. Старые удаляет общая чистка кэша
 

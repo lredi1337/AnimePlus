@@ -130,6 +130,12 @@ async function smoke(opts) {
         const popup = await b.openPage(`chrome-extension://${extId}/popup/popup.html`);
         await wait(2500);
         r.check('окно расширения показывает сайты', (await b.ev(popup.session, "document.querySelectorAll('.site-tile').length")) > 0);
+        // Музыка: номер песни из базы через фон, ID ролика с сервера Anime+ из настоящей страницы расширения (CORS и Origin)
+        const songs = await b.ev(popup.session, "chrome.runtime.sendMessage({ action: 'audio_song_list', id: 5114 })");
+        const op = await b.ev(popup.session, "AgMusic.pickSong(" + JSON.stringify(songs || []) + ", 'OP', 20)");
+        r.check('окно получает песни тайтла из базы', !!op && op.slug === 'OP2', op && op.slug);
+        const video = await b.ev(popup.session, "AgMusic.videoId(AgMusic.songQuery('Fullmetal Alchemist: Brotherhood', 'OP', 20, " + JSON.stringify(op) + "), { storage: null })");
+        r.check('сервер находит ролик опенинга', /^[\w-]{11}$/.test(String(video)), video);
         const clientId = fs.readFileSync(path.join(ROOT, 'credentials.js'), 'utf8').match(/client_id: "([^"]+)"/)[1];
         r.check('кнопка входа разрешена окну расширения', (await b.ev(popup.session, `chrome.runtime.sendMessage({ action: 'shiki_auth_begin', clientId: ${JSON.stringify(clientId)} })`)).success === true);
         await wait(4000);

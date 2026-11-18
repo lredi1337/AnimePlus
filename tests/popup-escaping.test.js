@@ -15,7 +15,7 @@ const waitFor = async (find) => {
     return null;
 };
 
-async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 'Title', episode: '1' } }) {
+async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 'Title', episode: '1' }, replies: extra = {}, fetch: fetchImpl = null }) {
     const body = read('popup/popup.html').match(/<body[^>]*>([\s\S]*)<\/body>/)[1].replace(/<script[^>]*><\/script>/g, '');
     const dom = new JSDOM(`<!doctype html><body>${body}</body>`, { url: 'https://example.test/popup.html', runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window;
@@ -24,7 +24,7 @@ async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 
             id: 'test', lastError: null, getURL: (p) => p, getManifest: () => JSON.parse(read('manifest.json')),
             onMessage: { addListener() {} },
             sendMessage(msg, cb) {
-                const replies = { resolve_shikimori_id: { id: 7 }, shiki_get_status: { isLoggedIn: false, clientId: 'c' } };
+                const replies = { resolve_shikimori_id: { id: 7 }, shiki_get_status: { isLoggedIn: false, clientId: 'c' }, ...extra };
                 if (cb) setTimeout(() => {
                     cb(replies[msg.action] || null);
                     // Под нагрузкой полного прогона ответ о статусе приходит позже: тесты ждут этой отметки
@@ -46,21 +46,52 @@ async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 
             onChanged: { addListener() {} }
         }
     };
-    w.fetch = async () => ({ ok: false, status: 404, json: async () => ({}), text: async () => '' });
-    for (const f of ['credentials.js', 'config.js', 'modules/shared/sites.js', 'modules/shared/ui-kit.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'popup/popup.js']) w.eval(read(f));
+    w.fetch = fetchImpl || (async () => ({ ok: false, status: 404, json: async () => ({}), text: async () => '' }));
+    w.opened = [];
+    w.open = (url) => { w.opened.push(url); return null; };
+    for (const f of ['credentials.js', 'config.js', 'modules/shared/sites.js', 'modules/shared/ui-kit.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/music-link.js', 'popup/popup.js']) w.eval(read(f));
     w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
     await tick();
     return w;
 }
 
-test('название песни с разметкой и кавычками остаётся текстом', async () => {
-    const song = `OP1: "Sing ${EVIL} "loud" now" by Band`;
-    const w = await openPopup({ store: { themes_7: { data: { openings: [song], endings: [] } } } });
-    const name = await waitFor(() => w.document.querySelector('#op-list .track-name'));
-    assert.ok(name);
-    assert.equal(w.document.getElementById('injected'), null);
-    assert.ok(name.textContent.includes(EVIL));
-    assert.equal(name.getAttribute('title'), name.textContent);
+// Раздел музыки только ищет опенинг и эндинг на YouTube: списка песен из внешних баз нет, старый кэш не показывается
+test('музыка: только поиск на YouTube, без запросов песен и без старого кэша', async () => {
+    const w = await openPopup({ store: { themes_7: { data: { openings: ['OP1: "Old" by Band'], endings: [] } } } });
+    const op = await waitFor(() => w.document.querySelector('#op-list .track-item'));
+    const ed = await waitFor(() => w.document.querySelector('#ed-list .track-item'));
+    assert.ok(op && ed);
+    await tick(100);
+    assert.equal(w.document.querySelectorAll('#op-list .track-item').length, 1);
+    assert.match(op.querySelector('.track-label').textContent, /поиск/);
+    assert.equal(w.document.getElementById('op-list').textContent.includes('Old'), false);
+    assert.equal(/animethemes|themes_/.test(read('popup/popup.js')), false);
+    w.close();
+});
+
+test('музыка: кнопка открывает ролик нужного опенинга по номеру из базы песен', async () => {
+    const songs = [{ type: 'OP', slug: 'OP1', episodes: '1-14' }, { type: 'OP', slug: 'OP2', episodes: '15-26' }, { type: 'ED', slug: 'ED1', episodes: '' }];
+    const asked = [];
+    const w = await openPopup({
+        page: { title: 'Стальной алхимик', origTitle: 'Fullmetal Alchemist: Brotherhood', episode: '20' },
+        replies: { audio_song_list: songs },
+        fetch: async (url) => { asked.push(String(url)); return { ok: true, json: async () => ({ id: /opening/.test(decodeURIComponent(url)) ? 'OPOPOPOPOP2' : 'EDEDEDEDED1' }) }; }
+    });
+    const ready = await waitFor(() => { const b = w.document.querySelector('#op-list .btn-youtube'); return b && b.dataset.video ? b : null; });
+    assert.ok(ready, 'ID ролика получен заранее');
+    assert.match(w.document.querySelector('#op-list .track-label').textContent, /Опенинг 2/);
+    assert.ok(asked.some(u => decodeURIComponent(u).includes('Fullmetal Alchemist: Brotherhood opening 2')), asked.join(' '));
+    ready.click();
+    assert.deepEqual(w.opened, ['https://www.youtube.com/watch?v=OPOPOPOPOP2']);
+    w.close();
+});
+
+test('музыка: без ответа сервера кнопка ведёт на обычный поиск', async () => {
+    const w = await openPopup({ page: { title: 'Тайтл', origTitle: 'Title', episode: '1' }, replies: { audio_song_list: [] } });
+    const btn = await waitFor(() => w.document.querySelector('#op-list .btn-youtube'));
+    await tick(100);
+    btn.click();
+    assert.equal(w.opened[0], "https://www.youtube.com/results?search_query=Title%20opening%201");
     w.close();
 });
 

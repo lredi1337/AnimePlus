@@ -1,6 +1,7 @@
 // Реестр сайтов (modules/shared/sites.js подключён в popup.html до этого файла)
 const AgSites = window.AgSites;
 const AgUI = window.AgUI;
+const AgMusic = window.AgMusic;
 const escapeHtml = window.agEscapeHtml;
 
 // Фолбэк постеров в popup. Inline onerror="" в страницах расширения запрещён CSP Manifest V3,
@@ -169,7 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             : response.title;
                         document.getElementById('detected-anime-episode').textContent = response.episode || "1";
                     }
-                    fetchOPED(response.title, response.origTitle, response.episode || "1");
+                    showMusicSearch(response.title, response.origTitle, response.episode || "1");
                 } else {
                     if (musicLoading) musicLoading.textContent = "Аниме не найдено на этой странице.";
                 }
@@ -797,193 +798,61 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     loadShikiStatus();
 
-    // --- Music Fetching ---
-    async function fetchOPED(title, origTitle, currentEpStr) {
+    // --- Музыка: опенинг и эндинг текущей серии на YouTube ---
+    // Сразу показываются строки с обычным поиском. Затем номер песни уточняется по нашей базе песен,
+    // а ID ролика запрашивается заранее: окно закрывается при открытии вкладки, ждать ответа после нажатия нельзя
+    function showMusicSearch(title, origTitle, currentEpStr) {
         const opList = document.getElementById('op-list');
         const edList = document.getElementById('ed-list');
-        const content = document.getElementById('music-content');
-        const loading = document.getElementById('music-loading');
         const currentEp = parseInt(currentEpStr, 10) || 1;
+        const name = origTitle || title || "";
+        document.getElementById('music-loading').style.display = 'none';
+        document.getElementById('music-content').style.display = 'block';
+        const rows = { OP: renderMusicRow(opList, 'OP', name, currentEp, null), ED: renderMusicRow(edList, 'ED', name, currentEp, null) };
+        if (!name) return;
 
-        if (opList) opList.innerHTML = "";
-        if (edList) edList.innerHTML = "";
-
-        try {
-            loading.textContent = 'Поиск аниме...';
-
-            // Общий резолвер ID в background (оригинальное + русское название, сокращённые варианты, кэш)
-            const resolved = await new Promise((resolve) => {
-                chrome.runtime.sendMessage({ action: 'resolve_shikimori_id', titles: [origTitle, title].filter(Boolean) }, (res) => {
-                    resolve(chrome.runtime.lastError ? null : res);
-                });
+        chrome.runtime.sendMessage({ action: 'resolve_shikimori_id', titles: [origTitle, title].filter(Boolean) }, (resolved) => {
+            if (chrome.runtime.lastError || !resolved || !resolved.id) {
+                findVideos(rows, name, currentEp, []);
+                return;
+            }
+            chrome.runtime.sendMessage({ action: 'audio_song_list', id: resolved.id }, (songs) => {
+                findVideos(rows, name, currentEp, chrome.runtime.lastError ? [] : (songs || []));
             });
-            const shikiAnime = resolved && resolved.id ? resolved : null;
+        });
+    }
 
-            if (shikiAnime) {
-                const shikiId = shikiAnime.id;
-                loading.textContent = 'Загрузка треков...';
-
-                let jikanData = null;
-                const cacheKey = `themes_${shikiId}`;
-                try {
-                    const cacheRes = await chrome.storage.local.get([cacheKey]);
-                    if (cacheRes && cacheRes[cacheKey]) {
-                        jikanData = cacheRes[cacheKey];
-                    }
-                } catch (cacheErr) {}
-
-                if (!jikanData) {
-                    try {
-                        const animethemesRes = await new Promise((resolve) => {
-                            chrome.runtime.sendMessage({
-                                action: "fetch_shikimori",
-                                url: `https://api.animethemes.moe/anime?filter[has]=resources&filter[site]=MyAnimeList&filter[external_id]=${shikiId}&include=animethemes.animethemeentries,animethemes.song.artists`
-                            }, resolve);
-                        });
-
-                        if (animethemesRes && animethemesRes.status === 200 && animethemesRes.data) {
-                            const animeList = animethemesRes.data.anime || animethemesRes.data.data;
-                            if (animeList && animeList.length > 0) {
-                                const anime = animeList[0];
-                                const openings = [];
-                                const endings = [];
-                                
-                                if (anime.animethemes) {
-                                    anime.animethemes.forEach(theme => {
-                                        const type = theme.type;
-                                        const slug = theme.slug;
-                                        const titleVal = theme.song ? theme.song.title : "";
-                                        const artistsVal = theme.song && theme.song.artists ? theme.song.artists.map(a => a.name).join(", ") : "";
-                                        
-                                        const epRanges = theme.animethemeentries ? theme.animethemeentries.map(e => e.episodes).filter(Boolean) : [];
-                                        const epStr = epRanges.length > 0 ? ` (eps ${epRanges.join(", ")})` : "";
-                                        const artistStr = artistsVal ? ` by ${artistsVal}` : "";
-                                        
-                                        const songStr = `${slug}: "${titleVal}"${artistStr}${epStr}`;
-                                        
-                                        if (type === "OP") openings.push(songStr);
-                                        else if (type === "ED") endings.push(songStr);
-                                    });
-                                }
-                                
-                                if (openings.length > 0 || endings.length > 0) {
-                                    jikanData = { data: { openings, endings } };
-                                    try { await chrome.storage.local.set({ [cacheKey]: jikanData }); } catch (e) {}
-                                }
-                            }
-                        }
-                    } catch (e) {}
-                }
-
-                if (jikanData && jikanData.data) {
-                    renderTracks(jikanData.data.openings || [], opList, "Опенинг", currentEp, title, origTitle);
-                    renderTracks(jikanData.data.endings || [], edList, "Эндинг", currentEp, title, origTitle);
-                }
-            }
-        } catch (err) {
-            console.error("Error loading track data:", err);
-        } finally {
-            loading.style.display = 'none';
-            content.style.display = 'block';
-
-            if (!opList.innerHTML && !edList.innerHTML) {
-                renderSmartFallback(opList, "Опенинг", currentEp, title, origTitle);
-                renderSmartFallback(edList, "Эндинг", currentEp, title, origTitle);
-            }
+    function findVideos(rows, name, currentEp, songs) {
+        for (const type of ['OP', 'ED']) {
+            const song = AgMusic.pickSong(songs, type, currentEp);
+            const row = song ? renderMusicRow(rows[type].container, type, name, currentEp, song) : rows[type];
+            AgMusic.videoId(row.query).then((id) => {
+                if (id && row.button.isConnected) row.button.dataset.video = id;
+            });
         }
     }
 
-    function renderSmartFallback(container, label, currentEp, animeTitle, animeOrigTitle) {
-        if (!container) return;
+    function renderMusicRow(container, type, name, currentEp, song) {
+        if (!container) return { container, query: '', button: document.createElement('button') };
+        container.innerHTML = "";
+        const query = AgMusic.songQuery(name, type, currentEp, song);
+        const number = AgMusic.songNumber(song, currentEp);
+        const label = `${type === 'OP' ? 'Опенинг' : 'Эндинг'} ${number}${song ? '' : ' (поиск)'}`;
         const div = document.createElement('div');
         div.className = 'track-item';
-        
-        const isOp = label.toLowerCase().includes('опен') || label.toLowerCase().includes('op');
-        const typeLabel = isOp ? 'OP' : 'ED';
-        const displayType = isOp ? 'Опенинг' : 'Эндинг';
-        
-        const songNum = Math.floor((currentEp - 1) / 13) + 1;
-        const displayName = `${animeOrigTitle || animeTitle} ${typeLabel} ${songNum}`;
-        
         div.innerHTML = `
             <div class="track-body">
-                <div class="track-label">${displayType} (поиск)</div>
-                <div class="track-name">${escapeHtml(displayName)}</div>
+                <div class="track-label">${escapeHtml(label)}</div>
+                <div class="track-name">${escapeHtml(`${name} ${type} ${number}`)}</div>
             </div>
-            <button class="btn-youtube" title="Искать на YouTube" aria-label="Искать на YouTube">${AgUI.icon('play', 13)}</button>
+            <button class="btn-youtube" title="Открыть на YouTube" aria-label="Открыть на YouTube">${AgUI.icon('play', 13)}</button>
         `;
-        
-        div.querySelector('.btn-youtube').onclick = () => {
-            const animeSearchName = animeOrigTitle || animeTitle || "";
-            const query = `${animeSearchName} ${typeLabel} ${songNum} episode ${currentEp}`;
-            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
+        const button = div.querySelector('.btn-youtube');
+        button.onclick = () => {
+            const id = button.dataset.video;
+            window.open(id ? AgMusic.watchUrl(id) : AgMusic.searchUrl(query), '_blank');
         };
-        
         container.appendChild(div);
-    }
-
-    function cleanTrackName(track) {
-        let cleaned = track.replace(/^\s*(?:[a-zA-Z\d#\s\.\-]{1,8}[:\.]\s+)?/, '').trim();
-        cleaned = cleaned.replace(/\(eps?.*?\)/gi, '').trim();
-        cleaned = cleaned.replace(/\\"/g, '"');
-        cleaned = cleaned.replace(/^"([^"]+)"\s+by\s+(.+)$/i, '$1 - $2');
-        cleaned = cleaned.replace(/^["']|["']$/g, '');
-        return cleaned.trim();
-    }
-
-    function renderTracks(tracks, container, label, currentEp, animeTitle, animeOrigTitle) {
-        if (!tracks || tracks.length === 0 || !container) return;
-
-        tracks.forEach((track) => {
-            let isTrackForCurrentEp = false;
-            const epRegex = /\(eps?\.?\s*([\d\-\,\.\s]+)\)/i;
-            const epMatch = track.match(epRegex);
-
-            if (epMatch && epMatch[1]) {
-                const ranges = epMatch[1].replace(/\s/g, '').split(',');
-                for (const range of ranges) {
-                    if (range.includes('-')) {
-                        const parts = range.split('-');
-                        const start = parts[0] ? parseInt(parts[0], 10) : 1;
-                        const end = parts[1] ? parseInt(parts[1], 10) : Infinity;
-                        if (currentEp >= start && currentEp <= end) {
-                            isTrackForCurrentEp = true;
-                            break;
-                        }
-                    } else {
-                        if (currentEp === parseInt(range, 10)) {
-                            isTrackForCurrentEp = true;
-                            break;
-                        }
-                    }
-                }
-            } else {
-                isTrackForCurrentEp = true;
-            }
-
-            if (!isTrackForCurrentEp) return;
-
-            const div = document.createElement('div');
-            div.className = 'track-item';
-            const cleanedName = cleanTrackName(track);
-
-            div.innerHTML = `
-                <div class="track-body">
-                    <div class="track-label">${label}</div>
-                    <div class="track-name" title="${escapeHtml(cleanedName)}">${escapeHtml(cleanedName)}</div>
-                </div>
-                <button class="btn-youtube" title="Слушать на YouTube" aria-label="Слушать на YouTube">${AgUI.icon('play', 13)}</button>
-            `;
-
-            div.querySelector('.btn-youtube').onclick = () => {
-                const animeSearchName = animeOrigTitle || animeTitle || "";
-                const isOp = label.toLowerCase().includes('опен') || label.toLowerCase().includes('op');
-                const typeLabel = isOp ? 'OP' : 'ED';
-                const query = `${animeSearchName} ${typeLabel} ${cleanedName}`;
-                window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
-            };
-
-            container.appendChild(div);
-        });
+        return { container, query, button };
     }
 });

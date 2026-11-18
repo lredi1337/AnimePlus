@@ -1,9 +1,11 @@
-// Сервер Anime+: принимает сообщения в поддержку и пересылает их на почту (feedback.js).
+// Сервер Anime+: принимает сообщения в поддержку и пересылает их на почту (feedback.js),
+// и находит ролик опенинга на YouTube для окна расширения (youtube.js).
 // Здесь же жила общая база таймингов опенингов и эндингов. Расширение с 11.4.1 её не использует,
 // а за неделю работы она не подтвердила ни одной метки, поэтому в 2026-11 её закрыли.
 // Старые версии ещё обращаются к её адресам: они получают пустой ответ, и база при этом не трогается.
 
 import { handleFeedback } from './feedback.js';
+import { findVideo } from './youtube.js';
 
 // id расширения Chrome: 32 буквы от a до p. Любого, а не только версии из магазина: многие ставят Anime+ из папки с GitHub
 const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
@@ -38,6 +40,15 @@ export default {
             if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: origin ? writeCors(origin) : { Vary: 'Origin' } });
             // Закрытая база: меток нет ни у одного тайтла
             if (url.pathname === '/v1/timings' && request.method === 'GET') return json({}, 200, { 'Cache-Control': `public, max-age=${CLOSED_CACHE_SEC}` });
+            // Первый ролик поиска YouTube: только для расширения, иначе это был бы открытый посредник к YouTube
+            if (url.pathname === '/v1/yt' && request.method === 'GET') {
+                const ext = extensionOrigin(request);
+                if (!ext) return json({ error: 'forbidden' }, 403);
+                const cors = writeCors(ext);
+                const q = (url.searchParams.get('q') || '').trim();
+                if (!q || q.length > 200) return json({ error: 'bad query' }, 400, cors);
+                return json(await findVideo(q, { cache: globalThis.caches && caches.default }), 200, cors);
+            }
             if (request.method === 'POST' && (url.pathname === '/v1/report' || url.pathname === '/v1/feedback')) {
                 if (!origin) return json({ error: 'forbidden' }, 403);
                 const cors = writeCors(origin);
