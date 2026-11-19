@@ -6,12 +6,26 @@ const { loadInContext } = require('./helpers');
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 /** pages — ответ Shikimori на любую страницу каталога; siteUrls — что находит поиск на сайтах; animego — выдача поиска AnimeGO */
-function load({ pages = [], siteUrls = {}, animego = '', settings = {} } = {}) {
+function load({ pages = [], siteUrls = {}, animego = '', settings = {}, details = {}, screenshots = {} } = {}) {
     const log = { api: [], resolved: [], fetched: [] };
+    const session = {};
     const ctx = loadInContext(['modules/shared/sites.js', 'modules/bg-random.js'], {
         URLSearchParams,
-        chrome: { storage: { local: { get: async () => ({ ag_settings: settings }) } } },
-        fetchShikimoriApi: async (endpoint) => { log.api.push(endpoint); return pages; },
+        chrome: {
+            storage: {
+                local: { get: async () => ({ ag_settings: settings }) },
+                session: { get: async (keys) => Object.fromEntries(keys.filter(k => k in session).map(k => [k, session[k]])), set: async (o) => { Object.assign(session, o); } }
+            }
+        },
+        absoluteShikiUrl: (url) => (!url ? '' : /^https?:/.test(url) ? url : 'https://shikimori.io' + url),
+        fillShikiPosters: async (items, { getRaw }) => { items.forEach(i => { i.poster = getRaw(i) ? 'https://shikimori.io' + getRaw(i) : ''; }); return items; },
+        fetchShikimoriApi: async (endpoint) => {
+            log.api.push(endpoint);
+            const shots = endpoint.match(/^\/api\/animes\/(\d+)\/screenshots$/);
+            if (shots) return screenshots[shots[1]] || null;
+            const one = endpoint.match(/^\/api\/animes\/(\d+)$/);
+            return one ? (details[one[1]] || null) : pages;
+        },
         resolveSiteUrl: async (siteId, query) => { log.resolved.push({ siteId, ...query }); return siteUrls[query.shikimoriId] || null; },
         findJutsuDirectUrl: async () => null,
         fetch: async (url) => { log.fetched.push(String(url)); return new Response(animego, { status: 200 }); }
@@ -75,4 +89,60 @@ test('AnimeGO: найденная страница тайтла важнее с�
     const got = plain(await ctx.getRandomShikimoriAnime({ siteId: 'animego' }));
     assert.equal(got.url, 'https://animego.me/anime/sem-123');
     assert.equal(got.foundOnAnimeGO, true);
+});
+
+test('карточка в окне расширения: подробности тайтла, описание без BB-кодов, постер полным адресом', async () => {
+    const pages = [{ id: 7, name: 'Seven', russian: 'Семь', kind: 'tv', score: '8.1', aired_on: '2019-04-01', image: { original: '/system/animes/original/7.jpg' } }];
+    const details = { 7: { id: 7, episodes: 24, genres: [{ name: 'Action', russian: 'Экшен' }, { name: 'Drama', russian: 'Драма' }],
+        description: 'Герой [character=1]Тандзиро[/character] ищет [i]лекарство[/i] для [[сестры]].' } };
+    const { ctx } = load({ pages, details });
+    const { anime } = plain(await ctx.getRandomAnimeCard({}));
+    assert.equal(anime.id, 7);
+    assert.equal(anime.russian, 'Семь');
+    assert.equal(anime.kindLabel, 'Сериал');
+    assert.equal(anime.year, '2019');
+    assert.equal(anime.episodes, 24);
+    assert.deepEqual(anime.genres, ['Экшен', 'Драма']);
+    assert.equal(anime.description, 'Герой Тандзиро ищет лекарство для сестры.');
+    assert.equal(anime.poster, 'https://shikimori.io/system/animes/original/7.jpg');
+});
+
+test('«Другое» не повторяет показанные тайтлы и не ходит в каталог второй раз', async () => {
+    const pages = [1, 2, 3].map(id => ({ id, name: 'N' + id, kind: 'tv', score: '8' }));
+    const { ctx, log } = load({ pages });
+    for (let i = 0; i < 10; i++) {
+        const { anime } = plain(await ctx.getRandomAnimeCard({ exclude: [1, 2] }));
+        assert.equal(anime.id, 3);
+    }
+    const catalogCalls = log.api.filter(e => e.startsWith('/api/animes?')).length;
+    const first = plain(await ctx.getRandomAnimeCard({ exclude: [1, 2, 3] }));
+    assert.ok([1, 2, 3].includes(first.anime.id), 'все показаны: берём из того же набора');
+    assert.equal(log.api.filter(e => e.startsWith('/api/animes?')).length, catalogCalls, 'набор кандидатов взят из памяти');
+});
+
+test('карточка: под фильтры ничего не подошло — понятная причина, а не пустая карточка', async () => {
+    const { ctx } = load({ pages: [] });
+    const got = plain(await ctx.getRandomAnimeCard({}));
+    assert.equal(got.anime, null);
+    assert.equal(got.reason, 'no_match');
+});
+
+test('карточка: Shikimori не ответил — это сбой, а не «под фильтры ничего не подошло»', async () => {
+    const { ctx } = load({ pages: null });
+    await assert.rejects(ctx.getRandomAnimeCard({}), /unavailable/);
+    // Рандом на сайтах ведёт себя как раньше
+    const got = plain(await ctx.getRandomShikimoriAnime({ siteId: 'yummyanime_tv' }));
+    assert.equal(got.reason, 'no_match');
+});
+
+test('карточка: все кадры тайтла полными адресами, без ответа отдельного запроса — кадры из карточки Shikimori', async () => {
+    const pages = [{ id: 7, name: 'Seven', kind: 'tv', score: '8' }];
+    const shot = (n) => ({ original: `/system/screenshots/original/${n}.jpg`, preview: `/system/screenshots/x332/${n}.jpg` });
+    const many = load({ pages, screenshots: { 7: Array.from({ length: 20 }, (_, i) => shot(i)) } });
+    const a = plain(await many.ctx.getRandomAnimeCard({})).anime;
+    assert.equal(a.screenshots.length, 12, 'не больше дюжины');
+    assert.deepEqual(a.screenshots[0], { full: 'https://shikimori.io/system/screenshots/original/0.jpg', thumb: 'https://shikimori.io/system/screenshots/x332/0.jpg' });
+
+    const few = load({ pages, details: { 7: { id: 7, screenshots: [shot(5)] } } });
+    assert.equal(plain(await few.ctx.getRandomAnimeCard({})).anime.screenshots[0].full, 'https://shikimori.io/system/screenshots/original/5.jpg');
 });

@@ -182,6 +182,10 @@ const MESSAGE_HANDLERS = {
         console.error('Error in get_random_shikimori_anime:', err);
         return { url: null };
     }],
+    get_random_anime_card: [getRandomAnimeCard, (err) => {
+        console.error('Error in get_random_anime_card:', err);
+        return { anime: null, reason: 'error' };
+    }],
 
     fullscreen_on: [(m, sender) => setWindowFullscreen(true, sender), failure],
     fullscreen_off: [(m, sender) => setWindowFullscreen(false, sender), failure],

@@ -171,6 +171,11 @@
         schedulePageUrl(params = {}) {
             const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
             return chrome.runtime.getURL(`schedule/schedule.html?${query}`);
+        },
+
+        /** Случайное аниме вкладкой: карточка и кнопки сайтов, где тайтл есть (random/random.js) */
+        randomPageUrl() {
+            return chrome.runtime.getURL('random/random.html');
         }
     };
 

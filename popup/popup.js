@@ -319,6 +319,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Расписание онгоингов: та же вкладка с выбором сайта
     const btnSchedule = document.getElementById('btnSchedule');
     if (btnSchedule) btnSchedule.addEventListener('click', () => openExtPage(AgSites.schedulePageUrl));
+    // Случайное аниме: своя вкладка, сайт выбирать не нужно — карточка сама показывает, где тайтл есть
+    const btnRandom = document.getElementById('btnRandom');
+    if (btnRandom) btnRandom.addEventListener('click', () => {
+        chrome.tabs.create({ url: AgSites.randomPageUrl() }).catch(() => {}).finally(() => window.close());
+    });
 
     const panelsList = [
         { btn: btnMusic, panel: panelMusic }

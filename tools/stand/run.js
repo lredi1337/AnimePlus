@@ -140,7 +140,82 @@ async function smoke(opts) {
         r.check('кнопка входа разрешена окну расширения', (await b.ev(popup.session, `chrome.runtime.sendMessage({ action: 'shiki_auth_begin', clientId: ${JSON.stringify(clientId)} })`)).success === true);
         await wait(4000);
         r.check('вкладка входа открылась', (await b.targets('page')).some(t => /shikimori\.io/.test(t.url)));
-        await b.closePage(popup);
+
+        // «Рандом»: настоящее нажатие в окне расширения открывает свою вкладку, в ней карточка и кнопки сайтов, где тайтл нашёлся
+        const randomBtn = await b.ev(popup.session, "(() => { const r = document.getElementById('btnRandom').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+        if (opts.out) {
+            fs.mkdirSync(opts.out, { recursive: true });
+            const { data } = await b.send('Page.captureScreenshot', { format: 'png' }, popup.session);
+            fs.writeFileSync(path.join(opts.out, 'popup.png'), Buffer.from(data, 'base64'));
+        }
+        await b.clickAt(popup.session, randomBtn);
+        let randomTarget = null;
+        for (let i = 0; i < 10 && !randomTarget; i++) {
+            await wait(500);
+            randomTarget = (await b.targets('page')).find(t => t.url.endsWith('/random/random.html'));
+        }
+        r.check('«Рандом» открыл вкладку', !!randomTarget);
+        if (randomTarget) {
+            const randomPage = { targetId: randomTarget.targetId, session: await b.attach(randomTarget.targetId) };
+            const cardState = "(() => { const c = document.querySelector('.rnd__card:not(.is-loading)'); const note = c && c.querySelector('.rnd__note'); return c ? { title: (c.querySelector('.rnd__title') || {}).textContent || '', sites: [...c.querySelectorAll('.rnd__site')].map(x => x.dataset.site), searching: !!note && !note.hidden && /Ищем/.test(note.textContent), poster: (c.querySelector('.rnd__poster') || {}).naturalWidth || 0 } : { empty: (document.querySelector('.rnd__empty') || {}).textContent || null }; })()";
+            const waitCard = async (prev) => {
+                let card = null;
+                for (let i = 0; i < 45; i++) {
+                    await wait(1000);
+                    card = await b.ev(randomPage.session, cardState);
+                    if (card && card.title && card.title !== prev && !card.searching) break;
+                }
+                return card;
+            };
+            const card = await waitCard();
+            r.check('«Рандом»: карточка с названием и постером', !!card && !!card.title && card.poster > 0, card);
+            r.check('«Рандом»: поиск на сайтах завершился', !!card && card.title && !card.searching, card && card.sites);
+            // Превью грузятся лениво: прокручиваем к кадрам, как зритель
+            await b.ev(randomPage.session, "(document.querySelector('.rnd__screens') || document.body).scrollIntoView()");
+            await wait(3000);
+            const shots = await b.ev(randomPage.session, "[...document.querySelectorAll('.rnd__shot img')].map(i => i.complete && i.naturalWidth > 0)");
+            r.check('«Рандом»: кадры тайтла загрузились', shots.length > 0 && shots.every(Boolean), shots);
+            // Кадры на весь экран: настоящие нажатия на превью и на стрелку, затем стрелка клавиатуры
+            const centerOf = (sel) => b.ev(randomPage.session, `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+            const viewerState = "(() => { const v = document.querySelector('.rnd__viewer'); const img = v.querySelector('img'); return { open: !v.hidden, count: v.querySelector('.rnd__viewer-count').textContent, src: img.currentSrc || img.src, loaded: img.complete && img.naturalWidth > 0, full: !img.classList.contains('is-preview') }; })()";
+            const firstShot = await centerOf('.rnd__shot');
+            if (firstShot) {
+                await b.clickAt(randomPage.session, firstShot);
+                await wait(1500);
+                const opened = await b.ev(randomPage.session, viewerState);
+                const nextArrow = await centerOf('.rnd__viewer-nav.is-next');
+                if (nextArrow) await b.clickAt(randomPage.session, nextArrow);
+                await wait(2500);
+                const flipped = await b.ev(randomPage.session, viewerState);
+                await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 }, randomPage.session);
+                await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 }, randomPage.session);
+                await wait(2500);
+                const byKey = await b.ev(randomPage.session, viewerState);
+                if (opts.out) {
+                    const { data } = await b.send('Page.captureScreenshot', { format: 'png' }, randomPage.session);
+                    fs.writeFileSync(path.join(opts.out, 'random-viewer.png'), Buffer.from(data, 'base64'));
+                }
+                r.check('«Рандом»: кадр открылся на весь экран', opened.open && opened.loaded, opened);
+                r.check('«Рандом»: стрелка листает кадры', flipped.open && flipped.count !== opened.count && flipped.src !== opened.src && flipped.loaded, flipped);
+                r.check('«Рандом»: клавиша листает кадры', byKey.open && byKey.count !== flipped.count && byKey.loaded, byKey);
+                let full = byKey;
+                for (let i = 0; i < 20 && !full.full; i++) { await wait(1000); full = await b.ev(randomPage.session, viewerState); }
+                r.check('«Рандом»: полный кадр подставляется после загрузки', full.full && full.loaded && /\/original\//.test(full.src), full);
+                await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }, randomPage.session);
+                await wait(300);
+            }
+            if (opts.out) {
+                fs.mkdirSync(opts.out, { recursive: true });
+                const { data } = await b.send('Page.captureScreenshot', { format: 'png' }, randomPage.session);
+                fs.writeFileSync(path.join(opts.out, 'random-page.png'), Buffer.from(data, 'base64'));
+            }
+            const next = await b.ev(randomPage.session, "(() => { const r = document.querySelector('.rnd__next').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+            await b.clickAt(randomPage.session, next);
+            const second = await waitCard(card && card.title);
+            r.check('«Рандом»: «Другое аниме» показывает другой тайтл', !!second && !!second.title && second.title !== (card && card.title), second && second.title);
+            await b.closePage(randomPage);
+        }
+        await b.closePage(popup).catch(() => {});
 
         r.check('Shikimori отвечает через очередь', (await b.ev(worker, "fetchShikimoriApi('/api/animes/5114').then(a => a && a.id)")) === 5114);
 

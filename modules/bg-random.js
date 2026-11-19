@@ -54,7 +54,8 @@ function randomFilters(settings) {
     return { minScore, kinds };
 }
 
-async function fetchRandomCandidates({ minScore, kinds }) {
+// strict: сбой всех запросов к каталогу — ошибка, а не «ничего не подошло» (окно расширения различает эти случаи)
+async function fetchRandomCandidates({ minScore, kinds }, { strict = false } = {}) {
     const passes = (item) => {
         if (!item || !item.score) return false;
         const score = parseFloat(item.score);
@@ -81,8 +82,9 @@ async function fetchRandomCandidates({ minScore, kinds }) {
     const kindParam = kinds.length > 0 && kinds.length < 5 ? '&kind=' + kinds.join(',') : '';
     const scoreParam = minScore > 0 ? `&score=${apiScore}` : '';
     const lists = await Promise.all(pages.map(page =>
-        fetchShikimoriApi(`/api/animes?limit=50&page=${page}${scoreParam}&order=ranked${kindParam}`).catch(() => [])
+        fetchShikimoriApi(`/api/animes?limit=50&page=${page}${scoreParam}&order=ranked${kindParam}`).catch(() => null)
     ));
+    if (strict && lists.every(list => !Array.isArray(list))) throw new Error('Shikimori catalog unavailable');
     return lists.flatMap(list => (Array.isArray(list) ? list.filter(passes) : []));
 }
 
@@ -166,4 +168,77 @@ async function getRandomShikimoriAnime(message) {
         name: origName,
         russian: russianName
     };
+}
+
+// ---------- Случайное аниме прямо в окне расширения (popup/popup.js) ----------
+// Кандидаты по фильтрам зрителя запоминаются на полчаса: «Другое» срабатывает сразу, без новых запросов к каталогу
+const RANDOM_POOL_KEY = 'ag_random_pool';
+const RANDOM_POOL_TTL_MS = 30 * 60 * 1000;
+const RANDOM_MAX_SCREENSHOTS = 12;
+const RANDOM_KIND_LABELS = { tv: 'Сериал', movie: 'Фильм', ova: 'OVA', ona: 'ONA', special: 'Спешл', tv_special: 'Спешл', music: 'Клип' };
+
+// Описание Shikimori размечено BB-кодами: [character=1]Имя[/character], [i]…[/i]. Оставляем только текст
+function plainShikiDescription(raw) {
+    return String(raw || '')
+        .replace(/\[\[([^\]]*)\]\]/g, '$1')
+        .replace(/\[(\w+)(?:=[^\]]*)?\]([\s\S]*?)\[\/\1\]/g, '$2')
+        .replace(/\[[^\]]*\]/g, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function randomPool(filters) {
+    const key = JSON.stringify(filters);
+    const { [RANDOM_POOL_KEY]: saved } = await chrome.storage.session.get([RANDOM_POOL_KEY]);
+    if (saved && saved.key === key && Date.now() - saved.ts < RANDOM_POOL_TTL_MS && saved.items.length) return saved.items;
+    const seen = new Set();
+    const items = (await fetchRandomCandidates(filters, { strict: true })).filter(x => !seen.has(x.id) && seen.add(x.id));
+    if (items.length) await chrome.storage.session.set({ [RANDOM_POOL_KEY]: { key, ts: Date.now(), items } });
+    return items;
+}
+
+/**
+ * Случайный тайтл с подробностями для карточки. exclude — ID, которые зритель уже видел в этот раз.
+ * Ответ: { anime } или { anime: null, reason: 'no_match' }
+ */
+async function getRandomAnimeCard(message = {}) {
+    const { ag_settings: settings = {} } = await chrome.storage.local.get(['ag_settings']);
+    const filters = randomFilters(settings);
+    const pool = await randomPool(filters);
+    if (pool.length === 0) return { anime: null, reason: 'no_match', minScore: filters.minScore };
+
+    const exclude = new Set((Array.isArray(message.exclude) ? message.exclude : []).map(Number));
+    const fresh = pool.filter(x => !exclude.has(Number(x.id)));
+    const list = fresh.length ? fresh : pool;
+    const chosen = list[Math.floor(Math.random() * list.length)];
+
+    // Жанры и описание есть только в карточке тайтла, все кадры — отдельным запросом; без них показываем то, что знаем из каталога
+    const [detailsRaw, screensRaw] = await Promise.all([
+        fetchShikimoriApi(`/api/animes/${chosen.id}`).catch(() => null),
+        fetchShikimoriApi(`/api/animes/${chosen.id}/screenshots`).catch(() => null)
+    ]);
+    const details = detailsRaw || {};
+    const full = { ...chosen, ...details };
+    const screens = (Array.isArray(screensRaw) && screensRaw.length ? screensRaw : details.screenshots) || [];
+    const anime = {
+        id: full.id,
+        name: full.name || '',
+        russian: full.russian || full.name || '',
+        kind: String(full.kind || '').toLowerCase(),
+        kindLabel: RANDOM_KIND_LABELS[String(full.kind || '').toLowerCase()] || '',
+        score: full.score && parseFloat(full.score) > 0 ? String(full.score) : '',
+        year: full.aired_on ? String(full.aired_on).slice(0, 4) : '',
+        episodes: full.episodes || full.episodes_aired || 0,
+        status: full.status || '',
+        genres: (Array.isArray(full.genres) ? full.genres : []).map(g => g.russian || g.name).filter(Boolean).slice(0, 4),
+        description: plainShikiDescription(full.description).slice(0, 1500),
+        poster: full.image ? (full.image.original || full.image.preview || '') : '',
+        screenshots: screens
+            .map(x => ({ full: absoluteShikiUrl(x.original || x.preview || ''), thumb: absoluteShikiUrl(x.preview || x.original || '') }))
+            .filter(x => x.full)
+            .slice(0, RANDOM_MAX_SCREENSHOTS)
+    };
+    await fillShikiPosters([anime], { getRaw: (a) => a.poster }).catch(() => {});
+    return { anime };
 }

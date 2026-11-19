@@ -250,8 +250,9 @@ test('экскурсия по окну расширения показывает
     const targets = [...tour.matchAll(/target: '([^']+)'/g)].map(m => m[1]);
     assert.ok(targets.length > 3);
     for (const sel of targets) assert.ok(doc.querySelector(sel), `${sel} есть в popup.html`);
-    // Каждая нижняя кнопка, названная в тексте, есть в окне
-    const tabs = [...doc.querySelectorAll('.bottom-tab')].map(b => b.textContent.trim());
+    // Каждая нижняя кнопка, названная в тексте, есть в окне. Кнопки — значки, название у них в aria-label
+    const tabs = [...doc.querySelectorAll('.bottom-tab')].map(b => b.dataset.tip);
+    for (const b of doc.querySelectorAll('.bottom-tab')) assert.ok(b.getAttribute('aria-label') && b.dataset.tip, `у значка ${b.id} есть название и подсказка`);
     const named = [...tour.matchAll(/«([^»]+)»/g)].map(m => m[1]).filter(n => ['Музыка', 'Плеер', 'Топ'].includes(n));
     for (const name of named) assert.ok(tabs.includes(name), `кнопка «${name}» есть в окне`);
 });

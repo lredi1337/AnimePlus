@@ -1021,6 +1021,36 @@ a { color: var(--ap-accent); }
     background: var(--ap-hover);
 }
 
+/* Значки без подписей: название всплывает над значком при наведении и фокусе с клавиатуры.
+   Своя подсказка, а не title: системная в окне расширения появляется с задержкой или не появляется вовсе */
+.bottom-tab { position: relative; }
+.bottom-tab[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    z-index: 30;
+    padding: 4px 8px;
+    color: var(--ap-text);
+    font-size: var(--ap-fs-xs);
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--ap-raised);
+    border: 1px solid var(--ap-line-strong);
+    border-radius: var(--ap-radius-sm);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 3px);
+    transition: opacity .12s ease, transform .12s ease;
+}
+.bottom-tab[data-tip]:hover::after,
+.bottom-tab[data-tip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+.bottom-tab:first-child[data-tip]::after { left: 8px; transform: translateY(3px); }
+.bottom-tab:first-child[data-tip]:hover::after, .bottom-tab:first-child[data-tip]:focus-visible::after { transform: none; }
+.bottom-tab:last-child[data-tip]::after { left: auto; right: 8px; transform: translateY(3px); }
+.bottom-tab:last-child[data-tip]:hover::after, .bottom-tab:last-child[data-tip]:focus-visible::after { transform: none; }
+
 .bottom-tab.active {
     color: var(--ap-text);
     box-shadow: inset 0 -2px 0 var(--ap-accent);
