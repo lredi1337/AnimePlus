@@ -11,6 +11,8 @@
     const WEEK = 7 * DAY;
     // Серий запоминается немного: на тайтл хватает текущей и прошлой недели
     const MAX_PER_TITLE = 8;
+    // Серии одного тайтла ближе этого не выходят. Ближе — это одна и та же серия под разными номерами
+    const SAME_SLOT = 3 * DAY;
 
     const DEFAULT_FILTERS = {
         mine: false, fresh: false, types: [],
@@ -77,7 +79,9 @@
             const at = Date.parse(item && item.next_episode_at);
             if (!id || !Number.isFinite(at)) continue;
             const ep = parseInt(item.next_episode, 10) || 1;
-            const list = out[id] || (out[id] = []);
+            // Shikimori переносит дату на следующую неделю раньше, чем меняет номер серии,
+            // поэтому та же дата могла запомниться и с прежним номером
+            const list = out[id] = (out[id] || []).filter(e => e.ep >= ep || Math.abs(e.at - at) >= SAME_SLOT);
             const same = list.find(e => e.ep === ep);
             if (same) {
                 same.at = at;
@@ -89,7 +93,9 @@
             if (ep > 1 && before >= start && before <= now && !list.some(e => e.ep === ep - 1)) list.push({ ep: ep - 1, at: before, guess: true });
         }
         for (const id of Object.keys(out)) {
-            out[id] = out[id].filter(e => e.at >= start - WEEK).sort((a, b) => a.at - b.at).slice(-MAX_PER_TITLE);
+            const list = out[id].filter(e => e.at >= start - WEEK).sort((a, b) => a.at - b.at);
+            // В одном слоте остаётся старшая серия: младший номер там остался от запоздавшего Shikimori
+            out[id] = list.filter(e => !list.some(o => o.ep > e.ep && Math.abs(o.at - e.at) < SAME_SLOT)).slice(-MAX_PER_TITLE);
             if (!out[id].length) delete out[id];
         }
         return out;

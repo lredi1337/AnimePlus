@@ -115,3 +115,19 @@ test('настройки прежнего расписания AnimeGO пере�
     assert.equal(own.sort, 'time');
     assert.deepEqual(plain(own.hidden), []);
 });
+
+test('Shikimori обновил номер серии позже даты: в одном слоте остаётся одна серия, старшая', () => {
+    const tuesday = MONDAY + DAY + 23.5 * 36e5;
+    // Серия вышла, дата уже перенесена на следующую неделю, а номер ещё прежний
+    let seen = S.remember({}, [item(1, 20, tuesday)], MONDAY + 36e5);
+    // Позже Shikimori отметил серию вышедшей: на тот же вторник теперь 21-я
+    seen = S.remember(seen, [item(1, 21, tuesday)], MONDAY + 2 * 36e5);
+    const week = plain(S.weekEntries(seen, MONDAY + 2 * 36e5));
+    assert.deepEqual(week.map(e => [e.id, e.ep, e.day]), [[1, 21, 1]]);
+});
+
+test('уже запомненный дубль убирается, даже если тайтла больше нет в календаре', () => {
+    const at = MONDAY + 19.5 * 36e5;
+    const seen = plain(S.remember({ 1: [{ ep: 7, at }, { ep: 8, at }] }, [], NOW));
+    assert.deepEqual(seen, { 1: [{ ep: 8, at }] });
+});
