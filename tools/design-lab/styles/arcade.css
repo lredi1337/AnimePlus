@@ -1,0 +1,24 @@
+/* «Аркада» в презентации: оформление её общих страниц (.k-*). Раскладки «Случайного» и Топа — modules/looks/arcade.css */
+/* Общие страницы (pages.js) в «Аркаде»: ночной неон */
+.v-arcade { --k-bg: #0b0720; --k-surface: #140d33; --k-raised: #1f1650; --k-ink: #ecebff; --k-mute: #9a93c9; --k-line: #2c2163; --k-accent: #f472b6; --k-on-accent: #1a0420; --k-gold: #fde047; --k-yes: #22d3ee; --k-no: #f472b6; --k-radius: 16px; --k-radius-sm: 10px; --k-border: 2px solid #2c2163; --k-shadow: 0 0 30px rgba(34, 211, 238, .15); --k-display: 'Exo 2', sans-serif; --k-body: 'Exo 2', sans-serif; --k-label-font: 'Press Start 2P', monospace; }
+.v-arcade .k { background: #0b0720 radial-gradient(120% 60% at 50% -10%, #2a1460, transparent 60%); }
+.v-arcade .k-head h1 { color: #fde047; font-family: 'Press Start 2P', monospace; font-size: 24px; text-transform: uppercase; text-shadow: 0 0 12px rgba(253, 224, 71, .7); }
+.v-arcade .k-chip[aria-pressed="true"], .v-arcade .k-tab[aria-pressed="true"] { background: #2a1150; border-color: #f472b6; color: #fff; box-shadow: 0 0 14px rgba(244, 114, 182, .45); }
+.v-arcade .k-btn.is-primary { box-shadow: 0 0 18px rgba(244, 114, 182, .5); }
+.v-arcade .k-rank, .v-arcade .k-time, .v-arcade .k-ep__time { font-family: 'Press Start 2P', monospace; font-size: 9px; color: #22d3ee; }
+.v-arcade .k-day.is-today { border-color: #22d3ee; box-shadow: 0 0 20px rgba(34, 211, 238, .35); }
+.v-arcade .k-day > header em { background: #22d3ee; color: #0b0720; }
+.v-arcade .k-day > header b { font-family: 'Press Start 2P', monospace; font-size: 12px; color: #22d3ee; }
+.v-arcade .k-tile:hover .k-tile__cover { border-color: #22d3ee; box-shadow: 0 0 16px rgba(34, 211, 238, .5); }
+.v-arcade .k-fox { border-color: #22d3ee; box-shadow: 0 0 24px rgba(34, 211, 238, .6); background: #140d33; }
+.v-arcade .k-progress s { background: #22d3ee; box-shadow: 0 0 8px #22d3ee; }
+.v-arcade.t-light, .v-arcade.t-light .k { background: #f3f0ff radial-gradient(120% 60% at 50% -10%, #e2d8ff, transparent 60%); }
+.v-arcade.t-light .ar__head > .ar__px:first-child, .v-arcade.t-light .ar__round, .v-arcade.t-light .ar__big, .v-arcade.t-light .ar__title h1, .v-arcade.t-light .ar__hud b.is-cyan, .v-arcade.t-light .k-head h1 { text-shadow: none !important; }
+.v-arcade.t-light .k-chip[aria-pressed="true"], .v-arcade.t-light .k-tab[aria-pressed="true"] { background: #fde7f3; color: #1b1340; box-shadow: none; }
+.v-arcade.t-light .k-btn.is-primary { box-shadow: none; }
+.v-arcade.t-light .k-day.is-today { border-color: #0e7490; box-shadow: 0 10px 24px rgba(14, 116, 144, .18); }
+.v-arcade.t-light .k-day > header em { background: #0e7490; color: #fff; }
+.v-arcade.t-light .k-day > header b, .v-arcade.t-light .k-rank, .v-arcade.t-light .k-time, .v-arcade.t-light .k-ep__time { color: #0e7490; }
+.v-arcade.t-light .k-rank { background: rgba(255, 255, 255, .92); }
+.v-arcade.t-light .k-fox { background: #fff; box-shadow: 0 10px 24px rgba(14, 116, 144, .3); }
+.v-arcade.t-light .k-progress s { background: #0e7490; box-shadow: none; }

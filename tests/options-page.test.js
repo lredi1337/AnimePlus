@@ -11,6 +11,7 @@ async function openPage(initial) {
     const dom = new JSDOM(`<!doctype html><body>${body}</body>`, { url: 'https://example.test/options.html', runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window;
     const store = { ag_settings: initial };
+    const changed = [];
     w.chrome = {
         runtime: { id: 'test', getURL: (p) => p, getManifest: () => JSON.parse(read('manifest.json')), sendMessage() {}, onMessage: { addListener() {} } },
         storage: {
@@ -18,12 +19,18 @@ async function openPage(initial) {
                 get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(k => [k, store[k]])),
                 set: async (obj) => { Object.assign(store, obj); }
             },
-            onChanged: { addListener() {} }
+            onChanged: { addListener: (fn) => changed.push(fn) }
         }
     };
-    for (const f of ['config.js', 'modules/player/shell-view.js', 'modules/shared/ui-kit.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'options/options.js']) w.eval(read(f));
+    for (const f of ['modules/shared/look.js', 'config.js', 'modules/player/shell-view.js', 'modules/shared/ui-kit.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'options/options.js']) w.eval(read(f));
     await tick();
-    return { w, doc: w.document, store };
+    // Настройки поменяли в другом месте: то же, что шлёт chrome.storage.onChanged
+    const changeFromOutside = (patch) => {
+        const oldValue = store.ag_settings;
+        store.ag_settings = { ...(oldValue || {}), ...patch };
+        changed.forEach(fn => fn({ ag_settings: { oldValue, newValue: store.ag_settings } }, 'local'));
+    };
+    return { w, doc: w.document, store, changeFromOutside };
 }
 
 const names = (doc) => [...doc.querySelectorAll('.voice .name')].map(e => e.textContent);
@@ -202,9 +209,9 @@ test('разделы: открыт один, выбор записан в адр
     const { w, doc } = await openPage({});
     const shown = () => [...doc.querySelectorAll('.pane')].filter(p => !p.hidden).map(p => p.dataset.pane);
     const current = () => doc.querySelector('.nav-item[aria-current="page"]').dataset.pane;
-    assert.deepEqual(shown(), ['player'], 'по умолчанию вид плеера');
-    assert.equal(current(), 'player');
-    for (const [hash, pane] of [['#voice', 'voice'], ['#keys', 'keys'], ['#random', 'random'], ['#help', 'help'], ['#guide', 'help'], ['#нет-такого', 'player']]) {
+    assert.deepEqual(shown(), ['look'], 'по умолчанию оформление, первый пункт меню');
+    assert.equal(current(), 'look');
+    for (const [hash, pane] of [['#look', 'look'], ['#voice', 'voice'], ['#keys', 'keys'], ['#random', 'random'], ['#help', 'help'], ['#guide', 'help'], ['#player', 'player'], ['#skin', 'player'], ['#нет-такого', 'look']]) {
         w.location.hash = hash;
         w.dispatchEvent(new w.HashChangeEvent('hashchange'));
         assert.deepEqual(shown(), [pane], hash);
@@ -495,6 +502,9 @@ test('своя тема: правка сохраняется в неё же, у�
 
 test('конструктор: части сочетаются свободно, порядок кнопок меняется, лишние прячутся', async () => {
     const { w, doc, store } = await openPage({});
+    // Зритель сначала открывает раздел «Вид плеера»: в скрытом разделе фокус не ставится
+    w.location.hash = '#player';
+    w.dispatchEvent(new w.HashChangeEvent('hashchange'));
     doc.getElementById('skinCreate').click();
     for (const [id, value] of [['edBar', 'capsule'], ['edTitlePos', 'card'], ['edCenter', 'plate'], ['edPanel', 'floating'], ['edSize', 'large']]) {
         doc.getElementById(id).value = value;
@@ -575,5 +585,63 @@ test('порядок кнопок: кнопку перетаскивают мы�
     doc.getElementById('edSave').click();
     await tick();
     assert.deepEqual([...store.ag_settings.custom_skins[0].values.order].slice(0, 4), ['vol', 'gap', 'skip', 'clock']);
+    w.close();
+});
+
+test('визуал расширения: шесть стилей и две темы, выбор сохраняется сразу', async () => {
+    const { w, doc, store } = await openPage({ voice_priority_list: ['A'] });
+    const cards = () => [...doc.querySelectorAll('#lookList .look-card')];
+    assert.deepEqual(cards().map(c => c.dataset.style), ['classic', 'cinema', 'magazine', 'manga', 'arcade', 'bento']);
+    assert.equal(doc.querySelector('#lookList .look-card[aria-checked="true"]').dataset.style, 'classic', 'без выбора отмечен классический');
+    // В каждой карточке живой образец: те же переменные, что у страниц, в своей теме
+    for (const c of cards()) {
+        const mini = c.querySelector('.look-mini');
+        assert.equal(mini.dataset.look, c.dataset.style);
+        assert.ok(['light', 'dark'].includes(mini.dataset.theme));
+    }
+    assert.equal(doc.querySelector('[data-style="magazine"] .look-mini').dataset.theme, 'light', 'журнал задуман светлым');
+    // Тем две, «как задумано» отдельной кнопкой нет: без выбора отмечена та, что видна сейчас
+    assert.deepEqual([...doc.querySelectorAll('[data-theme-pick]')].map(b => b.textContent), ['Светлая', 'Тёмная']);
+    assert.equal(doc.querySelector('[data-theme-pick="dark"]').getAttribute('aria-checked'), 'true', 'классический задуман тёмным');
+
+    doc.querySelector('[data-style="manga"]').click();
+    await tick();
+    assert.deepEqual({ ...store.ag_settings.look }, { style: 'manga', theme: 'auto' });
+    assert.equal(doc.querySelector('[data-theme-pick="light"]').getAttribute('aria-checked'), 'true', 'манга задумана светлой');
+    assert.deepEqual([...store.ag_settings.voice_priority_list], ['A'], 'остальные настройки не тронуты');
+    assert.equal(doc.querySelector('#lookList .look-card[aria-checked="true"]').dataset.style, 'manga');
+
+    doc.querySelector('[data-theme-pick="dark"]').click();
+    await tick();
+    assert.deepEqual({ ...store.ag_settings.look }, { style: 'manga', theme: 'dark' });
+    assert.equal(doc.querySelector('[data-theme-pick="dark"]').getAttribute('aria-checked'), 'true');
+    assert.ok(cards().every(c => c.querySelector('.look-mini').dataset.theme === 'dark'), 'образцы показывают выбранную тему');
+    w.close();
+});
+
+test('меню разделов — карточка, как в макетах: заголовок «Настройки» с лисой, подсказка о помощи под ней', async () => {
+    const { w, doc } = await openPage({});
+    const box = doc.querySelector('.side-box');
+    assert.ok(box, 'карточка меню');
+    assert.equal(box.querySelector('h1').textContent, 'Настройки');
+    assert.ok(box.querySelector('.head img'));
+    assert.equal(box.querySelectorAll('.nav-item').length, doc.querySelectorAll('.pane').length, 'все разделы в карточке');
+    assert.ok(!box.contains(doc.getElementById('helpBanner')), '«Что-то не работает?» под карточкой');
+    w.close();
+});
+
+test('визуал расширения: сохранённый выбор отмечен при открытии', async () => {
+    const { w, doc } = await openPage({ look: { style: 'arcade', theme: 'light' } });
+    assert.equal(doc.querySelector('#lookList .look-card[aria-checked="true"]').dataset.style, 'arcade');
+    assert.equal(doc.querySelector('[data-theme-pick="light"]').getAttribute('aria-checked'), 'true');
+    w.close();
+});
+
+test('оформление: выбор, сделанный в другой вкладке, сразу отмечен и здесь', async () => {
+    const { w, doc, changeFromOutside } = await openPage({});
+    changeFromOutside({ look: { style: 'manga', theme: 'light' } });
+    await tick();
+    assert.equal(doc.querySelector('#lookList .look-card[aria-checked="true"]').dataset.style, 'manga');
+    assert.equal(doc.querySelector('[data-theme-pick="light"]').getAttribute('aria-checked'), 'true');
     w.close();
 });

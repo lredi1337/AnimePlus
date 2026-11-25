@@ -212,11 +212,24 @@ async function getRandomAnimeCard(message = {}) {
     const fresh = pool.filter(x => !exclude.has(Number(x.id)));
     const list = fresh.length ? fresh : pool;
     const chosen = list[Math.floor(Math.random() * list.length)];
+    return { anime: await animeCardFor(chosen) };
+}
 
+/** Подробности конкретного тайтла: панель тайтла в подборе (pick/pick.js) */
+async function getAnimeCard(message = {}) {
+    const id = parseInt(message.id, 10);
+    if (!(id > 0)) return { anime: null, reason: 'invalid' };
+    const anime = await animeCardFor({ id });
+    return anime.name || anime.russian ? { anime } : { anime: null, reason: 'error' };
+}
+
+async function animeCardFor(chosen) {
     // Жанры и описание есть только в карточке тайтла, все кадры — отдельным запросом; без них показываем то, что знаем из каталога
-    const [detailsRaw, screensRaw] = await Promise.all([
+    // Франшиза — вместе с карточкой: блок «Порядок просмотра» появляется сразу, страница не меняет высоту
+    const [detailsRaw, screensRaw, franchiseRes] = await Promise.all([
         fetchShikimoriApi(`/api/animes/${chosen.id}`).catch(() => null),
-        fetchShikimoriApi(`/api/animes/${chosen.id}/screenshots`).catch(() => null)
+        fetchShikimoriApi(`/api/animes/${chosen.id}/screenshots`).catch(() => null),
+        getFranchise(chosen.id).catch(() => null)
     ]);
     const details = detailsRaw || {};
     const full = { ...chosen, ...details };
@@ -231,14 +244,16 @@ async function getRandomAnimeCard(message = {}) {
         year: full.aired_on ? String(full.aired_on).slice(0, 4) : '',
         episodes: full.episodes || full.episodes_aired || 0,
         status: full.status || '',
+        studio: Array.isArray(full.studios) && full.studios[0] ? String(full.studios[0].name || '') : '',
         genres: (Array.isArray(full.genres) ? full.genres : []).map(g => g.russian || g.name).filter(Boolean).slice(0, 4),
         description: plainShikiDescription(full.description).slice(0, 1500),
         poster: full.image ? (full.image.original || full.image.preview || '') : '',
         screenshots: screens
             .map(x => ({ full: absoluteShikiUrl(x.original || x.preview || ''), thumb: absoluteShikiUrl(x.preview || x.original || '') }))
             .filter(x => x.full)
-            .slice(0, RANDOM_MAX_SCREENSHOTS)
+            .slice(0, RANDOM_MAX_SCREENSHOTS),
+        franchise: franchiseRes && franchiseRes.franchise ? { data: franchiseRes.franchise, posters: franchiseRes.posters || {} } : null
     };
     await fillShikiPosters([anime], { getRaw: (a) => a.poster }).catch(() => {});
-    return { anime };
+    return anime;
 }

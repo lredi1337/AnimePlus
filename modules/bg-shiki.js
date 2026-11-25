@@ -1115,6 +1115,59 @@ async function getTitleFinale({ id, episode }) {
     };
 }
 
+// ---------- Подбор аниме (pick/pick.js) ----------
+const PICK_SEEN_KEY = 'ag_pick_seen';
+const PICK_SEEN_TTL_MS = 10 * 60 * 1000;
+const PICK_RATES_PAGE = 1000;
+const PICK_RATES_MAX_PAGES = 10;
+
+/**
+ * Что зритель уже видел по списку Shikimori (всё, кроме «Запланировано»), и что запланировал.
+ * Без входа — { loggedIn: false }. Список запоминается на 10 минут: подбор открывают много раз подряд
+ */
+async function getPickSeen() {
+    const tokens = await getShikiTokens();
+    if (!tokens.shiki_access_token || !tokens.shiki_user || !tokens.shiki_user.id) return { loggedIn: false, seen: [], planned: [] };
+    const userId = tokens.shiki_user.id;
+    const { [PICK_SEEN_KEY]: saved } = await chrome.storage.session.get([PICK_SEEN_KEY]);
+    if (saved && saved.userId === userId && Date.now() - saved.ts < PICK_SEEN_TTL_MS) return { loggedIn: true, seen: saved.seen, planned: saved.planned };
+
+    const seen = [];
+    const planned = [];
+    for (let page = 1; page <= PICK_RATES_MAX_PAGES; page++) {
+        const res = await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates?user_id=${userId}&target_type=Anime&limit=${PICK_RATES_PAGE}&page=${page}`);
+        if (!res.ok) return { loggedIn: true, seen, planned, partial: true };
+        const rates = await res.json();
+        if (!Array.isArray(rates)) break;
+        rates.forEach(r => { if (r && r.target_id) (r.status === 'planned' ? planned : seen).push(r.target_id); });
+        if (rates.length < PICK_RATES_PAGE) break;
+    }
+    await chrome.storage.session.set({ [PICK_SEEN_KEY]: { userId, ts: Date.now(), seen, planned } });
+    return { loggedIn: true, seen, planned };
+}
+
+/** «Отложить» в подборе: тайтл в «Запланировано». Если тайтл в списке уже есть, его статус не трогаем */
+async function addShikiPlanned({ id }) {
+    const targetId = parseInt(id, 10);
+    if (!(targetId > 0)) return { success: false, reason: 'invalid' };
+    const tokens = await getShikiTokens();
+    if (!tokens.shiki_access_token || !tokens.shiki_user || !tokens.shiki_user.id) return { success: false, reason: 'not_logged_in' };
+    const userId = tokens.shiki_user.id;
+    const getRes = await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates?user_id=${userId}&target_id=${targetId}&target_type=Anime`);
+    if (!getRes.ok) return { success: false, status: getRes.status };
+    const rates = await getRes.json();
+    const existing = Array.isArray(rates) && rates.length > 0 ? rates[0] : null;
+    if (existing) return { success: true, already: existing.status };
+    const saveRes = await shikiFetch(`${SHIKI_API_BASE}/api/v2/user_rates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_rate: { user_id: userId, target_id: targetId, target_type: 'Anime', status: 'planned' } })
+    });
+    if (!saveRes.ok) return { success: false, status: saveRes.status };
+    await chrome.storage.session.remove([PICK_SEEN_KEY]).catch(() => {});
+    return { success: true };
+}
+
 async function setShikiScore({ id, score }) {
     const targetId = parseInt(id, 10);
     const cleanScore = parseInt(score, 10);

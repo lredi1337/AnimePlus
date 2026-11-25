@@ -1,0 +1,7 @@
+/* Стиль «Классический»: нынешний вид расширения (modules/shared/tokens.css) и его светлый вариант */
+.v-classic { --k-bg: #0f1218; --k-surface: #161a22; --k-raised: #1f242e; --k-ink: #f1f3f7; --k-mute: #8f96a6; --k-line: rgba(255, 255, 255, .1);
+    --k-accent: #ef4444; --k-on-accent: #fff; --k-gold: #fbbf24; --k-yes: #34d399; --k-no: #f87171;
+    --k-radius: 14px; --k-radius-sm: 8px; --k-border: 1px solid var(--k-line); --k-shadow: 0 12px 30px rgba(0, 0, 0, .3);
+    --k-display: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; --k-body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; --k-weight: 700; --k-track: 0; }
+.v-classic.t-light { --k-bg: #f4f5f8; --k-surface: #ffffff; --k-raised: #eef0f4; --k-ink: #14161c; --k-mute: #5b6272; --k-line: rgba(15, 18, 24, .1);
+    --k-accent: #e53935; --k-gold: #b7791f; --k-yes: #0f8a5f; --k-no: #d93636; --k-shadow: 0 10px 26px rgba(15, 18, 24, .08); }

@@ -1,5 +1,5 @@
 // options/options.js
-// Страница настроек расширения: меню разделов слева (вид плеера, озвучка, клавиши, случайное аниме, помощь),
+// Страница настроек расширения: меню разделов слева (оформление, вид плеера, озвучка, клавиши, случайное аниме, помощь),
 // открыт один раздел за раз. Изменения сохраняются сразу
 
 (async function () {
@@ -533,6 +533,50 @@
     });
     renderSkins();
 
+    // ---------- Визуал расширения ----------
+    // Стиль и тема окна расширения и страниц расширения. Образец в карточке — те же переменные, что у страниц
+    // (modules/shared/looks.css по атрибутам data-look и data-theme), поэтому он всегда совпадает с настоящим видом
+    // Темы две. Пока зритель не выбрал сам, тема «auto» — родная тема стиля, и отмечена она
+    const LOOK_THEMES = [['light', 'Светлая'], ['dark', 'Тёмная']];
+    const lookMini = (style, theme) => `<span class="look-mini" data-look="${style}" data-theme="${theme}" aria-hidden="true">
+        <span class="lm-head"><img src="../icons/icon32.png" alt=""><b class="lm-brand">Anime<em>+</em></b><span class="lm-btn">Выбрать сайт</span></span>
+        <span class="lm-title">Смотрю</span>
+        <span class="lm-pills"><i class="is-on">Все</i><i>TV</i><i>Фильмы</i></span>
+        <span class="lm-grid"><i><s></s></i><i><s></s></i><i><s></s></i></span>
+    </span>`;
+    const renderLook = () => {
+        const look = window.AgLook.clean(settings.look);
+        const shown = window.AgLook.resolve(look).theme;
+        $('lookThemes').innerHTML = LOOK_THEMES.map(([id, label]) =>
+            `<button type="button" class="look-theme" role="radio" data-theme-pick="${id}" aria-checked="${shown === id}">${label}</button>`).join('');
+        $('lookList').innerHTML = window.AgLook.STYLES.map((s) => {
+            const on = s.id === look.style;
+            const theme = window.AgLook.resolve({ style: s.id, theme: look.theme }).theme;
+            return `<button type="button" class="look-card" role="radio" data-style="${s.id}" aria-checked="${on}">
+                ${lookMini(s.id, theme)}
+                <b class="look-name">${s.name}</b><small class="look-about">${s.about}</small>
+            </button>`;
+        }).join('');
+    };
+    $('lookThemes').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-theme-pick]');
+        if (!btn) return;
+        const look = window.AgLook.clean(settings.look);
+        save({ look: { ...look, theme: btn.dataset.themePick } }).then(renderLook);
+    });
+    $('lookList').addEventListener('click', (e) => {
+        const card = e.target.closest('.look-card');
+        if (!card) return;
+        const look = window.AgLook.clean(settings.look);
+        save({ look: { ...look, style: card.dataset.style } }).then(renderLook);
+    });
+    renderLook();
+    // Оформление могли поменять в другой вкладке настроек: отметки здесь обновляются сами
+    window.agOnSettingsChange((fresh) => {
+        settings = fresh;
+        renderLook();
+    });
+
     // ---------- Озвучка ----------
     const moveVoice = (from, to) => {
         const list = [...settings.voice_priority_list];
@@ -788,7 +832,7 @@
 
     // ---------- Разделы ----------
     // Открыт один раздел за раз, выбранный записан в адресе. Старые ссылки (#support, #guide) ведут в «Помощь»
-    const PANES = ['player', 'voice', 'keys', 'random', 'help'];
+    const PANES = ['look', 'player', 'voice', 'keys', 'random', 'help'];
     const ALIASES = { support: 'help', guide: 'help', skin: 'player' };
     const paneOf = (hash) => {
         const name = hash.replace(/^#/, '');

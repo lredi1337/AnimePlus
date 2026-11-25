@@ -851,7 +851,7 @@ async function skins(opts) {
     const out = opts.out || fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'anime-plus-skins-'));
     fs.mkdirSync(out, { recursive: true });
     try {
-        const settingsPage = await b.openPage(`chrome-extension://${extId}/options/options.html`);
+        const settingsPage = await b.openPage(`chrome-extension://${extId}/options/options.html#player`);
         await wait(1500);
         const ids = await b.ev(settingsPage.session, "[...document.querySelectorAll('#skinList [data-skin]')].map(x => x.dataset.skin)");
         r.check('на странице настроек пять тем', ids.length === 5, ids);
@@ -1337,7 +1337,453 @@ async function keys(opts) {
     return r.failed;
 }
 
-const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins, resume, keys };
+/**
+ * Подбор аниме (pick/pick.js): значок в окне расширения, вопросы настоящими нажатиями, подборка с постерами,
+ * «Не то» с причиной, поправка «Короче», «Смотреть» открывает карточку тайтла, прошлая подборка продолжается
+ */
+async function pick(opts) {
+    const r = reporter();
+    const { b, extId } = await startBrowser(opts);
+    const shot = async (session, name) => {
+        if (!opts.out) return;
+        fs.mkdirSync(opts.out, { recursive: true });
+        const { data } = await b.send('Page.captureScreenshot', { format: 'png' }, session);
+        fs.writeFileSync(path.join(opts.out, name), Buffer.from(data, 'base64'));
+    };
+    const findTab = async (test) => {
+        for (let i = 0; i < 20; i++) {
+            const t = (await b.targets('page')).find(x => test(x.url));
+            if (t) return { targetId: t.targetId, session: await b.attach(t.targetId) };
+            await wait(500);
+        }
+        return null;
+    };
+    // Центр элемента: селектор и, по желанию, точный текст
+    const center = (session, sel, text = null) => b.ev(session, `(() => {
+        const list = [...document.querySelectorAll(${JSON.stringify(sel)})];
+        const el = ${JSON.stringify(text)} === null ? list[0] : list.find(x => x.textContent.trim() === ${JSON.stringify(text)});
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center' });
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    const click = async (session, sel, text = null) => {
+        const at = await center(session, sel, text);
+        if (!at) return false;
+        await wait(200);
+        await b.clickAt(session, at);
+        await wait(400);
+        return true;
+    };
+    // Главный тайтл крупно и постеры: вместе — подборка по порядку
+    const cardsState = "[...document.querySelectorAll('.pk__hero, .pk__card')].map(c => ({ id: Number(c.dataset.id), title: c.querySelector('h2, h3').textContent, role: c.querySelector('.pk__role').textContent, facts: c.querySelector('.pk__facts').textContent, score: (c.querySelector('.pk__score, .pk__score-inline') || {}).textContent || '', poster: c.querySelector('img').complete && c.querySelector('img').naturalWidth > 0 && !/icon128/.test(c.querySelector('img').src) }))";
+
+    try {
+        const popup = await b.openPage(`chrome-extension://${extId}/popup/popup.html`);
+        await wait(2500);
+        await click(popup.session, '#btnPick');
+        const page = await findTab(url => url.endsWith('/pick/pick.html'));
+        r.check('значок подбора открыл вкладку', !!page);
+        if (!page) return r.failed;
+        await wait(1500);
+        r.check('начало: кнопка и подсказки', (await b.ev(page.session, "document.querySelectorAll('.pk__start .pk__chip').length")) === 4);
+
+        await click(page.session, '.pk__btn', 'Начать подбор');
+        const asked = [];
+        // Зритель хочет фэнтези, лучше короткое; в «понравилось» отмечает первый постер, на остальное отвечает по очереди
+        const pattern = ['Скорее да', 'Не важно', 'Нет', 'Да', 'Скорее нет', 'Не важно'];
+        let liked = null;
+        for (let i = 0; i < 16; i++) {
+            const q = await b.ev(page.session, "(() => { const h = document.querySelector('.pk__bubble h2'); return h ? { text: h.textContent, options: [...document.querySelectorAll('.pk__options .pk__chip')].map(x => x.textContent), posters: [...document.querySelectorAll('.pk__liked-item')].map(x => Number(x.dataset.option)), buttons: [...document.querySelectorAll('.pk__answers .pk__btn')].map(x => x.textContent) } : null; })()");
+            if (!q) break;
+            asked.push(q.text);
+            if (q.options.includes('Магия')) {
+                await click(page.session, '.pk__options .pk__chip', 'Магия');
+                await shot(page.session, 'pick-themes.png');
+                await click(page.session, '.pk__next');
+            } else if (q.options.length) {
+                await click(page.session, '.pk__options .pk__chip', 'Короткий сериал, до 13 серий');
+                await click(page.session, '.pk__next');
+            } else if (q.posters.length) {
+                liked = q.posters[0];
+                await click(page.session, `.pk__liked-item[data-option="${liked}"]`);
+                await shot(page.session, 'pick-liked.png');
+                await click(page.session, '.pk__next');
+            } else {
+                await click(page.session, '.pk__answers .pk__btn', q.buttons.includes('Кое-что') ? 'Кое-что' : pattern[i % pattern.length]);
+            }
+        }
+        console.log('  вопросы:', asked.join(' | '));
+        r.check('первый вопрос — темы', asked[0] === 'Что-то из этого хочется?', asked[0]);
+        // «Что из этого понравилось?» повторяется законно: каждый раз с другими постерами
+        const plainAsked = asked.filter(x => x !== 'Что из этого вам понравилось?');
+        r.check('вопросы не повторяются', new Set(plainAsked).size === plainAsked.length, asked);
+        r.check('вопросы задавались, пока не нашлось', asked.length >= 3, asked.length);
+
+        let cards = [];
+        for (let i = 0; i < 20; i++) {
+            await wait(500);
+            cards = await b.ev(page.session, cardsState);
+            if (cards.length && cards.every(c => c.poster)) break;
+        }
+        console.log('  подборка:', cards.map(c => `${c.role}: ${c.title} (${c.score} · ${c.facts})`).join(' | '));
+        r.check('подборка из восьми разных тайтлов', cards.length === 8 && new Set(cards.map(c => c.id)).size === 8, cards.length);
+        r.check('первое — крупно, лучшее попадание', cards[0] && cards[0].role === 'Лучше всего подходит' && await b.ev(page.session, "!!document.querySelector('.pk__hero')"), cards[0]);
+        // Описание и сайты главного тайтла прямо на странице
+        let heroState = null;
+        for (let i = 0; i < 40; i++) {
+            await wait(1000);
+            heroState = await b.ev(page.session, "(() => { const hero = document.querySelector('.pk__hero'); return { desc: hero.querySelector('.pk__hero-desc').textContent, loading: hero.querySelector('.pk__hero-desc').classList.contains('is-loading'), note: hero.querySelector('.pk__site.is-pending') ? 'Ищем' : '', sites: [...hero.querySelectorAll('a.pk__site')].map(x => x.dataset.site) }; })()");
+            if (!heroState.loading && !/Ищем/.test(heroState.note)) break;
+        }
+        r.check('главный тайтл: описание подгрузилось', !!heroState && !heroState.loading && heroState.desc.length > 20, heroState && heroState.desc.slice(0, 60));
+        r.check('главный тайтл: поиск на сайтах завершился', !!heroState && !/Ищем/.test(heroState.note), heroState && heroState.sites);
+        r.check('постеры загрузились', cards.length > 0 && cards.every(c => c.poster), cards.filter(c => !c.poster).map(c => c.title));
+        r.check('нет тайтлов с оценкой ниже 7', cards.every(c => !/★ ([0-6]\.)/.test(c.score)), cards.map(c => c.score));
+        r.check('отмеченное «понравилось» не предлагается', !liked || !cards.some(c => c.id === liked), liked);
+        await b.ev(page.session, 'window.scrollTo(0, 0)');
+        await shot(page.session, 'pick-results.png');
+        // Наведение на постер показывает кнопки поверх него
+        const coverAt = await center(page.session, '.pk__cover');
+        if (coverAt) {
+            await b.mouse(page.session, 'mouseMoved', coverAt.x, coverAt.y);
+            await wait(500);
+            const overlay = await b.ev(page.session, "Number(getComputedStyle(document.querySelector('.pk__overlay')).opacity)");
+            r.check('наведение показывает кнопки на постере', overlay > 0.9, overlay);
+            await shot(page.session, 'pick-hover.png');
+        }
+
+        // «Не то» → «Уже смотрел» у второй карточки
+        const rejected = cards[1] && cards[1].id;
+        await click(page.session, `[data-reject="${rejected}"]`);
+        await click(page.session, '[data-reason="seen"]');
+        await wait(800);
+        const after = await b.ev(page.session, cardsState);
+        r.check('«Не то»: карточку заменила другая', after.length === 8 && !after.some(c => c.id === rejected) && after[0].id === cards[0].id, after.map(c => c.title));
+
+        // «Видел» у третьей карточки: одно нажатие
+        const seenId = after[2] && after[2].id;
+        await click(page.session, `[data-seen="${seenId}"]`);
+        await wait(800);
+        const afterSeen = await b.ev(page.session, cardsState);
+        r.check('«Видел»: карточку заменила другая', afterSeen.length === 8 && !afterSeen.some(c => c.id === seenId), afterSeen.map(c => c.title));
+
+        await click(page.session, '.pk__tweaks .pk__chip', 'Короче');
+        await wait(800);
+        const short = await b.ev(page.session, cardsState);
+        r.check('«Короче»: первым короткое', !!short[0] && /фильм|(?:^|· )(?:1[0-3]|[1-9]) эп\./.test(short[0].facts), short[0]);
+
+        // Нажатие на постер → панель тайтла поверх подборки, не новая вкладка
+        const opened = short[1];
+        const tabsBefore = (await b.targets('page')).length;
+        // Нажатие на сам постер, мимо кнопок
+        await click(page.session, `.pk__card[data-id="${opened.id}"] .pk__poster`);
+        let panelState = null;
+        for (let i = 0; i < 40; i++) {
+            await wait(1000);
+            panelState = await b.ev(page.session, "(() => { const p = document.querySelector('.pk__panel'); if (!p) return null; const note = p.querySelector('.pk__sites-note'); return { id: Number(p.dataset.id), title: p.querySelector('h2').textContent, loading: p.querySelector('.pk__panel-desc').classList.contains('is-loading'), searching: !!p.querySelector('.pk__site.is-pending'), sites: [...p.querySelectorAll('a.pk__site')].map(x => x.dataset.site), shots: [...p.querySelectorAll('.pk__shot img')].map(i => i.complete && i.naturalWidth > 0) }; })()");
+            if (panelState && !panelState.loading && !panelState.searching && panelState.shots.every(Boolean)) break;
+        }
+        r.check('«Открыть»: панель того самого тайтла', !!panelState && panelState.id === opened.id && panelState.title === opened.title, panelState);
+        r.check('«Открыть»: новой вкладки нет', (await b.targets('page')).length === tabsBefore);
+        r.check('панель: описание, кадры и сайты', !!panelState && !panelState.loading && !panelState.searching && panelState.shots.every(Boolean), panelState);
+        await shot(page.session, 'pick-panel.png');
+        const key = async (k, code, vk) => {
+            await b.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk }, page.session);
+            await b.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }, page.session);
+            await wait(400);
+        };
+        // Кадр открывается своим просмотром, а не страницей Shikimori: листается, Esc закрывает только просмотр
+        const tabsBeforeShot = (await b.targets('page')).length;
+        await click(page.session, '.pk__panel .pk__shot');
+        const viewerCount = () => b.ev(page.session, "(() => { const v = document.querySelector('.pk__viewer'); return v && !v.hidden ? document.querySelector('.pk__viewer-count').textContent : null; })()");
+        const firstCount = await viewerCount();
+        r.check('кадр: открылся просмотр, новой вкладки нет', !!firstCount && (await b.targets('page')).length === tabsBeforeShot, firstCount);
+        await shot(page.session, 'pick-viewer.png');
+        await key('ArrowRight', 'ArrowRight', 39);
+        r.check('кадр: стрелка листает', (await viewerCount()) !== firstCount, await viewerCount());
+        await key('Escape', 'Escape', 27);
+        r.check('кадр: Esc закрыл просмотр, панель осталась', (await viewerCount()) === null && await b.ev(page.session, "!!document.querySelector('.pk__panel')"));
+        await key('Escape', 'Escape', 27);
+        r.check('Esc закрыл панель, подборка на месте', await b.ev(page.session, "!document.querySelector('.pk__panel') && document.querySelectorAll('.pk__card').length === 7"));
+
+        // «Показать ещё»: новые в конец, показанные карточки те же (не пропадают и не грузятся заново)
+        await b.ev(page.session, "window.__firstCard = document.querySelector('.pk__card'); true");
+        await click(page.session, '.pk__foot .pk__btn', 'Показать ещё');
+        await wait(800);
+        r.check('«Показать ещё»: карточки на месте, добавились новые', await b.ev(page.session, "document.querySelector('.pk__card') === window.__firstCard && document.querySelectorAll('.pk__card').length > 7"));
+        // Продолжение прошлой подборки вернёт её вместе с дописанными
+        const expanded = await b.ev(page.session, cardsState);
+
+        // Прошлая подборка после перезагрузки
+        await b.send('Page.reload', {}, page.session);
+        await wait(2500);
+        r.check('после перезагрузки есть «Продолжить»', await click(page.session, '.pk__btn', 'Продолжить'));
+        await wait(800);
+        const resumed = await b.ev(page.session, cardsState);
+        r.check('прошлая подборка та же', JSON.stringify(resumed.map(c => c.id)) === JSON.stringify(expanded.map(c => c.id)), resumed.map(c => c.title));
+        // Новый подбор помнит увиденное
+        await click(page.session, '.pk__link', 'Начать заново');
+        await wait(600);
+        const memo = await b.ev(page.session, "(document.querySelector('.pk__memo') || {}).textContent || ''");
+        r.check('новый подбор помнит отмеченное увиденным', /отметили увиденным: [1-9]/.test(memo), memo);
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+/** Визуал расширения: выбор стиля и темы настоящими нажатиями, затем все страницы расширения в каждом стиле и теме */
+async function look(opts) {
+    const r = reporter();
+    const { b, extId, worker } = await startBrowser(opts);
+    const shot = async (session, name) => {
+        if (!opts.out) return;
+        fs.mkdirSync(opts.out, { recursive: true });
+        // Фоновая вкладка не доигрывает переходы цвета: перед снимком она становится активной
+        await b.send('Target.activateTarget', { targetId: session.targetId });
+        await wait(400);
+        const { data } = await b.send('Page.captureScreenshot', { format: 'jpeg', quality: 80 }, session.session);
+        fs.writeFileSync(path.join(opts.out, name), Buffer.from(data, 'base64'));
+    };
+    const center = (session, sel) => b.ev(session, `(() => {
+        const el = document.querySelector(${JSON.stringify(sel)});
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center' });
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    const click = async (session, sel) => {
+        const at = await center(session, sel);
+        if (!at) return false;
+        await wait(200);
+        await b.clickAt(session, at);
+        await wait(500);
+        return true;
+    };
+    // Что на деле видит зритель: атрибуты, цвет фона страницы и шрифт заголовка
+    const state = (session) => b.ev(session, `(() => {
+        const root = document.documentElement;
+        const css = getComputedStyle(root);
+        const h = document.querySelector('h1, h2');
+        return {
+            look: root.dataset.look, theme: root.dataset.theme,
+            bg: css.getPropertyValue('--ap-bg').trim(),
+            body: getComputedStyle(document.body).backgroundColor,
+            scheme: getComputedStyle(document.body).colorScheme,
+            font: h ? getComputedStyle(h).fontFamily.split(',')[0] : null,
+            styled: !!document.querySelector('.lk > *') && document.body.classList.contains('is-look'),
+            wide: document.documentElement.scrollWidth > window.innerWidth + 1
+        };
+    })()`);
+    const hexToRgb = (hex) => {
+        const h = hex.replace('#', '');
+        const f = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+        return `rgb(${parseInt(f.slice(0, 2), 16)}, ${parseInt(f.slice(2, 4), 16)}, ${parseInt(f.slice(4, 6), 16)})`;
+    };
+
+    try {
+        // 1. Настройки: раздел «Оформление», выбор мышью
+        const settings = await b.openPage(`chrome-extension://${extId}/options/options.html#look`);
+        await wait(1500);
+        r.check('раздел «Оформление» открыт', await b.ev(settings.session, "!document.querySelector('.pane[data-pane=\"look\"]').hidden"));
+        r.check('шесть стилей с образцами', (await b.ev(settings.session, "document.querySelectorAll('#lookList .look-card .look-mini').length")) === 6);
+        const before = await state(settings.session);
+        r.check('без выбора — классический тёмный, как раньше', before.look === 'classic' && before.theme === 'dark' && before.bg === '#0f1218', before);
+        await shot(settings, 'settings-classic-dark.jpg');
+
+        await click(settings.session, '#lookList .look-card[data-style="manga"]');
+        const manga = await state(settings.session);
+        r.check('нажатие на «Мангу» сразу перекрасило настройки', manga.look === 'manga' && manga.theme === 'light' && manga.body === 'rgb(255, 255, 255)', manga);
+        r.check('сохранено в настройках', (await b.ev(worker, "chrome.storage.local.get('ag_settings').then(r => r.ag_settings.look)")).style === 'manga');
+        await shot(settings, 'settings-manga-light.jpg');
+        await click(settings.session, '[data-theme-pick="dark"]');
+        const mangaDark = await state(settings.session);
+        r.check('«Тёмная» переключила тему', mangaDark.theme === 'dark' && mangaDark.scheme === 'dark', mangaDark);
+
+        // 2. Открытые страницы перекрашиваются без перезагрузки
+        const popup = await b.openPage(`chrome-extension://${extId}/popup/popup.html`);
+        await wait(1500);
+        r.check('окно расширения открылось в выбранном виде', (await state(popup.session)).look === 'manga');
+        await click(settings.session, '#lookList .look-card[data-style="bento"]');
+        await wait(300);
+        r.check('открытое окно перекрасилось само', (await state(popup.session)).look === 'bento');
+
+        // 2б. Без мигания: пока ищутся сайты, «Случайное» не рисуется заново (раньше «Манга» дёргалась на каждый найденный сайт).
+        // Новый корень раскладки = анимация появления снова; считаем их и пересозданные картинки
+        await b.ev(worker, "chrome.storage.local.get('ag_settings').then(r => chrome.storage.local.set({ ag_settings: { ...(r.ag_settings || {}), look: { style: 'manga', theme: 'light' } } }))");
+        const steady = await b.openPage(`chrome-extension://${extId}/random/random.html`);
+        await b.ev(steady.session, `(() => {
+            window.__roots = 0; window.__imgs = 0;
+            // Высота постера и всей страницы манги, пока ищутся сайты: раньше росла с каждым найденным сайтом
+            window.__sizes = [];
+            const measure = () => {
+                const poster = document.querySelector('.lk .mn__panel--poster');
+                const page = document.querySelector('.lk .mn__page');
+                if (poster && page) window.__sizes.push([Math.round(poster.getBoundingClientRect().height), Math.round(page.getBoundingClientRect().height)]);
+                if (window.__sizes.length < 400) setTimeout(measure, 50);
+            };
+            measure();
+            const watch = () => {
+                const box = document.querySelector('.lk');
+                if (!box) return setTimeout(watch, 20);
+                new MutationObserver((list) => {
+                    for (const m of list) for (const n of m.addedNodes) {
+                        if (n.nodeType !== 1) continue;
+                        if (n.parentNode === box) window.__roots++;
+                        window.__imgs += n.matches('img') ? 1 : n.querySelectorAll('img').length;
+                    }
+                }).observe(box, { childList: true, subtree: true });
+            };
+            watch();
+            return true;
+        })()`);
+        let found = 0;
+        for (let i = 0; i < 40 && found < 2; i++) {
+            await wait(500);
+            found = await b.ev(steady.session, "document.querySelectorAll('.lk a[data-site]').length");
+        }
+        await wait(3000);
+        const churn = await b.ev(steady.session, '({ roots: window.__roots, imgs: window.__imgs, sites: document.querySelectorAll(".lk a[data-site]").length, shots: document.querySelectorAll(".lk [data-act=shot] img").length })');
+        r.check('«Случайное» в «Манге»: раскладка нарисована один раз, пока нашлись сайты', churn.roots === 1 && churn.sites >= 2, churn);
+        r.check('«Случайное» в «Манге»: картинки не пересоздаются', churn.imgs <= churn.shots + 12, churn);
+        // После загрузки шрифтов и постера размеры не меняются: первые полсекунды не считаем
+        const sizes = await b.ev(steady.session, 'window.__sizes.slice(10)');
+        const spread = (i) => sizes.length ? Math.max(...sizes.map(x => x[i])) - Math.min(...sizes.map(x => x[i])) : -1;
+        r.check('«Случайное» в «Манге»: постер и страница не растут, пока ищутся сайты', sizes.length > 20 && spread(0) <= 2 && spread(1) <= 2, { samples: sizes.length, poster: spread(0), page: spread(1), first: sizes[0], last: sizes[sizes.length - 1] });
+        await b.closePage(steady);
+
+        // 3. Все страницы в каждом стиле и теме
+        // Расписание первым и с паузой: шесть страниц разом упираются в ограничение Shikimori на число запросов
+        const schedule = await b.openPage(`chrome-extension://${extId}/schedule/schedule.html?pick=1`);
+        await wait(8000);
+        r.check('расписание загрузилось', (await b.ev(schedule.session, "document.querySelectorAll('.sch__card').length")) > 10);
+        const pages = {
+            popup,
+            schedule,
+            random: await b.openPage(`chrome-extension://${extId}/random/random.html`),
+            top: await b.openPage(`chrome-extension://${extId}/top/top.html?pick=1`),
+            pick: await b.openPage(`chrome-extension://${extId}/pick/pick.html`),
+            settings
+        };
+        await wait(6000);
+        const styles = ['classic', 'cinema', 'magazine', 'manga', 'arcade', 'bento'];
+        for (const style of styles) {
+            for (const theme of ['dark', 'light']) {
+                await b.ev(worker, `chrome.storage.local.get('ag_settings').then(r => chrome.storage.local.set({ ag_settings: { ...(r.ag_settings || {}), look: { style: '${style}', theme: '${theme}' } } }))`);
+                await wait(700);
+                for (const [name, page] of Object.entries(pages)) {
+                    const s = await state(page.session);
+                    // «Случайное» и Топ в стилях — своя раскладка (modules/looks), фон у неё свой; остальные страницы — на фоне стиля
+                    const own = name === 'random' || name === 'top';
+                    const layout = own ? s.styled === (style !== 'classic') : !s.styled;
+                    const good = layout && s.look === style && s.theme === theme && s.scheme === theme && (name === 'popup' || s.styled || s.body === hexToRgb(s.bg) || s.body.startsWith('rgba(0, 0, 0, 0)'));
+                    r.check(`${style} ${theme}: ${name}`, good && !s.wide, good && !s.wide ? undefined : s);
+                    await shot(page, `${style}-${theme}-${name}.jpg`);
+                }
+            }
+        }
+        // Вернуть обычный вид
+        await b.ev(worker, "chrome.storage.local.get('ag_settings').then(r => chrome.storage.local.set({ ag_settings: { ...(r.ag_settings || {}), look: { style: 'classic', theme: 'auto' } } }))");
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+/** «Порядок просмотра» на «Случайном»: блок приходит с карточкой, переход к тайтлу франшизы, переключатели, все стили */
+async function franchise(opts) {
+    const r = reporter();
+    const { b, extId, worker } = await startBrowser(opts);
+    const shot = async (session, name) => {
+        if (!opts.out) return;
+        fs.mkdirSync(opts.out, { recursive: true });
+        const { data } = await b.send('Page.captureScreenshot', { format: 'jpeg', quality: 80 }, session);
+        fs.writeFileSync(path.join(opts.out, name), Buffer.from(data, 'base64'));
+    };
+    const center = (session, sel) => b.ev(session, `(() => {
+        const el = document.querySelector(${JSON.stringify(sel)});
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center' });
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    const click = async (session, sel) => {
+        const at = await center(session, sel);
+        if (!at) return false;
+        await wait(250);
+        await b.clickAt(session, at);
+        await wait(500);
+        return true;
+    };
+    const setLook = (style, theme) => b.ev(worker, `chrome.storage.local.get('ag_settings').then(r => chrome.storage.local.set({ ag_settings: { ...(r.ag_settings || {}), look: { style: '${style}', theme: '${theme}' } } }))`);
+    // Что видно в блоке: тайтлы, «вы здесь», развилка, режим
+    const frState = "(() => { const fr = document.querySelector('.fr'); if (!fr || fr.closest('[hidden]')) return null; const items = [...fr.querySelectorAll('.fr__item[data-fr-id]')]; const here = fr.querySelector('.fr__item.is-here'); return { count: items.length, here: here ? Number(here.dataset.frId) : 0, hereName: here ? here.querySelector('.fr__text b').textContent : '', next: (items.find(li => li.querySelector('button.fr__open')) || {}).dataset ? Number(items.find(li => li.querySelector('button.fr__open')).dataset.frId) : 0, mode: fr.dataset.frMode, fork: !!fr.querySelector('.fr__fork'), posters: [...fr.querySelectorAll('.fr__poster img')].filter(i => i.complete && i.naturalWidth > 1 && !/icon128/.test(i.src)).length }; })()";
+
+    try {
+        await setLook('classic', 'dark');
+        const page = await b.openPage(`chrome-extension://${extId}/random/random.html`);
+        let state = null;
+        for (let i = 0; i < 15 && !state; i++) {
+            for (let k = 0; k < 40; k++) {
+                await wait(500);
+                if (await b.ev(page.session, "!!document.querySelector('.rnd__card:not(.is-loading)') || !!document.querySelector('.rnd__empty')")) break;
+            }
+            // Нужна франшиза с порядком (два тайтла и больше), а не одиночный тайтл со списком «Из той же вселенной»
+            state = await b.ev(page.session, frState);
+            if (state && state.count < 2) state = null;
+            if (!state) { await click(page.session, '.rnd__next'); await wait(800); }
+        }
+        r.check('тайтл с франшизой нашёлся, блок «Порядок просмотра» на карточке', !!state && state.count >= 2, state);
+        if (!state) return r.failed;
+        const title = await b.ev(page.session, "document.querySelector('.rnd__title').textContent");
+        r.check('«вы здесь» — тайтл на карточке', state.hereName && title && state.here > 0, { title, here: state.hereName });
+        await wait(2500);
+        r.check('постеры в блоке загрузились', (await b.ev(page.session, frState)).posters >= 1, await b.ev(page.session, frState));
+        await shot(page.session, 'classic-dark-random.jpg');
+
+        // Высота страницы не меняется, пока ищутся сайты: блок пришёл вместе с карточкой
+        const h1 = await b.ev(page.session, 'document.documentElement.scrollHeight');
+        await wait(4000);
+        r.check('блок не сдвигает страницу во время поиска сайтов', Math.abs((await b.ev(page.session, 'document.documentElement.scrollHeight')) - h1) <= 2);
+
+        // Переключатель «По выходу» настоящим щелчком
+        await click(page.session, '.fr [data-act="fr-mode"][data-v="release"]');
+        r.check('«По выходу» включился', (await b.ev(page.session, frState)).mode === 'release');
+        await click(page.session, '.fr [data-act="fr-mode"][data-v="story"]');
+
+        // Переход к другому тайтлу франшизы
+        const target = state.next;
+        await click(page.session, `.fr .fr__item[data-fr-id="${target}"] button.fr__open`);
+        let after = null;
+        for (let k = 0; k < 30; k++) {
+            await wait(500);
+            after = await b.ev(page.session, frState);
+            if (after && after.here === target) break;
+        }
+        r.check('нажатие открыло тайтл франшизы на этой же странице', !!after && after.here === target, { target, after });
+        r.check('прошлый тайтл — в «Уже выпадали»', await b.ev(page.session, "!!document.querySelector('.rnd__past')"));
+
+        // Все стили и обе темы: блок в раскладке стиля, без сдвига вбок, снимки
+        for (const style of ['cinema', 'magazine', 'manga', 'arcade', 'bento']) {
+            for (const theme of ['light', 'dark']) {
+                await setLook(style, theme);
+                await wait(900);
+                const s = await b.ev(page.session, "(() => { const fr = document.querySelector('.lk .fr'); return { fr: !!fr, wide: document.documentElement.scrollWidth > innerWidth + 1, items: fr ? fr.querySelectorAll('.fr__item[data-fr-id]').length : 0 }; })()");
+                r.check(`${style} ${theme}: блок в раскладке стиля`, s.fr && s.items >= 2 && !s.wide, s);
+                await b.ev(page.session, "(() => { const fr = document.querySelector('.lk .fr'); if (fr) fr.scrollIntoView({ block: 'start' }); window.scrollBy(0, -40); return true; })()");
+                await wait(500);
+                await shot(page.session, `${style}-${theme}-random.jpg`);
+            }
+        }
+        await setLook('classic', 'auto');
+    } finally {
+        await b.close();
+    }
+    return r.failed;
+}
+
+const SCENARIOS = { smoke, dock, synthetic, kodik, episodes, quality, perf, accuracy, follow, skins, resume, keys, pick, look, franchise };
 const LIMIT_MS = 25 * 60 * 1000;
 
 (async () => {

@@ -1,0 +1,25 @@
+/* Правила основы через :where — слабее правил стилей, как в презентации (её shell.css).
+   Основа раскладок стилей («Случайное аниме» и Топ): то, на что шаблоны modules/looks/*.js рассчитывают по умолчанию.
+   Страница с раскладкой стиля ставит body.is-look: тогда фон, цвет и шрифт берутся у стиля (атрибут data-look на <html>) */
+body.is-look { background: transparent; color: inherit; font-family: inherit; }
+:where(.lk) *, :where(.lk) *::before, :where(.lk) *::after { box-sizing: border-box; }
+:where(.lk) button { font: inherit; color: inherit; cursor: pointer; }
+:where(.lk) img { max-width: 100%; }
+:where(.lk) :focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 2px; }
+.lk.is-busy { opacity: .55; pointer-events: none; transition: opacity .2s; }
+/* Пояснение у кнопок сайтов: «Ищем на сайтах · 3 из 8» */
+.lk-note { display: block; width: 100%; margin-top: 4px; font-size: 13px; opacity: .75; }
+/* Строка под Топом: загрузка, конец списка, ошибка */
+.lk-status { padding: 18px 16px 40px; text-align: center; font-size: 14px; opacity: .8; }
+.lk-status button { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--ap-accent); font-weight: 700; text-decoration: underline; }
+/* Сообщение о поиске тайтла на сайте (Топ) */
+.lk-toast { position: fixed; left: 50%; bottom: 24px; z-index: 60; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); padding: 10px 16px; border: 1px solid var(--ap-line-strong); border-radius: var(--ap-radius); background: var(--ap-surface); color: var(--ap-text); font: 600 14px/1.4 var(--ap-font); box-shadow: var(--ap-shadow); transform: translateX(-50%); }
+.lk-toast[hidden] { display: none; }
+.lk-toast a { color: var(--ap-accent); }
+@media (prefers-reduced-motion: reduce) { .lk *, .lk *::before, .lk *::after { animation: none !important; transition: none !important; } }
+/* Места под сайты на «Случайном»: заготовка, пока ищем, и приглушённая плашка, если не нашлось. Размер как у кнопки */
+.lk .is-pending, .lk .is-missing { pointer-events: none; cursor: default; }
+.lk .is-pending { animation: lkWait 1.2s ease-in-out infinite; }
+.lk .is-missing { opacity: .32; filter: grayscale(1); }
+.lk .is-missing span { text-decoration: line-through; }
+@keyframes lkWait { 0%, 100% { opacity: .5; } 50% { opacity: .22; } }

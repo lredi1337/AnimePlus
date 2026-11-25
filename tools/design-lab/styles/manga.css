@@ -1,0 +1,24 @@
+/* «Манга» в презентации: оформление её общих страниц (.k-*). Раскладки «Случайного» и Топа — modules/looks/manga.css */
+/* Общие страницы (pages.js) в «Манге»: толстая тушь, жёсткие тени, растр */
+.v-manga { --k-bg: #ffffff; --k-surface: #ffffff; --k-raised: #f1f1f1; --k-ink: #151515; --k-mute: #4a4a4a; --k-line: #151515; --k-accent: #d7262e; --k-gold: #d7262e; --k-yes: #151515; --k-no: #d7262e; --k-radius: 0; --k-radius-sm: 0; --k-border: 3px solid #151515; --k-shadow: 6px 6px 0 #151515; --k-display: 'Rubik', sans-serif; --k-body: 'Rubik', sans-serif; --k-weight: 900; --k-case: uppercase; --k-track: -.02em; }
+.v-manga .k { background: #fff radial-gradient(#d9d9d9 1px, transparent 1.3px) 0 0 / 7px 7px; }
+.v-manga .k-head h1 { padding: 8px 16px; background: #151515; color: #fff; transform: rotate(-1.5deg); box-shadow: 5px 5px 0 #d7262e; }
+.v-manga .k-chip, .v-manga .k-tab, .v-manga .k-btn { border-radius: 0; border-width: 3px; box-shadow: 3px 3px 0 #151515; color: #151515; font-weight: 700; }
+.v-manga .k-chip[aria-pressed="true"], .v-manga .k-tab[aria-pressed="true"] { background: #151515; border-color: #151515; color: #fff; box-shadow: 3px 3px 0 #d7262e; }
+.v-manga .k-btn.is-primary { background: #d7262e; border-color: #151515; color: #fff; }
+.v-manga .k-tile__cover { border-width: 3px; }
+.v-manga .k-tile__cover img, .v-manga .k-ep__poster { filter: grayscale(1) contrast(1.15); }
+.v-manga .k-tile:hover .k-tile__cover img { filter: none; }
+.v-manga .k-score { border-radius: 50%; width: 42px; height: 42px; display: grid; place-items: center; background: #fff; border: 3px solid #d7262e; color: #d7262e; transform: rotate(-10deg); top: auto; bottom: 6px; }
+.v-manga .k-day.is-today { box-shadow: 6px 6px 0 #d7262e; }
+.v-manga .k-ep.is-aired { opacity: .5; }
+.v-manga .k-fox { border-width: 4px; box-shadow: 5px 5px 0 #d7262e; }
+.v-manga .k-tag { border: 2px solid #151515; background: #fff; }
+.v-manga.t-dark .k { background: #111 radial-gradient(#2b2b2b 1px, transparent 1.3px) 0 0 / 7px 7px; }
+.v-manga.t-dark .k-head h1 { background: #f2f2f2; color: #111; }
+.v-manga.t-dark .k-chip, .v-manga.t-dark .k-tab, .v-manga.t-dark .k-btn { box-shadow: 3px 3px 0 #f2f2f2; color: #f2f2f2; border-color: #f2f2f2; }
+.v-manga.t-dark .k-chip[aria-pressed="true"], .v-manga.t-dark .k-tab[aria-pressed="true"] { background: #f2f2f2; border-color: #f2f2f2; color: #111; box-shadow: 3px 3px 0 #ff4a52; }
+.v-manga.t-dark .k-btn.is-primary { background: #ff4a52; border-color: #f2f2f2; color: #111; }
+.v-manga.t-dark .k-score { background: #111; }
+.v-manga.t-dark .k-tag { border-color: #f2f2f2; background: #111; }
+.v-manga.t-dark .k-day.is-today { box-shadow: 6px 6px 0 #ff4a52; }

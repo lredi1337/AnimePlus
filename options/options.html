@@ -8,7 +8,11 @@
     <title>Настройки Anime+</title>
     <link rel="icon" href="../icons/icon32.png">
     <link rel="stylesheet" href="../modules/shared/tokens.css">
+    <link rel="stylesheet" href="../modules/shared/looks.css">
+    <link rel="stylesheet" href="../modules/looks/fonts.css">
     <link rel="stylesheet" href="options.css">
+    <link rel="stylesheet" href="../modules/looks/decor.css">
+    <script src="../modules/shared/look.js"></script>
     <script src="../config.js"></script>
     <script src="../modules/player/shell-view.js"></script>
     <script src="../modules/shared/ui-kit.js"></script>
@@ -20,15 +24,19 @@
     <div class="layout">
         <!-- Меню разделов: открыт один раздел за раз, выбранный записан в адресе (#voice), ссылки на #support работают -->
         <nav class="side" aria-label="Разделы настроек">
-            <header class="head">
-                <img src="../icons/icon128.png" alt="" width="36" height="36">
-                <h1>Anime<span>+</span></h1>
-            </header>
-            <a class="nav-item" href="#player" data-pane="player">Вид плеера</a>
-            <a class="nav-item" href="#voice" data-pane="voice">Озвучка</a>
-            <a class="nav-item" href="#keys" data-pane="keys">Клавиши</a>
-            <a class="nav-item" href="#random" data-pane="random">Случайное аниме</a>
-            <a class="nav-item" href="#help" data-pane="help">Помощь</a>
+            <!-- Карточка меню, как в макетах стилей (tools/design-lab): заголовок с лисой и разделы -->
+            <div class="side-box">
+                <header class="head">
+                    <img src="../icons/icon128.png" alt="" width="32" height="32">
+                    <h1>Настройки</h1>
+                </header>
+                <a class="nav-item" href="#look" data-pane="look">Оформление</a>
+                <a class="nav-item" href="#player" data-pane="player">Вид плеера</a>
+                <a class="nav-item" href="#voice" data-pane="voice">Озвучка</a>
+                <a class="nav-item" href="#keys" data-pane="keys">Клавиши</a>
+                <a class="nav-item" href="#random" data-pane="random">Случайное аниме</a>
+                <a class="nav-item" href="#help" data-pane="help">Помощь</a>
+            </div>
             <a class="help-link" id="helpBanner" href="#support">
                 <span class="help-fox" id="helpFox"></span>
                 <span class="help-text"><b>Что-то не работает?</b><small>Напишите нам</small></span>
@@ -37,6 +45,17 @@
         </nav>
 
         <main class="page">
+            <div class="pane" data-pane="look">
+                <section class="card" aria-labelledby="look-title">
+                    <h2 id="look-title">Оформление</h2>
+                    <p class="hint">Окно расширения, «Случайное аниме», Топ, расписание, подбор и эти настройки. Плеер оформляется в разделе «Вид плеера». Открытые вкладки перекрасятся сразу.</p>
+                    <div class="list-head"><b>Тема</b></div>
+                    <div class="look-themes" id="lookThemes" role="radiogroup" aria-label="Тема"></div>
+                    <div class="list-head"><b>Стиль</b><small>в каждой карточке образец окна расширения</small></div>
+                    <div class="look-list" id="lookList" role="radiogroup" aria-label="Стиль"></div>
+                </section>
+            </div>
+
             <div class="pane" data-pane="player">
                 <section class="card skin-card" aria-labelledby="skin-title">
                     <h2 id="skin-title">Вид плеера</h2>

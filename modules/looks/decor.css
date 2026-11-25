@@ -1,0 +1,101 @@
+/* Украшения стилей на обычных страницах расширения: окно, расписание, подбор, настройки, Топ поверх сайта.
+   Перенос правил общих страниц презентации (tools/design-lab/styles/*.css и kit-*.css) на настоящие классы страниц.
+   Окно и расписание в презентации нарисованы по настоящим (kit-real.css): у них только переменные стиля, без украшений .k-*.
+   Подбор и настройки в презентации — общие страницы .k-*: украшения стиля переносятся на них.
+   Цвета только из переменных --ap-* (modules/shared/looks.css): тушь — --ap-text, бумага — --ap-bg, акцент — --ap-accent.
+   Подключается после CSS страницы. Раскладки «Случайного» и Топа во вкладке — modules/looks/<стиль>.css.
+   «Классический» не украшается: это нынешний вид расширения */
+
+/* ---------- Окно расширения (kp__* в презентации) ---------- */
+[data-look]:not([data-look="classic"]) .logo { font-family: var(--ap-font-display, var(--ap-font)); text-transform: var(--ap-display-case, none); letter-spacing: 0; }
+[data-look="manga"] .logo { font-weight: 900; }
+[data-look]:not([data-look="classic"]) .icon-btn { border: var(--ap-bw, 1px) solid var(--ap-line); border-radius: var(--ap-radius-sm); }
+/* Кнопка входа в презентации без обводки */
+[data-look]:not([data-look="classic"]) .btn-primary { border-color: transparent; }
+
+/* ---------- Расписание (ks__* в презентации) ---------- */
+[data-look]:not([data-look="classic"]) .sch__poster { border: var(--ap-bw, 1px) solid var(--ap-line); border-radius: var(--ap-radius-sm); }
+/* Фильтры — пилюли общих страниц (k-chip), вкладки дней — без украшений */
+[data-look="manga"] .sch__quick .sch__chip { border-radius: 0; border: 3px solid var(--ap-text); box-shadow: 3px 3px 0 var(--ap-text); color: var(--ap-text); font-weight: 700; }
+[data-look="manga"] .sch__quick .sch__chip--soft[aria-pressed="true"] { background: var(--ap-text); color: var(--ap-bg); box-shadow: 3px 3px 0 var(--ap-accent); }
+[data-look="arcade"] .sch__quick .sch__chip--soft[aria-pressed="true"] { border-color: var(--ap-accent); box-shadow: 0 0 14px color-mix(in srgb, var(--ap-accent) 45%, transparent); }
+[data-look="arcade"][data-theme="light"] .sch__quick .sch__chip--soft[aria-pressed="true"] { box-shadow: none; }
+[data-look="magazine"] .sch__quick .sch__chip { border-radius: 0; border-width: 0 0 2px; border-color: transparent; background: none; font-family: Unbounded, sans-serif; font-size: 11px; }
+[data-look="magazine"] .sch__quick .sch__chip--soft[aria-pressed="true"] { background: none; color: var(--ap-text); border-color: var(--ap-accent); }
+[data-look="bento"] .sch__quick .sch__chip { background: var(--ap-surface); }
+
+/* ---------- Подбор и настройки (k-* в презентации) ---------- */
+/* Манга: толстая тушь, жёсткие тени */
+[data-look="manga"] :is(.pk__chip, .pk__btn:not(.is-glass), .btn, .top__tab, .top__picker-btn) {
+    border-radius: 0;
+    border: 3px solid var(--ap-text);
+    box-shadow: 3px 3px 0 var(--ap-text);
+    color: var(--ap-text);
+    font-weight: 700;
+}
+[data-look="manga"] :is(.pk__chip.is-on, .top__tab[aria-pressed="true"]) { background: var(--ap-text); border-color: var(--ap-text); color: var(--ap-bg); box-shadow: 3px 3px 0 var(--ap-accent); }
+[data-look="manga"] :is(.pk__btn.is-primary, .btn:not(.ghost)) { background: var(--ap-accent); border-color: var(--ap-text); color: var(--ap-on-accent); }
+[data-look="manga"] :is(.pk__head h1, .top__head h1) {
+    display: inline-flex;
+    padding: 6px 14px;
+    background: var(--ap-text);
+    color: var(--ap-bg);
+    transform: rotate(-1.5deg);
+    box-shadow: 5px 5px 0 var(--ap-accent);
+}
+[data-look="manga"] :is(.card, .side-box, .pk__start, .pk__qcard, .pk__hero) { border: 3px solid var(--ap-text); box-shadow: 6px 6px 0 var(--ap-text); }
+[data-look="manga"] .pk__cover img { filter: grayscale(1) contrast(1.15); transition: filter .2s; }
+[data-look="manga"] .pk__card:hover .pk__cover img { filter: none; }
+
+/* Аркада: неон, жёлтый пиксельный заголовок */
+[data-look="arcade"] :is(.pk__head h1, .top__head h1) {
+    color: var(--ap-warning);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 18px;
+    text-transform: uppercase;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--ap-warning) 70%, transparent);
+}
+[data-look="arcade"] :is(.pk__chip.is-on, .top__tab[aria-pressed="true"]) {
+    background: color-mix(in srgb, var(--ap-accent) 22%, var(--ap-surface));
+    border-color: var(--ap-accent);
+    color: var(--ap-text);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--ap-accent) 45%, transparent);
+}
+[data-look="arcade"] :is(.pk__btn.is-primary, .btn:not(.ghost)) { box-shadow: 0 0 18px color-mix(in srgb, var(--ap-accent) 50%, transparent); }
+[data-look="arcade"] .top__rank { font-family: 'Press Start 2P', monospace; font-size: 9px; }
+[data-look="arcade"] .pk__card:hover .pk__cover { box-shadow: 0 0 16px color-mix(in srgb, var(--ap-success) 50%, transparent); }
+[data-look="arcade"][data-theme="light"] :is(.pk__head h1, .top__head h1) { color: var(--ap-success); text-shadow: none; }
+[data-look="arcade"][data-theme="light"] :is(.pk__chip.is-on, .top__tab[aria-pressed="true"], .pk__btn.is-primary, .btn:not(.ghost)) { box-shadow: none; }
+
+/* Журнал: линейки, без теней, подчёркнутые вкладки */
+[data-look="magazine"] :is(.pk__head, .top__head) { border-bottom: 4px solid var(--ap-text); }
+[data-look="magazine"] :is(.pk__chip, .top__tab) {
+    border-radius: 0;
+    border-width: 0 0 2px;
+    border-color: transparent;
+    background: none;
+    font-family: Unbounded, sans-serif;
+    font-size: 11px;
+}
+[data-look="magazine"] :is(.pk__chip.is-on, .top__tab[aria-pressed="true"]) { background: none; color: var(--ap-text); border-color: var(--ap-accent); }
+[data-look="magazine"] :is(.pk__btn.is-primary, .btn:not(.ghost)) { background: var(--ap-text); border-color: var(--ap-text); color: var(--ap-bg); font-family: Unbounded, sans-serif; }
+[data-look="magazine"] :is(.pk__score, .top__score, .top__rank, .pk__role) { border-radius: 0; font-family: Unbounded, sans-serif; }
+[data-look="magazine"] .pk__cover img { filter: grayscale(.25); }
+[data-look="magazine"] :is(.card, .side-box, .pk__start, .pk__qcard, .pk__hero) { box-shadow: none; }
+
+/* Плитки: мягкие тени вместо рамок */
+[data-look="bento"] :is(.card, .side-box, .pk__start, .pk__qcard) { border-color: transparent; box-shadow: var(--ap-shadow); }
+[data-look="bento"] :is(.pk__chip, .top__tab) { background: var(--ap-surface); }
+[data-look="bento"] .pk__cover { box-shadow: 0 8px 20px rgba(20, 24, 40, .1); }
+
+/* ---------- Раздел «Оформление» во всех стилях, как в макете ---------- */
+.look-themes { gap: 4px; padding: 4px; border-radius: 999px; background: var(--ap-surface); }
+.look-theme { min-height: 34px; border-radius: 999px; }
+/* Подписи «Тема» и «Стиль» — мелкие, капслоком */
+[data-pane="look"] .list-head b { color: var(--ap-text-2); font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+[data-look]:not([data-look="classic"]) [data-pane="look"] h2 { font-size: 30px; }
+/* Подписи разделов шрифтом меток стиля (k-label в презентации): пиксельный у «Аркады», Unbounded у «Журнала» */
+[data-look="arcade"] [data-pane="look"] .list-head b { font-family: 'Press Start 2P', monospace; font-size: 10px; letter-spacing: .08em; }
+[data-look="magazine"] [data-pane="look"] .list-head b { font-family: Unbounded, sans-serif; }
+/* Карточки стилей на бумаге страницы, как в макете */
+.look-card { background: var(--ap-surface); }

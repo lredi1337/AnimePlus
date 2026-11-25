@@ -1,0 +1,173 @@
+/* Блок «Порядок просмотра» (modules/shared/franchise-view.js): основа на переменных --ap-* и свой вид у каждого стиля.
+   Подключают «Случайное аниме» и подбор. Классический вид — основа без украшений */
+
+/* Обёртка в раскладках стилей «Случайного» (h.franchise) */
+.lk-fr { margin: 36px 0; }
+.bt__fr { grid-column: 1 / -1; }
+.bt__fr .lk-fr { margin: 0; }
+.lk-fr .fr__open.is-loading, .fr .fr__open.is-loading { opacity: .5; pointer-events: none; }
+
+.fr { display: flex; flex-direction: column; gap: 12px; min-width: 0; color: var(--ap-text); font-family: var(--ap-font); }
+.fr__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.fr__title { margin: 0; font-size: 16px; font-weight: 700; }
+.fr__sub { color: var(--ap-text-3); font-size: 13px; }
+.fr__mode { display: inline-flex; gap: 2px; margin-left: auto; padding: 3px; border: var(--ap-bw, 1px) solid var(--ap-line); border-radius: 999px; background: var(--ap-surface); }
+.fr__mode button { min-height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--ap-text-2); font: 600 12px/1 var(--ap-font); cursor: pointer; }
+.fr__mode button[aria-pressed="true"] { background: var(--ap-accent); color: var(--ap-on-accent); }
+.fr__mode button:focus-visible, .fr__open:focus-visible, .fr__tool:focus-visible, .fr__other:focus-visible { outline: 2px solid var(--ap-accent); outline-offset: 2px; }
+
+.fr__list, .fr__routes, .fr__route-list, .fr__others-list { margin: 0; padding: 0; list-style: none; }
+.fr__list { display: flex; flex-direction: column; gap: 6px; }
+.fr__open { display: grid; grid-template-columns: 34px 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 6px 10px 6px 6px; border: var(--ap-bw, 1px) solid var(--ap-line); border-radius: var(--ap-radius); background: var(--ap-surface); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--ap-ease, .15s), background var(--ap-ease, .15s); }
+button.fr__open:hover { border-color: var(--ap-line-strong); background: var(--ap-raised); }
+.fr__poster { display: block; width: 34px; aspect-ratio: 5 / 7; overflow: hidden; border-radius: 4px; background: var(--ap-raised); }
+.fr__poster img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.fr__num { color: var(--ap-text-3); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; }
+.fr__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.fr__text b { overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.fr__text small { color: var(--ap-text-3); font-size: 12px; }
+.fr__tag { padding: 2px 8px; border-radius: 999px; background: var(--ap-raised); color: var(--ap-text-2); font-size: 11px; font-style: normal; font-weight: 600; white-space: nowrap; }
+
+/* Основное — полный вес; побочное и пересказ тише; текущий — акцентом */
+.fr__item.is-side .fr__open, .fr__item.is-recap .fr__open { padding-top: 4px; padding-bottom: 4px; background: transparent; }
+.fr__item.is-side .fr__text b, .fr__item.is-recap .fr__text b { font-weight: 500; color: var(--ap-text-2); }
+.fr__item.is-recap .fr__text b { font-style: italic; }
+.fr__item.is-here .fr__open { border-color: var(--ap-accent); background: var(--ap-accent-soft); cursor: default; }
+/* Текущий читается полностью, даже если он побочный: цвет и вес не приглушаются */
+.fr__item.is-here .fr__text b { color: inherit; font-weight: 600; font-style: normal; }
+.fr__item.is-here .fr__num { color: var(--ap-accent); }
+.fr__item.is-here .fr__tag { background: var(--ap-accent); color: var(--ap-on-accent); }
+.fr__item.is-soon .fr__open { opacity: .7; }
+.fr__item.is-more .fr__open { display: flex; justify-content: center; padding: 6px; border-style: dashed; background: transparent; color: var(--ap-text-2); font-size: 13px; font-weight: 600; }
+
+/* Развилка: пути рядом, у каждого своя цепочка */
+.fr__fork { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: var(--ap-bw, 1px) dashed var(--ap-line-strong); border-radius: var(--ap-radius-lg); }
+.fr__fork-head { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: center; gap: 10px; padding-left: 40px; }
+.fr__fork-head .fr__num { color: var(--ap-accent); }
+.fr__routes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.fr__route { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fr__route-label { color: var(--ap-text-3); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.fr__route-list { display: flex; flex-direction: column; gap: 6px; }
+.fr__route .fr__open { grid-template-columns: 34px 0 minmax(0, 1fr) auto; gap: 8px; }
+/* В путях развилки колонки узкие: название в две строки, а не обрезано */
+.fr__route .fr__text b { display: -webkit-box; white-space: normal; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+.fr__foot { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.fr__tool { min-height: 30px; padding: 0 12px; border: var(--ap-bw, 1px) solid var(--ap-line); border-radius: 999px; background: none; color: var(--ap-text-2); font: 600 12px/1 var(--ap-font); cursor: pointer; }
+.fr__tool:hover, .fr__tool[aria-pressed="true"], .fr__tool[aria-expanded="true"] { border-color: var(--ap-line-strong); color: var(--ap-text); }
+.fr__others { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.fr__others > .fr__tool { align-self: flex-start; }
+.fr__others-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.fr__other { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 10px; border: var(--ap-bw, 1px) solid var(--ap-line); border-radius: var(--ap-radius); background: var(--ap-surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.fr__other:hover { border-color: var(--ap-line-strong); }
+.fr__other b { font-size: 13px; font-weight: 600; }
+.fr__other small { color: var(--ap-text-3); font-size: 12px; }
+
+/* ---------- Кинозал: плёнка постеров ---------- */
+[data-look="cinema"] .fr__title { font-family: Geologica, var(--ap-font); font-size: 20px; letter-spacing: -.01em; }
+/* Постеры рядами: длинная франшиза переносится, а не уезжает вбок; развилка — отдельной строкой */
+[data-look="cinema"] .fr__list { flex-direction: row; flex-wrap: wrap; gap: 18px 14px; }
+[data-look="cinema"] .fr__list > .fr__item { flex: none; width: 150px; }
+[data-look="cinema"] .fr__list > .fr__item > .fr__open { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 0; border: 0; background: none; }
+[data-look="cinema"] .fr__list > .fr__item .fr__poster { width: 100%; border-radius: 12px; box-shadow: 0 14px 30px rgba(0, 0, 0, .45); }
+[data-look="cinema"] .fr__list > .fr__item .fr__num { position: absolute; top: 6px; left: 8px; color: #fff; font: 800 28px/1 Geologica, var(--ap-font); text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+[data-look="cinema"] .fr__list > .fr__item .fr__text b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+[data-look="cinema"] .fr__list > .fr__item .fr__tag { align-self: flex-start; }
+[data-look="cinema"] .fr__list > .fr__item.is-here .fr__poster { box-shadow: 0 0 0 3px var(--ap-accent), 0 14px 30px rgba(0, 0, 0, .45); }
+[data-look="cinema"] .fr__list > .fr__item.is-side, [data-look="cinema"] .fr__list > .fr__item.is-recap { width: 120px; }
+[data-look="cinema"] .fr__list > .fr__item.is-more { width: 120px; }
+[data-look="cinema"] .fr__list > .fr__item.is-more > .fr__open { height: 168px; justify-content: center; border: 1px dashed var(--ap-line-strong); border-radius: 12px; }
+[data-look="cinema"] .fr__list > .fr__fork { flex: 1 1 100%; }
+[data-look="cinema"] .fr__mode button[aria-pressed="true"] { box-shadow: 0 6px 18px color-mix(in srgb, var(--ap-accent) 40%, transparent); }
+
+/* ---------- Журнал: оглавление ---------- */
+[data-look="magazine"] .fr { gap: 0; }
+[data-look="magazine"] .fr__head { padding-bottom: 10px; border-bottom: 4px solid var(--ap-text); }
+[data-look="magazine"] .fr__title { font: 800 22px/1.1 Unbounded, var(--ap-font); letter-spacing: -.02em; }
+[data-look="magazine"] .fr__mode, [data-look="magazine"] .fr__tool, [data-look="magazine"] .fr__other { border-radius: 0; }
+[data-look="magazine"] .fr__mode { border: 0; background: none; }
+[data-look="magazine"] .fr__mode button { border-radius: 0; border-bottom: 2px solid transparent; font-family: Unbounded, var(--ap-font); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+[data-look="magazine"] .fr__mode button[aria-pressed="true"] { background: none; color: var(--ap-text); border-bottom-color: var(--ap-accent); }
+[data-look="magazine"] .fr__list { gap: 0; }
+[data-look="magazine"] .fr__open { grid-template-columns: 54px minmax(0, 1fr) auto; padding: 12px 0; border: 0; border-bottom: 1px solid var(--ap-line); border-radius: 0; background: none; }
+/* Постера в «Журнале» нет: он убран из сетки, поэтому колонок три — номер, название, пометка */
+[data-look="magazine"] .fr__poster { display: none; }
+[data-look="magazine"] .fr__num { color: var(--ap-accent); font: 800 26px/1 Unbounded, var(--ap-font); text-align: left; }
+[data-look="magazine"] .fr__text b { font: 400 18px/1.25 Literata, Georgia, serif; white-space: normal; }
+[data-look="magazine"] .fr__text small { font-family: Unbounded, var(--ap-font); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+[data-look="magazine"] .fr__tag { border-radius: 0; background: none; color: var(--ap-accent); font-family: Unbounded, var(--ap-font); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+[data-look="magazine"] .fr__item.is-here .fr__open { background: var(--ap-raised); }
+[data-look="magazine"] .fr__item.is-here .fr__tag { background: var(--ap-text); color: var(--ap-bg); padding: 3px 8px; }
+[data-look="magazine"] .fr__item.is-side .fr__text b, [data-look="magazine"] .fr__item.is-recap .fr__text b { font-size: 15px; }
+[data-look="magazine"] .fr__fork { margin: 10px 0; border: 1px solid var(--ap-text); border-radius: 0; }
+[data-look="magazine"] .fr__fork-head { padding-left: 0; grid-template-columns: 54px minmax(0, 1fr); }
+[data-look="magazine"] .fr__fork-head .fr__num { font: 800 26px/1 Unbounded, var(--ap-font); text-align: left; }
+[data-look="magazine"] .fr__route .fr__open { grid-template-columns: 0 minmax(0, 1fr) auto; }
+[data-look="magazine"] .fr__foot { padding-top: 12px; }
+
+/* ---------- Манга: тома в рамках тушью, печать «вы здесь» ---------- */
+[data-look="manga"] .fr__title { display: inline-block; padding: 4px 12px; background: var(--ap-text); color: var(--ap-bg); font: 900 18px/1.1 Rubik, var(--ap-font); text-transform: uppercase; transform: rotate(-1.5deg); box-shadow: 4px 4px 0 var(--ap-accent); }
+[data-look="manga"] .fr__mode { border: 3px solid var(--ap-text); border-radius: 0; box-shadow: 3px 3px 0 var(--ap-text); }
+[data-look="manga"] .fr__mode button { border-radius: 0; font-weight: 800; }
+[data-look="manga"] .fr__mode button[aria-pressed="true"] { background: var(--ap-text); color: var(--ap-bg); }
+[data-look="manga"] .fr__open, [data-look="manga"] .fr__other, [data-look="manga"] .fr__tool { border: 3px solid var(--ap-text); border-radius: 0; box-shadow: 4px 4px 0 var(--ap-text); background: var(--ap-bg); }
+[data-look="manga"] button.fr__open:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--ap-accent); }
+[data-look="manga"] .fr__poster { border: 2px solid var(--ap-text); border-radius: 0; filter: grayscale(1) contrast(1.15); }
+[data-look="manga"] button.fr__open:hover .fr__poster img { filter: none; }
+[data-look="manga"] .fr__num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ap-text); color: var(--ap-bg); font: 900 13px/1 Rubik, var(--ap-font); }
+[data-look="manga"] .fr__item:not(.is-main) .fr__num { background: none; }
+[data-look="manga"] .fr__text b { font-weight: 800; text-transform: uppercase; letter-spacing: -.01em; }
+[data-look="manga"] .fr__tag { border: 2px solid var(--ap-text); border-radius: 0; background: var(--ap-bg); color: var(--ap-text); font-weight: 800; }
+[data-look="manga"] .fr__item.is-here .fr__open { border-color: var(--ap-accent); background: var(--ap-bg); box-shadow: 4px 4px 0 var(--ap-accent); }
+[data-look="manga"] .fr__item.is-here .fr__tag { border-color: var(--ap-accent); background: var(--ap-bg); color: var(--ap-accent); transform: rotate(-6deg); }
+[data-look="manga"] .fr__item.is-here .fr__num { background: var(--ap-accent); color: var(--ap-on-accent); }
+[data-look="manga"] .fr__item.is-side .fr__open, [data-look="manga"] .fr__item.is-recap .fr__open { box-shadow: none; border-width: 2px; border-style: dashed; }
+[data-look="manga"] .fr__fork { border: 3px solid var(--ap-text); border-radius: 0; background: var(--ap-bg) radial-gradient(var(--ap-dots, #d9d9d9) 1px, transparent 1.3px) 0 0 / 7px 7px; }
+
+/* ---------- Аркада: уровни ---------- */
+[data-look="arcade"] .fr__title { color: var(--ap-warning); font: 14px/1.3 'Press Start 2P', monospace; text-transform: uppercase; text-shadow: 0 0 10px color-mix(in srgb, var(--ap-warning) 60%, transparent); }
+[data-look="arcade"] .fr__sub { font: 9px 'Press Start 2P', monospace; }
+[data-look="arcade"] .fr__mode button { font-family: 'Exo 2', var(--ap-font); font-weight: 700; }
+[data-look="arcade"] .fr__mode button[aria-pressed="true"] { box-shadow: 0 0 14px color-mix(in srgb, var(--ap-accent) 50%, transparent); }
+[data-look="arcade"] .fr__open { grid-template-columns: 34px 48px minmax(0, 1fr) auto; border-width: 2px; background: color-mix(in srgb, var(--ap-surface) 85%, transparent); }
+[data-look="arcade"] .fr__num { color: var(--ap-success); font: 10px/1 'Press Start 2P', monospace; }
+/* В путях развилки номеров нет: колонка под «LV» не нужна */
+[data-look="arcade"] .fr__route .fr__open { grid-template-columns: 34px 0 minmax(0, 1fr) auto; }
+[data-look="arcade"] .fr__item.is-main .fr__num::before { content: "LV "; font-size: 7px; opacity: .8; }
+[data-look="arcade"] .fr__text b { font-family: 'Exo 2', var(--ap-font); font-weight: 700; }
+[data-look="arcade"] .fr__tag { background: none; border: 1px solid var(--ap-line-strong); color: var(--ap-text-2); font-family: 'Exo 2', var(--ap-font); }
+[data-look="arcade"] .fr__item.is-here .fr__open { border-color: var(--ap-success); background: color-mix(in srgb, var(--ap-success) 12%, var(--ap-surface)); box-shadow: 0 0 22px color-mix(in srgb, var(--ap-success) 35%, transparent); }
+[data-look="arcade"] .fr__item.is-here .fr__tag { border-color: var(--ap-success); background: var(--ap-success); color: var(--ap-bg); }
+[data-look="arcade"] .fr__item.is-here .fr__num { color: var(--ap-warning); }
+[data-look="arcade"] button.fr__open:hover { border-color: var(--ap-accent); box-shadow: 0 0 16px color-mix(in srgb, var(--ap-accent) 40%, transparent); }
+[data-look="arcade"] .fr__fork { border: 2px dashed var(--ap-accent); }
+[data-look="arcade"] .fr__route-label { color: var(--ap-accent); font: 8px 'Press Start 2P', monospace; }
+[data-look="arcade"][data-theme="light"] .fr__title { color: var(--ap-success); text-shadow: none; }
+[data-look="arcade"][data-theme="light"] .fr__item.is-here .fr__open, [data-look="arcade"][data-theme="light"] button.fr__open:hover, [data-look="arcade"][data-theme="light"] .fr__mode button[aria-pressed="true"] { box-shadow: none; }
+
+/* ---------- Плитки: карточки в сетке ---------- */
+[data-look="bento"] .fr__title { font-size: 18px; letter-spacing: -.02em; }
+[data-look="bento"] .fr__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; }
+[data-look="bento"] .fr__text b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+[data-look="bento"] .fr__list > .fr__fork { grid-column: 1 / -1; }
+[data-look="bento"] .fr__open { border-color: transparent; border-radius: 16px; background: var(--ap-raised); }
+[data-look="bento"] button.fr__open:hover { background: color-mix(in srgb, var(--ap-accent) 10%, var(--ap-raised)); }
+[data-look="bento"] .fr__poster { border-radius: 8px; }
+[data-look="bento"] .fr__num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--ap-surface); color: var(--ap-accent); font-size: 13px; }
+[data-look="bento"] .fr__item.is-here .fr__open { border-color: transparent; background: var(--ap-accent); color: var(--ap-on-accent); }
+[data-look="bento"] .fr__item.is-here .fr__text small, [data-look="bento"] .fr__item.is-here .fr__num { color: var(--ap-accent); }
+[data-look="bento"] .fr__item.is-here .fr__text small { color: color-mix(in srgb, var(--ap-on-accent) 80%, transparent); }
+[data-look="bento"] .fr__item.is-here .fr__tag { background: var(--ap-on-accent); color: var(--ap-accent); }
+[data-look="bento"] .fr__fork { border: 0; background: var(--ap-raised); border-radius: 20px; }
+[data-look="bento"] .fr__fork .fr__open { background: var(--ap-surface); }
+[data-look="bento"] .fr__tool, [data-look="bento"] .fr__other { border-color: transparent; background: var(--ap-raised); }
+
+@media (max-width: 640px) {
+    .fr__mode { margin-left: 0; }
+    .fr__open { grid-template-columns: 30px 22px minmax(0, 1fr); }
+    .fr__tag { grid-column: 3; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) { .fr * { transition: none !important; } }
+
+/* Номер есть только у основного: пустой кружок или плашка у побочного не рисуются ни в одном стиле */
+.fr__num:empty { visibility: hidden; }

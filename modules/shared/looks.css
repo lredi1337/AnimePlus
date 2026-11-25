@@ -1,0 +1,192 @@
+/* Визуал расширения: стили и темы страниц расширения (выбор в настройках, «Визуал расширения»).
+   Атрибуты data-look и data-theme ставит modules/shared/look.js на <html>. Те же атрибуты на любом элементе
+   перекрашивают только его: так в настройках нарисованы образцы стилей.
+   Страницы берут всё из переменных --ap-* (tokens.css), поэтому стиль меняет только переменные и пару общих правил.
+   Шрифты стилей лежат в расширении (modules/looks/fonts.css, папка fonts/): страницы не ходят в сеть.
+   --ap-bw — толщина обычных рамок (у «Манги» и «Аркады» толще). «Классический» тёмный — ровно tokens.css. */
+
+/* ---------- Общее для всех стилей ---------- */
+[data-look] {
+    --ap-accent-soft: color-mix(in srgb, var(--ap-accent) 16%, transparent);
+    --ap-accent-line: color-mix(in srgb, var(--ap-accent) 50%, transparent);
+    --ap-success-soft: color-mix(in srgb, var(--ap-success) 15%, transparent);
+    --ap-warning-soft: color-mix(in srgb, var(--ap-warning) 13%, transparent);
+    --ap-danger-soft: color-mix(in srgb, var(--ap-danger) 15%, transparent);
+    --ap-chip: color-mix(in srgb, var(--ap-text) 9%, transparent);
+    --ap-active: color-mix(in srgb, var(--ap-text) 13%, transparent);
+    --ap-pill-bg: var(--ap-text);
+    --ap-pill-text: var(--ap-bg);
+}
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="light"] {
+    color-scheme: light;
+    --ap-scrim: rgba(20, 22, 30, 0.45);
+    /* Размытый кадр за постером: на светлом фоне светлый и полупрозрачный, иначе текст тонет */
+    --ap-backdrop: blur(40px) brightness(1.1) saturate(1.2);
+    --ap-backdrop-opacity: 0.45;
+}
+/* popup.css и options.css задают color-scheme и у body */
+html[data-theme="light"] body { color-scheme: light; }
+html[data-theme="dark"] body { color-scheme: dark; }
+
+/* Заголовки страниц — шрифтом стиля */
+:where(html[data-look]) :where(h1, h2, h3) {
+    font-family: var(--ap-font-display, var(--ap-font));
+    letter-spacing: var(--ap-display-track, normal);
+    text-transform: var(--ap-display-case, none);
+}
+
+/* Манга: заголовки самым жирным начертанием */
+:where(html[data-look="manga"]) :where(h1, h2, h3) { font-weight: 900; }
+
+/* ---------- Классический: нынешний вид ---------- */
+[data-look="classic"] {
+    --ap-font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ap-radius-sm: 6px; --ap-radius: 8px; --ap-radius-lg: 14px;
+}
+[data-look="classic"][data-theme="dark"] {
+    --ap-bg: #0f1218; --ap-surface: #161a22; --ap-raised: #1f242e; --ap-hover: rgba(255, 255, 255, 0.07);
+    --ap-line: rgba(255, 255, 255, 0.1); --ap-line-strong: rgba(255, 255, 255, 0.22);
+    --ap-text: #f1f3f7; --ap-text-2: #b6bcc9; --ap-text-3: #8f96a6;
+    --ap-accent: #ef4444; --ap-on-accent: #ffffff;
+    --ap-success: #34d399; --ap-warning: #fbbf24; --ap-danger: #f87171;
+    --ap-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+[data-look="classic"][data-theme="light"] {
+    --ap-bg: #f4f5f8; --ap-surface: #ffffff; --ap-raised: #eceef3; --ap-hover: rgba(15, 18, 24, 0.06);
+    --ap-line: rgba(15, 18, 24, 0.11); --ap-line-strong: rgba(15, 18, 24, 0.24);
+    --ap-text: #14161c; --ap-text-2: #3d4351; --ap-text-3: #555c6b;
+    --ap-accent: #dc2626; --ap-on-accent: #ffffff;
+    --ap-success: #0f7a55; --ap-warning: #9a6200; --ap-danger: #c52a2a;
+    --ap-shadow: 0 16px 40px rgba(15, 18, 24, 0.14);
+}
+
+/* ---------- Кинозал: глубокий чёрный, мягкие скругления, золото ---------- */
+[data-look="cinema"] {
+    --ap-font: "Golos Text", "Segoe UI", system-ui, sans-serif;
+    --ap-font-display: Geologica, "Segoe UI Semibold", system-ui, sans-serif;
+    --ap-display-track: -0.01em;
+    --ap-radius-sm: 8px; --ap-radius: 12px; --ap-radius-lg: 18px;
+}
+[data-look="cinema"][data-theme="dark"] {
+    --ap-bg: #06070a; --ap-surface: #111319; --ap-raised: #1b1e26; --ap-hover: rgba(255, 255, 255, 0.07);
+    --ap-line: rgba(255, 255, 255, 0.12); --ap-line-strong: rgba(255, 255, 255, 0.24);
+    --ap-text: #f4f5f7; --ap-text-2: #c3c8d2; --ap-text-3: #a3a9b6;
+    --ap-accent: #ef4444; --ap-on-accent: #ffffff;
+    --ap-success: #34d399; --ap-warning: #f5c86a; --ap-danger: #f87171;
+    --ap-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+}
+[data-look="cinema"][data-theme="light"] {
+    --ap-bg: #eef0f4; --ap-surface: #ffffff; --ap-raised: #e4e7ee; --ap-hover: rgba(15, 18, 24, 0.06);
+    --ap-line: rgba(15, 18, 24, 0.12); --ap-line-strong: rgba(15, 18, 24, 0.26);
+    --ap-text: #14161c; --ap-text-2: #343a46; --ap-text-3: #4d5361;
+    --ap-accent: #d11a27; --ap-on-accent: #ffffff;
+    --ap-success: #0f7a55; --ap-warning: #8f5600; --ap-danger: #c52a2a;
+    --ap-shadow: 0 22px 50px rgba(15, 18, 24, 0.16);
+}
+
+/* ---------- Журнал: бумага, печать, прямые углы, засечки ---------- */
+[data-look="magazine"] {
+    --ap-font: Literata, Georgia, Cambria, serif;
+    --ap-font-display: Unbounded, Bahnschrift, "Segoe UI Semibold", sans-serif;
+    --ap-display-track: -0.03em;
+    --ap-radius-sm: 0; --ap-radius: 0; --ap-radius-lg: 0;
+}
+[data-look="magazine"][data-theme="light"] {
+    --ap-bg: #f3f3ef; --ap-surface: #f9f9f6; --ap-raised: #e9e9e2; --ap-hover: rgba(17, 17, 17, 0.06);
+    --ap-line: #111111; --ap-line-strong: #111111;
+    --ap-text: #111111; --ap-text-2: #33332f; --ap-text-3: #55554f;
+    --ap-accent: #d0182a; --ap-on-accent: #ffffff;
+    --ap-success: #0f6e38; --ap-warning: #8f5200; --ap-danger: #c0142a;
+    --ap-shadow: 0 0 0 1px #111111;
+}
+[data-look="magazine"][data-theme="dark"] {
+    --ap-bg: #121211; --ap-surface: #181816; --ap-raised: #24231f; --ap-hover: rgba(238, 236, 230, 0.07);
+    --ap-line: #eeece6; --ap-line-strong: #eeece6;
+    --ap-text: #eeece6; --ap-text-2: #c9c7c0; --ap-text-3: #a3a199;
+    --ap-accent: #ff4655; --ap-on-accent: #121211;
+    --ap-success: #4fd18b; --ap-warning: #f2c14e; --ap-danger: #ff6b76;
+    --ap-shadow: 0 0 0 1px #eeece6;
+}
+
+/* ---------- Манга: тушь, растр, жирные заголовки капслоком ---------- */
+[data-look="manga"] {
+    --ap-font: Rubik, "Segoe UI", system-ui, sans-serif;
+    --ap-font-display: Rubik, "Arial Black", sans-serif;
+    --ap-display-case: uppercase;
+    --ap-display-track: -0.02em;
+    --ap-radius-sm: 0; --ap-radius: 0; --ap-radius-lg: 0;
+    /* Обводка тушью: рамки толще */
+    --ap-bw: 3px;
+}
+[data-look="manga"][data-theme="light"] {
+    --ap-bg: #ffffff; --ap-surface: #ffffff; --ap-raised: #f0f0f0; --ap-hover: rgba(21, 21, 21, 0.07);
+    --ap-line: #151515; --ap-line-strong: #151515;
+    --ap-text: #151515; --ap-text-2: #333333; --ap-text-3: #4a4a4a;
+    --ap-accent: #d7262e; --ap-on-accent: #ffffff;
+    --ap-success: #1a7a3a; --ap-warning: #8f5200; --ap-danger: #c0141e;
+    --ap-shadow: 5px 5px 0 #151515;
+    --ap-dots: #d9d9d9;
+}
+[data-look="manga"][data-theme="dark"] {
+    --ap-bg: #111111; --ap-surface: #111111; --ap-raised: #1f1f1f; --ap-hover: rgba(242, 242, 242, 0.08);
+    --ap-line: #f2f2f2; --ap-line-strong: #f2f2f2;
+    --ap-text: #f2f2f2; --ap-text-2: #d0d0d0; --ap-text-3: #b5b5b5;
+    --ap-accent: #ff4a52; --ap-on-accent: #111111;
+    --ap-success: #5ad17e; --ap-warning: #f2c14e; --ap-danger: #ff6b72;
+    --ap-shadow: 5px 5px 0 #f2f2f2;
+    --ap-dots: #2b2b2b;
+}
+html[data-look="manga"] body { background-image: radial-gradient(var(--ap-dots) 1px, transparent 1.3px); background-size: 7px 7px; }
+
+/* ---------- Аркада: ночной игровой зал, неон ---------- */
+[data-look="arcade"] {
+    --ap-font: "Exo 2", "Segoe UI", system-ui, sans-serif;
+    --ap-font-display: "Exo 2", "Segoe UI Semibold", system-ui, sans-serif;
+    --ap-display-track: 0.01em;
+    --ap-radius-sm: 8px; --ap-radius: 10px; --ap-radius-lg: 16px;
+    --ap-bw: 2px;
+}
+[data-look="arcade"][data-theme="dark"] {
+    --ap-bg: #0b0720; --ap-surface: #140d33; --ap-raised: #1f1650; --ap-hover: rgba(236, 235, 255, 0.08);
+    --ap-line: #2c2163; --ap-line-strong: #4a3a9a;
+    --ap-text: #ecebff; --ap-text-2: #c9c4f2; --ap-text-3: #a49dd4;
+    --ap-accent: #f472b6; --ap-on-accent: #1a0420;
+    --ap-success: #22d3ee; --ap-warning: #fde047; --ap-danger: #fb7185;
+    --ap-shadow: 0 0 30px rgba(34, 211, 238, 0.18);
+    --ap-glow: #2a1460;
+}
+[data-look="arcade"][data-theme="light"] {
+    --ap-bg: #f3f0ff; --ap-surface: #ffffff; --ap-raised: #ebe5ff; --ap-hover: rgba(27, 19, 64, 0.06);
+    --ap-line: #d8cff9; --ap-line-strong: #a898e8;
+    --ap-text: #1b1340; --ap-text-2: #3d3470; --ap-text-3: #554a8a;
+    --ap-accent: #be185d; --ap-on-accent: #ffffff;
+    --ap-success: #0e6b84; --ap-warning: #8f4200; --ap-danger: #be123c;
+    --ap-shadow: 0 14px 30px rgba(76, 50, 170, 0.14);
+    --ap-glow: #e2d8ff;
+}
+html[data-look="arcade"] body { background-image: radial-gradient(120% 60% at 50% -10%, var(--ap-glow), transparent 60%); background-repeat: no-repeat; }
+
+/* ---------- Плитки: светлые карточки, крупные скругления ---------- */
+[data-look="bento"] {
+    --ap-font: Onest, "Segoe UI", system-ui, sans-serif;
+    --ap-font-display: Onest, "Segoe UI Semibold", system-ui, sans-serif;
+    --ap-display-track: -0.025em;
+    --ap-radius-sm: 10px; --ap-radius: 14px; --ap-radius-lg: 22px;
+}
+[data-look="bento"][data-theme="light"] {
+    --ap-bg: #eef0f5; --ap-surface: #ffffff; --ap-raised: #f1f2f7; --ap-hover: rgba(22, 26, 36, 0.05);
+    --ap-line: #e2e5ec; --ap-line-strong: #c9ced9;
+    --ap-text: #161a24; --ap-text-2: #3c4352; --ap-text-3: #5a6276;
+    --ap-accent: #6d5cf6; --ap-on-accent: #ffffff;
+    --ap-success: #0b7a55; --ap-warning: #8f5f00; --ap-danger: #c9353a;
+    --ap-shadow: 0 1px 2px rgba(20, 24, 40, 0.05), 0 12px 32px rgba(20, 24, 40, 0.1);
+}
+[data-look="bento"][data-theme="dark"] {
+    --ap-bg: #0e1016; --ap-surface: #171a22; --ap-raised: #20242e; --ap-hover: rgba(236, 238, 244, 0.07);
+    --ap-line: #262a35; --ap-line-strong: #3a4050;
+    --ap-text: #eceef4; --ap-text-2: #c2c7d3; --ap-text-3: #9aa1b2;
+    --ap-accent: #8f7cff; --ap-on-accent: #0e1016;
+    --ap-success: #34d399; --ap-warning: #f5c451; --ap-danger: #f87171;
+    --ap-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}

@@ -1,0 +1,64 @@
+/* Оболочка презентации: панель переключения, обложка, просмотр кадров, подсказки. Стили страниц — styles/*.css */
+* { box-sizing: border-box; }
+html { scroll-padding-top: 90px; }
+body { margin: 0; background: #0b0d12; color: #eef0f4; font: 400 14px/1.45 'Golos Text', system-ui, sans-serif; }
+button { font: inherit; color: inherit; cursor: pointer; }
+img { max-width: 100%; }
+img.is-broken { visibility: hidden; }
+:focus-visible { outline: 2px solid #ef4444; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+.shell { position: sticky; top: 0; z-index: 50; padding: 8px 20px 6px; background: rgba(9, 10, 14, .92); border-bottom: 1px solid rgba(255, 255, 255, .08); backdrop-filter: blur(10px); font-family: 'Golos Text', system-ui, sans-serif; color: #eef0f4; }
+.shell__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.shell__brand { font-weight: 700; font-size: 15px; }
+.shell__brand i { font-style: normal; color: #ef4444; }
+.shell__variants, .shell__pages { display: flex; flex-wrap: wrap; gap: 4px; }
+.shell__pages { margin-left: auto; }
+.shell button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 999px; background: transparent; color: #b9bfcc; font-size: 13px; font-weight: 600; }
+.shell button span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(255, 255, 255, .1); font-size: 11px; }
+.shell button:hover { color: #fff; border-color: rgba(255, 255, 255, .25); }
+.shell button[aria-pressed="true"] { background: #ef4444; border-color: #ef4444; color: #fff; }
+.shell button[aria-pressed="true"] span { background: rgba(0, 0, 0, .25); }
+.shell__note { margin: 6px 0 0; min-height: 18px; color: #8c93a3; font-size: 12.5px; }
+.shell__note b { color: #eef0f4; }
+body[data-view="intro"] .shell__pages, body[data-view="intro"] .shell__note { visibility: hidden; }
+
+/* Обложка */
+.intro { max-width: 1240px; margin: 0 auto; padding: 48px 24px 64px; }
+.intro__head { max-width: 760px; }
+.intro h1 { margin: 0 0 14px; font: 800 40px/1.1 'Unbounded', sans-serif; letter-spacing: -.01em; text-wrap: balance; }
+.intro p { margin: 0 0 10px; color: #b9bfcc; font-size: 16px; line-height: 1.6; }
+.intro__keys { font-size: 13px !important; color: #8c93a3 !important; }
+.intro__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 36px; }
+.intro__card { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px 12px 16px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--sw1) 22%, #12141b), #12141b 60%); text-align: left; transition: transform .2s, border-color .2s; }
+.intro__card:hover { transform: translateY(-4px); border-color: var(--sw2); }
+.intro__num { position: absolute; top: 18px; left: 18px; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--sw2); color: #fff; font-weight: 800; }
+.intro__poster { display: block; aspect-ratio: 1440 / 830; overflow: hidden; border-radius: 10px; background: #1b1e27; }
+.intro__poster img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+.intro__name { font: 700 18px/1.2 'Unbounded', sans-serif; }
+.intro__tag { color: #b9bfcc; font-size: 13px; line-height: 1.45; }
+.intro__sw { display: flex; gap: 4px; margin-top: auto; }
+.intro__sw i { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, .15); }
+.intro__sw i:nth-child(1) { background: var(--sw1); } .intro__sw i:nth-child(2) { background: var(--sw2); } .intro__sw i:nth-child(3) { background: var(--sw3); }
+.intro__fonts { color: #8c93a3; font-size: 12px; }
+@media (max-width: 1100px) { .intro__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Кадры на весь экран: общий для всех стилей */
+.lb { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(4, 5, 8, .92); }
+.lb[hidden] { display: none; }
+.lb img { max-width: min(92vw, 1500px); max-height: 86vh; border-radius: 10px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); }
+.lb__nav { position: absolute; top: 50%; width: 54px; height: 54px; margin-top: -27px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #fff; font-size: 32px; line-height: 1; }
+.lb__nav:hover { background: rgba(255, 255, 255, .24); }
+.lb__nav.is-prev { left: 24px; } .lb__nav.is-next { right: 24px; }
+.lb__close { position: absolute; top: 20px; right: 24px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #fff; font-size: 26px; }
+.lb__count { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); color: #cfd3dc; font-size: 13px; }
+
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 120; max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 10px; background: #1e222c; color: #eef0f4; font: 500 13px 'Golos Text', sans-serif; box-shadow: 0 12px 30px rgba(0, 0, 0, .5); opacity: 0; transform: translate(-50%, 16px); transition: .2s; pointer-events: none; }
+.toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+
+/* Общие мелочи для стилей */
+.stage { min-height: calc(100vh - 80px); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.shell__theme { display: flex; gap: 4px; }
+body[data-view="intro"] .shell__theme { visibility: hidden; }

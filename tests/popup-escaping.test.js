@@ -25,10 +25,14 @@ async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 
             onMessage: { addListener() {} },
             sendMessage(msg, cb) {
                 const replies = { resolve_shikimori_id: { id: 7 }, shiki_get_status: { isLoggedIn: false, clientId: 'c' }, ...extra };
+                // Под нагрузкой полного прогона ответ о статусе приходит позже: отметка ставится, когда отвечены все запросы
+                if (msg.action === 'shiki_get_status') w.statusAsked = (w.statusAsked || 0) + 1;
                 if (cb) setTimeout(() => {
                     cb(replies[msg.action] || null);
-                    // Под нагрузкой полного прогона ответ о статусе приходит позже: тесты ждут этой отметки
-                    if (msg.action === 'shiki_get_status') w.statusAnswered = true;
+                    if (msg.action === 'shiki_get_status') {
+                        w.statusDone = (w.statusDone || 0) + 1;
+                        w.statusAnswered = w.statusDone === w.statusAsked;
+                    }
                 }, 0);
             }
         },
@@ -50,7 +54,7 @@ async function openPopup({ store = {}, page = { title: 'Тайтл', origTitle: 
     w.opened = [];
     w.open = (url) => { w.opened.push(url); return null; };
     for (const f of ['credentials.js', 'config.js', 'modules/shared/sites.js', 'modules/shared/ui-kit.js', 'modules/shared/guide.js', 'modules/shared/guide-fox.js', 'modules/shared/music-link.js', 'popup/popup.js']) w.eval(read(f));
-    w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
+    // DOMContentLoaded jsdom шлёт сам: второй, ручной, запускал окно дважды
     await tick();
     return w;
 }
@@ -105,11 +109,13 @@ test('запасная строка с названием тайтла тоже 
 
 test('«Войти» просит фон открыть вкладку', async () => {
     const w = await openPopup({});
-    assert.ok(await waitFor(() => w.statusAnswered), 'окно получило статус Shikimori');
+    // Под нагрузкой полного прогона статус может прийти раньше, чем окно назначит обработчик кнопки: ждём обоих
+    const login = w.document.getElementById('btn-shiki-login-link');
+    assert.ok(await waitFor(() => w.statusAnswered && login.onclick), 'окно получило статус Shikimori и готово ко входу');
     const sent = [];
     const original = w.chrome.runtime.sendMessage;
     w.chrome.runtime.sendMessage = (msg, cb) => { sent.push(msg); original(msg, cb); };
-    w.document.getElementById('btn-shiki-login-link').click();
+    login.click();
     assert.equal(sent.find(m => m.action === 'shiki_auth_begin').clientId, 'c');
     w.close();
 });

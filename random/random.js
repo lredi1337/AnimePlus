@@ -46,82 +46,6 @@
         return `${scoreText} · ${kindsText}`;
     }
 
-    /** Просмотр кадров поверх страницы: стрелки листают, Esc и нажатие мимо кадра закрывают */
-    function makeViewer() {
-        let shots = [];
-        let index = 0;
-        let back = null;
-        const img = h('img', { class: 'rnd__viewer-img', alt: '', referrerpolicy: 'no-referrer' });
-        const count = h('span', { class: 'rnd__viewer-count' });
-        const prev = h('button', { class: 'rnd__viewer-nav is-prev', type: 'button', 'aria-label': 'Предыдущий кадр' }, '‹');
-        const fwd = h('button', { class: 'rnd__viewer-nav is-next', type: 'button', 'aria-label': 'Следующий кадр' }, '›');
-        const close = h('button', { class: 'rnd__viewer-close', type: 'button', 'aria-label': 'Закрыть', title: 'Закрыть (Esc)' }, window.AgUI.iconEl('close', 20));
-        const node = h('div', { class: 'rnd__viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Кадры', hidden: '' }, img, prev, fwd, close, count);
-
-        // Полный кадр Shikimori весит около мегабайта и грузится секунды: пока он идёт, браузер держал бы на экране прошлый.
-        // Поэтому сразу показываем превью (оно уже загружено в карточке), а полный кадр подставляем, когда догрузится
-        const loaded = new Set();
-        const preload = (shot) => new Promise((resolve) => {
-            if (!shot || loaded.has(shot.full)) { resolve(); return; }
-            const full = new Image();
-            full.referrerPolicy = 'no-referrer';
-            full.onload = () => { loaded.add(shot.full); resolve(); };
-            full.onerror = () => resolve();
-            full.src = shot.full;
-        });
-        const paint = () => {
-            const shot = shots[index];
-            const ready = loaded.has(shot.full) || !shot.thumb;
-            img.src = ready ? shot.full : shot.thumb;
-            img.classList.toggle('is-preview', !ready);
-            count.textContent = `${index + 1} / ${shots.length}`;
-            prev.hidden = fwd.hidden = shots.length < 2;
-            if (!ready) {
-                preload(shot).then(() => {
-                    if (shots[index] === shot && !node.hidden && loaded.has(shot.full)) {
-                        img.src = shot.full;
-                        img.classList.remove('is-preview');
-                    }
-                });
-            }
-            // Соседние кадры заранее: листание дальше будет сразу в полном качестве
-            if (shots.length > 1) {
-                preload(shots[(index + 1) % shots.length]);
-                preload(shots[(index - 1 + shots.length) % shots.length]);
-            }
-        };
-        const go = (step) => { index = (index + step + shots.length) % shots.length; paint(); };
-        const hide = () => {
-            node.hidden = true;
-            img.removeAttribute('src');
-            if (back && back.isConnected) back.focus();
-        };
-        prev.addEventListener('click', () => go(-1));
-        fwd.addEventListener('click', () => go(1));
-        close.addEventListener('click', hide);
-        node.addEventListener('click', (e) => { if (e.target === node) hide(); });
-        document.addEventListener('keydown', (e) => {
-            if (node.hidden) return;
-            if (e.key === 'Escape') hide();
-            else if (e.key === 'ArrowLeft') go(-1);
-            else if (e.key === 'ArrowRight') go(1);
-            else return;
-            e.preventDefault();
-        });
-        return {
-            node,
-            isOpen: () => !node.hidden,
-            open(list, at, from) {
-                shots = list;
-                index = at;
-                back = from;
-                paint();
-                node.hidden = false;
-                close.focus();
-            }
-        };
-    }
-
     function start() {
         const app = document.getElementById('app');
         const stage = h('main', { class: 'rnd__stage', 'aria-live': 'polite' });
@@ -136,19 +60,113 @@
         // «Другое аниме» всегда на одном месте: в закреплённой шапке, а не под описанием разной длины
         const next = iconBtn('rnd__next', 'dice', 'Другое аниме', { title: 'Другое аниме (пробел)' });
         next.addEventListener('click', () => roll());
-        const viewer = makeViewer();
+        // Просмотр кадров общий с подбором: modules/shared/shot-viewer.js
+        const viewer = window.AgShotViewer.create('rnd');
+        // Раскладка выбранного стиля (modules/looks): те же тайтл, сайты и история, своя разметка.
+        // Пока первого тайтла нет и при ошибке видна обычная страница, она тоже в цветах стиля
+        const look = { box: h('div', { class: 'lk' }), anime: null, slots: [], note: '', descOpen: false, spin: 0 };
+        // Включённые сайты по последним известным настройкам: места под них в раскладке отводятся сразу, до начала поиска
+        let siteSettings = {};
+        const enabledSites = () => window.AgSites.searchable().filter(s => window.AgSites.isEnabled(siteSettings, s.id));
         app.replaceChildren(
             h('header', { class: 'rnd__head' },
                 h('div', { class: 'rnd__head-in' }, title, h('div', { class: 'rnd__hint' }, filters, tune), next)),
             h('div', { class: 'rnd__body' }, stage, history),
+            look.box,
             viewer.node);
-
-        readSettings().then(s => { filters.textContent = filtersText(s); }).catch(() => {});
 
         let token = 0;
         let busy = false;
         const shown = [];
         const seen = [];
+
+        function paintLook() {
+            const pages = window.AgLookPages;
+            const tpl = pages && pages.current();
+            const on = !!(tpl && look.anime);
+            document.body.classList.toggle('is-look', on);
+            if (!on) {
+                look.box.replaceChildren();
+                look.painted = '';
+                return;
+            }
+            const item = pages.randomItem(look.anime, look.slots.filter(s => s.state === 'found').map(s => ({ id: s.id, url: s.url })), look.note, look.slots);
+            item.franchiseHtml = window.AgFranchiseView ? window.AgFranchiseView.html(look.anime.franchise, frState, look.anime.id) : '';
+            const ctx = {
+                random: {
+                    item,
+                    history: seen.slice(1).map(a => pages.randomItem(a)),
+                    descOpen: look.descOpen,
+                    spin: look.spin,
+                    filters: filters.textContent
+                }
+            };
+            // Новый тайтл или другой стиль — заново, с анимацией появления; найденный сайт или «Читать дальше» — только изменения
+            const stamp = `${document.documentElement.dataset.look}|${look.spin}`;
+            pages.render(look.box, tpl.random(ctx, pages.h), stamp !== look.painted);
+            look.painted = stamp;
+            pages.bindImages(look.box);
+        }
+        // Кнопки сайтов находятся по одной: перерисовка раз в кадр, а не на каждую
+        let lookFrame = 0;
+        const repaintLook = () => {
+            if (lookFrame) return;
+            lookFrame = requestAnimationFrame(() => { lookFrame = 0; paintLook(); });
+        };
+        look.box.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-act]');
+            if (!el || !look.box.contains(el)) return;
+            const act = el.dataset.act;
+            if (act === 'next') { e.preventDefault(); roll(); }
+            else if (act === 'history') {
+                const past = seen.find(a => String(a.id) === el.dataset.v);
+                if (past) show(past);
+            } else if (act === 'desc') { look.descOpen = !look.descOpen; paintLook(); }
+            else if (act === 'shot' && look.anime) viewer.open(look.anime.screenshots, Number(el.dataset.v) || 0, el);
+            else if (act === 'settings') tune.click();
+            else if (act.startsWith('fr-')) franchiseAct(act, el);
+        });
+
+        // ---------- «Порядок просмотра» ----------
+        // Режим «по сюжету / по выходу» запоминается между страницами (modules/shared/franchise-view.js)
+        const frState = window.AgFranchiseView ? window.AgFranchiseView.state() : null;
+        function paintFranchise(box, anime) {
+            const markup = frState ? window.AgFranchiseView.html(anime.franchise, frState, anime.id) : '';
+            box.innerHTML = markup;
+            box.hidden = !markup;
+        }
+        // Тайтл из франшизы открывается здесь же: та же карточка, сайты и кадры. Прошлый — в «Уже выпадали»
+        let frLoading = 0;
+        async function openFromFranchise(id, el) {
+            const current = seen[0];
+            if (!id || (current && current.id === id)) return;
+            const mine = ++frLoading;
+            if (el) el.classList.add('is-loading');
+            look.box.classList.add('is-busy');
+            let res = null;
+            try { res = await window.agSendMessage({ action: 'get_anime_card', id }); } catch (e) { res = null; }
+            if (mine !== frLoading) return;
+            look.box.classList.remove('is-busy');
+            if (el) el.classList.remove('is-loading');
+            if (res && res.anime) show(res.anime);
+        }
+        function franchiseAct(act, el) {
+            if (!frState) return;
+            if (act === 'fr-open') { openFromFranchise(Number(el.dataset.v), el); return; }
+            if (!window.AgFranchiseView.handle(frState, act, el.dataset.v)) return;
+            // Переключатели меняют только блок: в раскладке стиля — точечно, в обычной карточке — сам блок
+            const box = stage.querySelector('.rnd__franchise');
+            if (box && seen[0]) paintFranchise(box, seen[0]);
+            paintLook();
+        }
+        stage.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-act^="fr-"]');
+            if (el && stage.contains(el)) franchiseAct(el.dataset.act, el);
+        });
+        // Стиль сменили в настройках: страница сразу в новой раскладке
+        document.addEventListener('ag-look', paintLook);
+
+        readSettings().then(s => { siteSettings = s; filters.textContent = filtersText(s); paintLook(); }).catch(() => {});
 
         function skeleton() {
             stage.replaceChildren(h('div', { class: 'rnd__card is-loading', 'aria-busy': 'true' },
@@ -184,13 +202,23 @@
             if (myToken !== token) return;
             if (list.length === 0) {
                 note.textContent = 'Все сайты выключены в настройках Anime+';
+                look.note = note.textContent;
+                look.slots = [];
+                repaintLook();
                 return;
             }
             const { workingOrigin, findOnSite } = window.AgExtPage;
             const query = { id: anime.id, titles: [anime.name, anime.russian].filter(Boolean), year: anime.year };
             let done = 0;
             let found = 0;
-            const progress = () => { note.textContent = `Ищем на сайтах · ${done} из ${list.length}`; };
+            // В раскладке стиля место под каждый сайт отведено с первой отрисовки (show): ход поиска видно по заготовкам,
+            // строки «Ищем на сайтах» там нет, чтобы раскладка не меняла высоту. Список сайтов мог измениться — сверяем
+            if (look.slots.map(s => s.id).join() !== list.map(s => s.id).join()) look.slots = list.map(s => ({ id: s.id, state: 'pending', url: null }));
+            look.note = '';
+            const progress = () => {
+                note.textContent = `Ищем на сайтах · ${done} из ${list.length}`;
+                repaintLook();
+            };
             progress();
 
             await Promise.all(list.map(async (site, index) => {
@@ -200,6 +228,8 @@
                 } catch (e) { /* сайт недоступен: просто без кнопки */ }
                 if (myToken !== token) return;
                 done++;
+                const slot = look.slots.find(s => s.id === site.id);
+                if (slot) Object.assign(slot, url ? { state: 'found', url } : { state: 'missing' });
                 if (url) {
                     found++;
                     const btn = h('a', { class: 'rnd__site', href: url, target: '_blank', rel: 'noopener', 'data-site': site.id, 'data-order': String(index), style: `--site:${site.color}` },
@@ -214,6 +244,8 @@
             if (myToken !== token) return;
             note.textContent = found ? '' : 'На включённых сайтах этого тайтла не нашлось. Откройте его на Shikimori или выберите другое.';
             note.hidden = !!found;
+            // В раскладке ненайденные уже видны приглушёнными плашками: отдельная строка не нужна
+            repaintLook();
         }
 
         function renderCard(anime) {
@@ -246,6 +278,9 @@
             const note = h('p', { class: 'rnd__note' }, 'Ищем на сайтах…');
             const shiki = h('a', { class: 'rnd__ghost', href: `https://shikimori.io/animes/${anime.id}`, target: '_blank', rel: 'noopener' }, 'Shikimori ↗');
 
+            // «Порядок просмотра» — франшиза пришла вместе с карточкой: блок сразу на месте, страница не прыгает
+            const franchise = h('section', { class: 'rnd__franchise', hidden: '' });
+            paintFranchise(franchise, anime);
             stage.replaceChildren(h('article', { class: 'rnd__card', 'data-id': String(anime.id) },
                 h('div', { class: 'rnd__backdrop', style: `background-image:url("${src.replace(/"/g, '%22')}")`, 'aria-hidden': 'true' }),
                 poster,
@@ -256,7 +291,8 @@
                     anime.genres && anime.genres.length ? h('div', { class: 'rnd__genres' }, anime.genres.join(' · ')) : null,
                     desc,
                     h('section', { class: 'rnd__watch' }, h('div', { class: 'rnd__watch-head' }, h('h3', {}, 'Смотреть на'), shiki), sitesBox, note)),
-                screensSection(anime)));
+                screensSection(anime),
+                franchise));
             return { sitesBox, note };
         }
 
@@ -298,6 +334,9 @@
             const myToken = ++token;
             const parts = renderCard(anime);
             addHistory(anime);
+            Object.assign(look, { anime, slots: enabledSites().map(s => ({ id: s.id, state: 'pending', url: null })), note: '', descOpen: false, spin: look.spin + 1 });
+            look.box.classList.remove('is-busy');
+            paintLook();
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return fillSites(anime, parts.sitesBox, parts.note, myToken);
         }
@@ -308,6 +347,8 @@
             next.disabled = true;
             const myToken = ++token;
             skeleton();
+            // В раскладке стиля прошлый тайтл остаётся на месте, пока не пришёл новый
+            look.box.classList.add('is-busy');
             let res = null;
             try {
                 res = await window.agSendMessage({ action: 'get_random_anime_card', exclude: shown.slice(-MAX_EXCLUDE) });
@@ -318,6 +359,9 @@
             if (myToken !== token) return;
             if (!res || !res.anime) {
                 renderEmpty(res && res.reason);
+                look.anime = null;
+                look.box.classList.remove('is-busy');
+                paintLook();
                 return;
             }
             shown.push(res.anime.id);
@@ -334,7 +378,12 @@
 
         // Настройки поменяли в соседней вкладке: строка фильтров обновится, следующий тайтл подберётся уже по ним
         chrome.storage.onChanged.addListener((changes, area) => {
-            if (area === 'local' && changes.ag_settings) filters.textContent = filtersText(changes.ag_settings.newValue || {});
+            if (area !== 'local' || !changes.ag_settings) return;
+            siteSettings = changes.ag_settings.newValue || {};
+            const text = filtersText(changes.ag_settings.newValue || {});
+            if (text === filters.textContent) return;
+            filters.textContent = text;
+            paintLook();
         });
 
         roll();

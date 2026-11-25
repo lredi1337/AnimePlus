@@ -1,5 +1,5 @@
 // background.js — Маршрутизатор фоновых сообщений и событий Chrome Extension
-importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/shared/schedule-core.js', './modules/bg-diag.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-sites.js', './modules/bg-audio.js', './modules/bg-schedule.js', './modules/bg-random.js', './modules/bg-mirrors.js');
+importScripts('./credentials.js', './modules/shared/sites.js', './modules/shared/title-match.js', './modules/shared/kodik-marks.js', './modules/shared/schedule-core.js', './modules/bg-diag.js', './modules/bg-cache.js', './modules/bg-shiki.js', './modules/bg-franchise.js', './modules/bg-sites.js', './modules/bg-audio.js', './modules/bg-schedule.js', './modules/bg-random.js', './modules/bg-mirrors.js');
 
 // Хосты, к которым content-скрипты могут обращаться через fetch_shikimori.
 // Без белого списка обработчик был открытым прокси с правами расширения на любой URL
@@ -159,6 +159,8 @@ const MESSAGE_HANDLERS = {
         return { data: null };
     }],
     get_shikimori_anime_related: [(m) => getShikiRelated(m.id), () => ({ related: [] })],
+    // Жанры тайтлов Топа для раскладок стилей (top/top.js): в списке рейтинга их нет. Не больше 50 за раз
+    get_anime_genres: [(m) => getShikiGenres(Array.isArray(m.ids) ? m.ids.slice(0, 50) : []), () => ({})],
     add_watch_history: [async (m) => { await addToWatchHistory(m.item); return { success: true }; }, () => ({ success: false })],
 
     // Место остановки, общее для всех сайтов, и конец тайтла (modules/bg-shiki.js)
@@ -186,6 +188,13 @@ const MESSAGE_HANDLERS = {
         console.error('Error in get_random_anime_card:', err);
         return { anime: null, reason: 'error' };
     }],
+    get_anime_card: [getAnimeCard, () => ({ anime: null, reason: 'error' })],
+    // Франшиза для блока «Порядок просмотра» (modules/bg-franchise.js): порядок строит страница
+    get_franchise: [(m) => getFranchise(m.id), () => ({ franchise: null, reason: 'error' })],
+
+    // Подбор аниме вопросами (pick/pick.js): список зрителя и «Отложить»
+    pick_seen: [(m, sender) => (isExtensionPage(sender) ? getPickSeen() : FORBIDDEN), () => ({ loggedIn: false, seen: [], planned: [], error: true })],
+    pick_add_planned: [(m, sender) => (isExtensionPage(sender) ? addShikiPlanned(m) : FORBIDDEN), failure],
 
     fullscreen_on: [(m, sender) => setWindowFullscreen(true, sender), failure],
     fullscreen_off: [(m, sender) => setWindowFullscreen(false, sender), failure],

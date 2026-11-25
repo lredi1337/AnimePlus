@@ -1,4 +1,4 @@
-# Anime+ (v11.4.0) — Архитектура и Руководство для ИИ / LLM
+# Anime+ (v16.4.0) — Архитектура и Руководство для ИИ / LLM
 
 > **Важно**: разделы 1-8 начаты для версии 10.1.1 и обновляются частями, поэтому сверяйте их с кодом. Структура файлов и разделы 9-12 соответствуют текущему коду. Источник правды по сообщениям фона: `MESSAGE_HANDLERS` в `background.js`, по загрузке файлов: `manifest.json`.
 >
@@ -54,11 +54,13 @@ AnimePlus-main/
 ├── features/                  # player-bridge, fox-dock, search-redirect
 ├── top/                       # Вкладка «Топ Shikimori» (страница расширения)
 ├── schedule/                  # Расписание онгоингов (страница расширения)
+├── random/                    # Случайное аниме: карточка тайтла и кнопки сайтов; с ?id= — конкретный тайтл
+├── pick/                      # Подбор аниме вопросами: страница и каталог catalog.json (tools/build-pick-catalog.js), логика в modules/shared/pick-core.js
 ├── popup/  options/           # Окно расширения и страница настроек
 ├── server/auth/               # Cloudflare Worker animeplus: обмен кода Shikimori на токены с секретом из настроек Cloudflare
 ├── server/timings/            # Cloudflare Worker: письма поддержки; адреса закрытой базы таймингов отвечают пустым ответом
 ├── tests/                     # node --test, jsdom
-├── tools/                     # build-store-zip, build-fingerprints, build-songs-site, stand/ (живые проверки)
+├── tools/                     # build-store-zip, build-fingerprints, build-songs-site, build-pick-catalog, stand/ (живые проверки), design-lab/ (презентация стилей страниц)
 └── assets/  icons/            # Графика
 ```
 
@@ -170,6 +172,9 @@ AnimePlus-main/
 | `resolve_jutsu_cover` | `{ id, russian, name, title }` | Каскадный поиск обложки (Shikimori -> Kitsu -> Jut-Su og:image). | `{ poster: string, url: string }` |
 | `get_week_schedule` | `{}` | Серии текущей недели со сведениями о тайтлах и список «Смотрю» зрителя. | `{ entries, weekStart, loaded, watching }` |
 | `get_random_shikimori_anime` | `{}` | Случайный подбор тайтла по фильтрам жанров/оценки с поиском на порталах. | `{ url, jutsuUrl, id, name, russian, foundOnAnimeGO }` |
+| `get_anime_card` | `{ id }` | Подробности тайтла для панели подбора (pick/pick.js): описание, жанры, кадры, постер. | `{ anime }` |
+| `pick_seen` | `{}` | Только страницы расширения. Что зритель видел по списку Shikimori (всё, кроме «Запланировано»), кэш 10 минут. | `{ loggedIn, seen, planned }` |
+| `pick_add_planned` | `{ id }` | Только страницы расширения. Тайтл в «Запланировано»; существующую запись не трогает. | `{ success, already? }` |
 | `get_shikimori_anime_related` | `{ id }` | Получение связанных тайтлов (сиквелы, приквелы, спин-оффы). | `{ related: Array }` |
 | `fullscreen_on` / `fullscreen_off` | `{}` | Управление полноэкранным состоянием окна браузера через `chrome.windows`. | `{ success: true }` |
 | `shiki_oauth_exchange` | `{ code, clientId, clientSecret }` | Обмен OAuth authorization code на Access & Refresh токены. | `{ success: boolean, user }` |
@@ -341,6 +346,10 @@ AniSkip и общая база таймингов убраны 2026-11-08. AniSk
 ### Единый стиль интерфейса
 
 Цвета, шрифт, размеры и радиусы лежат в `modules/shared/tokens.css` (переменные `--ap-*`), иконки — в `modules/shared/ui-kit.js` (`AgUI.icon`, `AgUI.applyAccent`, `AgUI.onAccent`). Новые элементы интерфейса используют эти значения, а не свои цвета, градиенты и эмодзи. Настройки одни на все сайты: страница расширения `options/options.html` (`options/options.js`), быстрые переключатели в popup.
+
+Визуал расширения: шесть стилей (classic, cinema, magazine, manga, arcade, bento) в светлой и тёмной теме для окна расширения, настроек, «Случайного», Топа, расписания и подбора. Выбор лежит в `ag_settings.look = { style, theme }` (theme `auto` — родная тема стиля), раздел «Визуал расширения» в настройках. `modules/shared/look.js` подключается первым скриптом каждой страницы, ставит на `<html>` атрибуты `data-look` и `data-theme` (сначала из localStorage `ag-look`, чтобы не мигать, потом из настроек) и следит за изменениями. `modules/shared/looks.css` по этим атрибутам переопределяет переменные `--ap-*` (цвета, шрифты, скругления, толщина рамок `--ap-bw`) и пару общих правил. У «Случайного аниме» и Топа во вкладке у каждого стиля, кроме классического, своя раскладка: шаблоны и CSS в `modules/looks/<стиль>.js|css` (общие с презентацией `tools/design-lab`), помощники и данные для них в `modules/looks/look-pages.js`. Шаблон только рисует строку разметки с `data-act`; страница (random.js, top.js) держит данные и логику, передаёт нажатия своим обычным кнопкам и перерисовывает раскладку по событию `ag-look`. Обычная страница при этом остаётся в DOM и видна до первого тайтла и при ошибке; Топ поверх сайта (embed) всегда обычный. Жанры для раскладок Топа: сообщение `get_anime_genres`. Украшения стилей на обычных страницах (пилюли, главные кнопки, заголовки, карточки, день «сегодня» — перенос правил .k-* презентации на настоящие классы): `modules/looks/decor.css`, подключается после CSS страницы. Раздел в настройках называется «Оформление».
+
+«Порядок просмотра» франшизы на «Случайном» и в подборе (главная карточка и панель тайтла). Данные — Shikimori `/api/animes/<id>/franchise` в фоне (`modules/bg-franchise.js`, сообщение `get_franchise`, сжатие, постеры, кеш неделю; франшиза приходит и в карточке `get_anime_card` / `get_random_anime_card`). Порядок строит `modules/shared/franchise-core.js`: своя ветка по сильным связям (продолжение, предыстория, побочное, рекап, полная история) — предыстория раньше, даже если вышла позже, дата решает только ничьи; развилка из альтернативных версий основных тайтлов (Fate/stay night: один из путей); вариант серии той же истории (спецвыпуск с тем же названием до двоеточия, «Деление на ноль») встаёт побочным; шум «спецвыпуск называет продолжение побочным» игнорируется; спин-оффы, «другое», другие вселенные — «Другие истории вселенной»; клипы и реклама скрыты; режим «по выходу» — плоский список по дате. Разметку даёт `modules/shared/franchise-view.js` (одна на все места, `data-act` fr-*), вид — `modules/looks/franchise.css` (свой у каждого стиля). Тесты на настоящих франшизах: `tests/fixtures/franchise/*.json`, `tests/franchise-core.test.js`; стенд `npm run stand -- franchise`. Шрифты стилей лежат в `fonts/` (Google Fonts, OFL, лицензия `fonts/OFL.txt`), подключение `modules/looks/fonts.css`. Классический тёмный совпадает с `tokens.css`. Новые цвета в страницах — только через переменные, иначе светлые темы ломаются. Плеер (`playerSkin`) и значок лисы на сайтах визуал не меняет. Проверка: `tests/look.test.js` (полнота наборов и контраст), `tests/look-pages.test.js` (раскладки) и `npm run stand -- look`. Макеты стилей лежат в `tools/design-lab/`, в сборку не входят.
 
 ### Настройки
 

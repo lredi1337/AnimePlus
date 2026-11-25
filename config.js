@@ -10,6 +10,8 @@
         sites_enabled: {},
         autoNext: true, autoSkip: true, autoPlay: true, audioSkip: true,
         showDBL: true,
+        // Визуал расширения: стиль и тема страниц расширения (modules/shared/look.js, looks.css); 'auto' — родная тема стиля
+        look: { style: 'classic', theme: 'auto' },
         // Тема оформления оболочки плеера: id из AgShellView.SKINS (modules/player/shell-view.js)
         playerSkin: 'compact',
         // Свои темы из редактора на странице настроек: [{ id, name, base, values }], проверяет AgShellView.cleanCustom

@@ -28,6 +28,8 @@ function load({ pages = [], siteUrls = {}, animego = '', settings = {}, details 
         },
         resolveSiteUrl: async (siteId, query) => { log.resolved.push({ siteId, ...query }); return siteUrls[query.shikimoriId] || null; },
         findJutsuDirectUrl: async () => null,
+        // Франшиза (modules/bg-franchise.js): у тайтла 1 — две части
+        getFranchise: async (id) => (Number(id) === 1 ? { franchise: { current_id: 1, nodes: [{ id: 1, name: 'A', kind: 'TV Сериал' }, { id: 9, name: 'A2', kind: 'TV Сериал' }], links: [] }, posters: { 9: 'https://shikimori.io/p9.jpg' } } : { franchise: null }),
         fetch: async (url) => { log.fetched.push(String(url)); return new Response(animego, { status: 200 }); }
     });
     return { ctx, log };
@@ -145,4 +147,12 @@ test('карточка: все кадры тайтла полными адрес
 
     const few = load({ pages, details: { 7: { id: 7, screenshots: [shot(5)] } } });
     assert.equal(plain(await few.ctx.getRandomAnimeCard({})).anime.screenshots[0].full, 'https://shikimori.io/system/screenshots/original/5.jpg');
+});
+
+test('карточка тайтла приходит вместе с франшизой: блок «Порядок просмотра» не догружается отдельно', async () => {
+    const pages = [{ id: 1, name: 'A', kind: 'tv', score: '8.4' }];
+    const { ctx } = load({ pages });
+    const { anime } = plain(await ctx.getRandomAnimeCard({}));
+    assert.equal(anime.franchise.data.nodes.length, 2);
+    assert.equal(anime.franchise.posters[9], 'https://shikimori.io/p9.jpg');
 });

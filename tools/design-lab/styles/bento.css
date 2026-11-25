@@ -1,0 +1,17 @@
+/* «Плитки» в презентации: оформление её общих страниц (.k-*). Раскладки «Случайного» и Топа — modules/looks/bento.css */
+/* Общие страницы (pages.js) в «Плитках»: светло, мягкие тени, крупные скругления */
+.v-bento { --k-bg: #eef0f5; --k-surface: #ffffff; --k-raised: #f3f4f8; --k-ink: #161a24; --k-mute: #687084; --k-line: #e2e5ec; --k-accent: #6d5cf6; --k-gold: #b07800; --k-yes: #0f9f6e; --k-no: #e5484d; --k-radius: 22px; --k-radius-sm: 14px; --k-border: 1px solid transparent; --k-shadow: 0 1px 2px rgba(20, 24, 40, .05), 0 10px 28px rgba(20, 24, 40, .07); --k-display: 'Onest', sans-serif; --k-body: 'Onest', sans-serif; --k-track: -.025em; }
+.v-bento .k-chip, .v-bento .k-tab { border-color: var(--k-line); background: #fff; }
+.v-bento .k-score, .v-bento .k-rank { background: rgba(255, 255, 255, .92); color: #161a24; }
+.v-bento .k-score { color: #8a5a00; }
+.v-bento .k-tile__cover { border: 0; border-radius: 16px; box-shadow: 0 8px 20px rgba(20, 24, 40, .1); }
+.v-bento .k-day { border: 0; box-shadow: var(--k-shadow); }
+.v-bento .k-day.is-today { box-shadow: 0 0 0 2px #6d5cf6, var(--k-shadow); }
+.v-bento .k-scene-hint { background: #fff; }
+.v-bento .k-pick-hero { color: #fff; }
+.v-bento .k-pick-hero__info small { color: rgba(255, 255, 255, .8); }
+.v-bento .k-pick-hero__info em { color: #ffd36b; }
+.v-bento.t-dark .k-chip, .v-bento.t-dark .k-tab { background: #171a22; }
+.v-bento.t-dark .k-score, .v-bento.t-dark .k-rank { background: rgba(14, 16, 22, .88); color: #eceef4; }
+.v-bento.t-dark .k-score { color: #ffd36b; }
+.v-bento.t-dark .k-scene-hint { background: #171a22; }

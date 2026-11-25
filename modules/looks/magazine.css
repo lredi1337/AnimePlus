@@ -1,0 +1,96 @@
+/* «Журнал»: раскладки «Случайного аниме» и «Топа Shikimori» (шаблоны — magazine.js рядом) в обеих темах.
+   Общий файл расширения и презентации стилей (tools/design-lab). Включается атрибутами data-look и data-theme на <html>,
+   их ставит modules/shared/look.js. Шрифты — modules/looks/fonts.css */
+/* Стиль 2. «Журнал»: светлый, печатный */
+[data-look="magazine"] { --paper: #f3f3ef; --ink: #111111; --mute: #5d5d58; --rule: #111111; --hair: #c9c9c2; --accent: #e11d2a; background: var(--paper); color: var(--ink); font-family: 'Literata', Georgia, serif; }
+.mg__wrap { max-width: 1240px; margin: 0 auto; padding: 28px 40px 72px; }
+.mg__mast { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 28px; padding-bottom: 14px; border-bottom: 4px solid var(--rule); }
+.mg__issue { font: 600 12px 'Unbounded', sans-serif; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); }
+.mg__title-mast { font: 800 46px/1 'Unbounded', sans-serif; letter-spacing: -.03em; }
+.mg__filters { margin-left: auto; font: 400 14px 'Literata', serif; font-style: italic; color: var(--mute); }
+.mg__filters button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; }
+.mg__spread { display: grid; grid-template-columns: 330px minmax(0, 1fr) 260px; gap: 40px; padding: 36px 0; border-bottom: 1px solid var(--rule); animation: mgIn .45s ease; }
+@keyframes mgIn { from { opacity: 0; } }
+.mg__cover { margin: 0; }
+.mg__cover img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; border: 1px solid var(--ink); background: #ddd; }
+.mg__cover figcaption { margin-top: 8px; font: italic 13px 'Literata', serif; color: var(--mute); }
+.mg__kicker { font: 600 12px 'Unbounded', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.mg__body { min-width: 0; }
+.mg__body h1 { margin: 10px 0 6px; font: 800 clamp(32px, 3.4vw, 50px)/1.02 'Unbounded', sans-serif; letter-spacing: -.035em; text-wrap: balance; overflow-wrap: anywhere; hyphens: auto; }
+.mg__en { font: italic 18px 'Literata', serif; color: var(--mute); }
+.mg__facts { display: flex; flex-wrap: wrap; gap: 0; margin: 22px 0; border-block: 1px solid var(--hair); }
+.mg__facts div { flex: 1; min-width: 90px; padding: 10px 14px 10px 0; }
+.mg__facts div + div { padding-left: 14px; border-left: 1px solid var(--hair); }
+.mg__facts dt { font: 600 10px 'Unbounded', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
+.mg__facts dd { margin: 4px 0 0; font: 600 22px 'Unbounded', sans-serif; }
+.mg__facts dd.is-score { color: var(--accent); }
+.mg__text { margin: 0; columns: 2 260px; column-gap: 28px; font-size: 16.5px; line-height: 1.65; max-height: 9.9em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.mg__text.is-open { max-height: none; -webkit-mask-image: none; mask-image: none; }
+.mg__text::first-letter { float: left; margin: 6px 8px 0 0; font: 800 58px/.8 'Unbounded', sans-serif; color: var(--accent); }
+.mg__more-text { margin-top: 10px; padding: 0; border: 0; background: none; font: 600 13px 'Unbounded', sans-serif; color: var(--ink); }
+.mg__more-text:hover { color: var(--accent); }
+.mg__where { display: flex; flex-direction: column; gap: 4px; padding-left: 28px; border-left: 1px solid var(--rule); }
+.mg__where h2, .mg__sheet h2, .mg__past h2 { margin: 0 0 12px; font: 700 13px 'Unbounded', sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+.mg__sites { display: flex; flex-direction: column; }
+.mg__site { display: flex; align-items: baseline; gap: 8px; padding: 9px 0; border-bottom: 1px dotted var(--mute); color: var(--ink); text-decoration: none; font-size: 16px; }
+.mg__site b { font: 700 11px 'Unbounded', sans-serif; color: var(--site); min-width: 26px; }
+.mg__site span { flex: 1; }
+.mg__site::after { content: "→"; color: var(--mute); }
+.mg__site:hover { color: var(--accent); }
+.mg__site:hover::after { color: var(--accent); }
+.mg__shiki { margin-top: 12px; color: var(--mute); font-style: italic; font-size: 14px; }
+.mg__next { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 18px; border: 0; background: var(--ink); color: var(--paper); font: 800 20px/1.1 'Unbounded', sans-serif; text-align: left; transition: background .15s; }
+.mg__next small { font: italic 13px 'Literata', serif; opacity: .7; }
+.mg__next:hover { background: var(--accent); }
+.mg__sheet { padding: 32px 0; border-bottom: 1px solid var(--rule); }
+.mg__sheet > div { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.mg__sheet button { position: relative; padding: 0; border: 1px solid var(--ink); background: #ddd; aspect-ratio: 16 / 10; overflow: hidden; }
+.mg__sheet img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.05); transition: filter .25s; }
+.mg__sheet button:hover img { filter: none; }
+.mg__sheet span { position: absolute; left: 6px; top: 4px; z-index: 1; font: 700 11px 'Unbounded', sans-serif; color: #fff; mix-blend-mode: difference; }
+.mg__past { padding-top: 32px; }
+.mg__past > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 18px; }
+.mg__past button { display: flex; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; text-align: left; color: var(--ink); }
+.mg__past img { width: 100%; aspect-ratio: 5 / 7; object-fit: cover; border: 1px solid var(--ink); }
+.mg__past b { font: 600 14px/1.25 'Literata', serif; }
+.mg__past small { color: var(--accent); font: 600 11px 'Unbounded', sans-serif; }
+/* Топ — таблица */
+.mg-picker { position: relative; margin-left: auto; }
+.mg-picker__btn, .mg-picker__list button { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); font: 600 13px 'Unbounded', sans-serif; }
+.mg-picker b, .mg-picker__list b { color: var(--site); }
+.mg-picker__btn::before { content: "Открывать на"; font: italic 13px 'Literata', serif; color: var(--mute); }
+.mg-picker__btn i { font-style: normal; }
+.mg-picker__list { position: absolute; right: 0; top: 40px; z-index: 5; display: flex; flex-direction: column; min-width: 240px; border: 2px solid var(--ink); background: var(--paper); }
+.mg-picker__list button { border: 0; border-bottom: 1px solid var(--hair); width: 100%; }
+.mg-picker__list button[aria-selected="true"], .mg-picker__list button:hover { background: var(--ink); color: var(--paper); }
+.mg__filters-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.mg__filters-row > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; }
+.mg__filters-row span { font-style: italic; color: var(--mute); }
+.mg__filters-row button { padding: 0 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; font: 600 14px 'Unbounded', sans-serif; color: var(--mute); }
+.mg__filters-row button[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+.mg__table { margin: 0; padding: 0; list-style: none; }
+.mg__table a { display: grid; grid-template-columns: 90px 54px minmax(0, 1fr) 200px 160px 70px; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--hair); color: var(--ink); text-decoration: none; transition: background .15s; }
+.mg__table a:hover { background: #e9e9e3; }
+.mg__rank { font: 800 44px/1 'Unbounded', sans-serif; letter-spacing: -.04em; text-align: right; }
+.mg__table li:nth-child(-n+3) .mg__rank { color: var(--accent); }
+.mg__thumb { width: 54px; aspect-ratio: 5 / 7; object-fit: cover; border: 1px solid var(--ink); }
+.mg__name { display: flex; flex-direction: column; min-width: 0; }
+.mg__name b { font: 600 18px/1.25 'Literata', serif; }
+.mg__name small { color: var(--mute); font-style: italic; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg__name em { font: 600 10px 'Unbounded', sans-serif; letter-spacing: .08em; text-transform: uppercase; font-style: normal; color: var(--mute); margin-top: 4px; }
+.mg__fmt { font-size: 14px; color: var(--mute); }
+.mg__bar { height: 6px; background: var(--hair); }
+.mg__bar i { display: block; height: 100%; background: var(--ink); }
+.mg__table a:hover .mg__bar i { background: var(--accent); }
+.mg__score { font: 700 20px 'Unbounded', sans-serif; text-align: right; }
+.mg__none { padding: 40px 0; font-style: italic; color: var(--mute); }
+.mg__more { padding-top: 24px; text-align: center; }
+.mg__more button { padding: 12px 26px; border: 2px solid var(--ink); background: none; font: 700 14px 'Unbounded', sans-serif; color: var(--ink); }
+.mg__more button:hover { background: var(--ink); color: var(--paper); }
+@media (max-width: 1100px) { .mg__spread { grid-template-columns: 260px minmax(0, 1fr); } .mg__where { grid-column: 1 / -1; border: 0; padding: 0; } .mg__table a { grid-template-columns: 64px 46px minmax(0, 1fr) 70px; } .mg__fmt, .mg__bar { display: none; } }
+/* ===== Журнал: тёмный (ночная печать) ===== */
+[data-look="magazine"][data-theme="dark"] { --paper: #121211; --ink: #eeece6; --mute: #a3a199; --rule: #eeece6; --hair: #3a3934; --accent: #ff4655;
+    --k-bg: #121211; --k-surface: #181816; --k-raised: #24231f; --k-ink: #eeece6; --k-mute: #a3a199; --k-line: #eeece6; --k-accent: #ff4655; --k-gold: #ff4655; --k-yes: #4fd18b; --k-no: #ff4655; --k-border: 1px solid #eeece6; }
+[data-look="magazine"][data-theme="dark"] .mg__cover img, [data-look="magazine"][data-theme="dark"] .mg__sheet button { background: #2a2a26; }
+[data-look="magazine"][data-theme="dark"] .mg__table a:hover { background: #1f1f1c; }
+[data-look="magazine"][data-theme="dark"] .mg__past img, [data-look="magazine"][data-theme="dark"] .mg__thumb, [data-look="magazine"][data-theme="dark"] .mg__cover img { border-color: #3a3934; }

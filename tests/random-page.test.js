@@ -33,6 +33,7 @@ function openPage({ cards = [{ anime: ANIME }], siteUrls = {}, settings = {} } =
     w.chrome.tabs = { create: (o) => { created.push(o.url); return Promise.resolve(); } };
     w.scrollTo = () => {};
     w.eval(read('modules/shared/ext-page.js'));
+    w.eval(read('modules/shared/shot-viewer.js'));
     w.eval(read('random/random.js'));
     return { w, doc: w.document, sent, created };
 }

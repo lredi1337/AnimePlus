@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Anime+ · стили</title>
+    <link rel="icon" href="../../icons/icon32.png">
+    <!-- Шрифты и раскладки стилей — те же файлы, что в расширении (modules/looks) -->
+    <link rel="stylesheet" href="../../modules/looks/fonts.css">
+    <link rel="stylesheet" href="shell.css">
+    <link rel="stylesheet" href="kit.css">
+    <link rel="stylesheet" href="kit-settings.css">
+    <link rel="stylesheet" href="kit-pages.css">
+    <link rel="stylesheet" href="kit-real.css">
+    <link rel="stylesheet" href="styles/classic.css">
+    <link rel="stylesheet" href="styles/cinema.css">
+    <link rel="stylesheet" href="styles/magazine.css">
+    <link rel="stylesheet" href="styles/manga.css">
+    <link rel="stylesheet" href="styles/arcade.css">
+    <link rel="stylesheet" href="styles/bento.css">
+    <link rel="stylesheet" href="themes.css">
+    <link rel="stylesheet" href="../../modules/looks/cinema.css">
+    <link rel="stylesheet" href="../../modules/looks/magazine.css">
+    <link rel="stylesheet" href="../../modules/looks/manga.css">
+    <link rel="stylesheet" href="../../modules/looks/arcade.css">
+    <link rel="stylesheet" href="../../modules/looks/bento.css">
+    <link rel="stylesheet" href="../../modules/looks/franchise.css">
+</head>
+<body data-view="intro">
+    <header class="shell">
+        <div class="shell__row">
+            <span class="shell__brand">Anime+ <i>стили</i></span>
+            <nav class="shell__variants" id="variantTabs" aria-label="Стиль"></nav>
+            <nav class="shell__pages" aria-label="Страница">
+                <button type="button" data-page-tab="popup">Окно</button>
+                <button type="button" data-page-tab="random">Случайное</button>
+                <button type="button" data-page-tab="top">Топ</button>
+                <button type="button" data-page-tab="onsite">На сайте</button>
+                <button type="button" data-page-tab="schedule">Расписание</button>
+                <button type="button" data-page-tab="pick">Подбор</button>
+                <button type="button" data-page-tab="settings">Настройки</button>
+            </nav>
+            <nav class="shell__theme" aria-label="Тема">
+                <button type="button" data-theme-tab="light" aria-label="Светлая тема">☀</button>
+                <button type="button" data-theme-tab="dark" aria-label="Тёмная тема">☾</button>
+            </nav>
+        </div>
+        <p class="shell__note" id="styleNote"></p>
+    </header>
+    <main id="stage" class="stage"></main>
+
+    <div id="lightbox" class="lb" role="dialog" aria-modal="true" aria-label="Кадры" hidden>
+        <img alt="" referrerpolicy="no-referrer">
+        <button class="lb__nav is-prev" type="button" data-act="lb-prev" aria-label="Предыдущий кадр">‹</button>
+        <button class="lb__nav is-next" type="button" data-act="lb-next" aria-label="Следующий кадр">›</button>
+        <button class="lb__close" type="button" data-act="lb-close" aria-label="Закрыть">×</button>
+        <span class="lb__count"></span>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="data.js"></script>
+    <script src="data-pick.js"></script>
+    <script src="../../modules/shared/pick-core.js"></script>
+    <script src="../../modules/shared/ui-kit.js"></script>
+    <script src="../../modules/shared/schedule-core.js"></script>
+    <script src="../../modules/shared/franchise-core.js"></script>
+    <script src="../../modules/shared/franchise-view.js"></script>
+    <script src="lab.js"></script>
+    <script src="pages.js"></script>
+    <script src="pages-real.js"></script>
+    <script src="../../modules/looks/cinema.js"></script>
+    <script src="../../modules/looks/magazine.js"></script>
+    <script src="../../modules/looks/manga.js"></script>
+    <script src="../../modules/looks/arcade.js"></script>
+    <script src="../../modules/looks/bento.js"></script>
+    <script src="styles/classic.js"></script>
+    <script src="styles/cinema.js"></script>
+    <script src="styles/magazine.js"></script>
+    <script src="styles/manga.js"></script>
+    <script src="styles/arcade.js"></script>
+    <script src="styles/bento.js"></script>
+    <script>window.LAB.start();</script>
+</body>
+</html>

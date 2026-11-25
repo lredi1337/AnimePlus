@@ -176,6 +176,11 @@
         /** Случайное аниме вкладкой: карточка и кнопки сайтов, где тайтл есть (random/random.js) */
         randomPageUrl() {
             return chrome.runtime.getURL('random/random.html');
+        },
+
+        /** Подбор аниме вопросами (pick/pick.js) */
+        pickPageUrl() {
+            return chrome.runtime.getURL('pick/pick.html');
         }
     };
 

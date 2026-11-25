@@ -1,0 +1,19 @@
+/* «Журнал» в презентации: оформление её общих страниц (.k-*). Раскладки «Случайного» и Топа — modules/looks/magazine.css */
+/* Общие страницы (pages.js) в «Журнале»: светлая бумага, линейки, без теней */
+.v-magazine { --k-bg: #f3f3ef; --k-surface: #f8f8f5; --k-raised: #ebebe5; --k-ink: #111; --k-mute: #5d5d58; --k-line: #111; --k-accent: #e11d2a; --k-gold: #e11d2a; --k-yes: #0f7b3e; --k-no: #e11d2a; --k-radius: 0; --k-radius-sm: 0; --k-border: 1px solid #111; --k-shadow: none; --k-display: 'Unbounded', sans-serif; --k-body: 'Literata', Georgia, serif; --k-label-font: 'Unbounded', sans-serif; --k-track: -.03em; }
+.v-magazine .k-head { padding-bottom: 14px; border-bottom: 4px solid #111; }
+.v-magazine .k-chip, .v-magazine .k-tab { border-radius: 0; border-width: 0 0 2px; border-color: transparent; background: none; font-family: 'Unbounded', sans-serif; font-size: 12px; }
+.v-magazine .k-chip[aria-pressed="true"], .v-magazine .k-tab[aria-pressed="true"] { background: none; color: #111; border-color: #e11d2a; }
+.v-magazine .k-btn.is-primary { background: #111; border-color: #111; color: #f3f3ef; font-family: 'Unbounded', sans-serif; }
+.v-magazine .k-day { border-width: 0 0 0 1px; background: none; }
+.v-magazine .k-day.is-today { box-shadow: none; background: #ebebe5; }
+.v-magazine .k-rank, .v-magazine .k-score, .v-magazine .k-role { border-radius: 0; font-family: 'Unbounded', sans-serif; }
+.v-magazine .k-tile__cover img, .v-magazine .k-ep__poster { filter: grayscale(.25); }
+.v-magazine .k-popup { background: #f8f8f5; border: 2px solid #111; }
+/* Название с длинным словом («восьмибалльное») мельче: иначе слово рвётся без переноса */
+.mg__body h1.is-long { font-size: clamp(26px, 2.6vw, 38px); }
+.v-magazine.t-dark .k-head { border-bottom-color: #eeece6; }
+.v-magazine.t-dark .k-chip[aria-pressed="true"], .v-magazine.t-dark .k-tab[aria-pressed="true"] { color: #eeece6; }
+.v-magazine.t-dark .k-btn.is-primary { background: #eeece6; border-color: #eeece6; color: #121211; }
+.v-magazine.t-dark .k-day.is-today { background: #24231f; }
+.v-magazine.t-dark .k-popup { background: #181816; border-color: #eeece6; }

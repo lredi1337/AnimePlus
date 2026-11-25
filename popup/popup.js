@@ -324,6 +324,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnRandom) btnRandom.addEventListener('click', () => {
         chrome.tabs.create({ url: AgSites.randomPageUrl() }).catch(() => {}).finally(() => window.close());
     });
+    // Подбор аниме вопросами: тоже своя вкладка
+    const btnPick = document.getElementById('btnPick');
+    if (btnPick) btnPick.addEventListener('click', () => {
+        chrome.tabs.create({ url: AgSites.pickPageUrl() }).catch(() => {}).finally(() => window.close());
+    });
 
     const panelsList = [
         { btn: btnMusic, panel: panelMusic }

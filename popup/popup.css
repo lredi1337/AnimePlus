@@ -63,7 +63,7 @@ button {
     font: inherit;
     color: var(--ap-text);
     background: transparent;
-    border: 1px solid var(--ap-line);
+    border: var(--ap-bw, 1px) solid var(--ap-line);
     border-radius: var(--ap-radius);
     cursor: pointer;
     transition: background var(--ap-ease), border-color var(--ap-ease), color var(--ap-ease);
@@ -83,7 +83,7 @@ input {
     font: inherit;
     color: var(--ap-text);
     background: var(--ap-bg);
-    border: 1px solid var(--ap-line);
+    border: var(--ap-bw, 1px) solid var(--ap-line);
     border-radius: var(--ap-radius);
     padding: 0 10px;
     height: 32px;
@@ -276,7 +276,7 @@ a { color: var(--ap-accent); }
     font-weight: 600;
     color: var(--ap-text);
     background: var(--ap-raised);
-    border: 1px solid var(--ap-line-strong);
+    border: var(--ap-bw, 1px) solid var(--ap-line-strong);
     cursor: pointer;
 }
 
@@ -315,7 +315,7 @@ a { color: var(--ap-accent); }
 .sites {
     flex: none;
     padding: 4px 14px 10px;
-    border-bottom: 1px solid var(--ap-line);
+    border-bottom: var(--ap-bw, 1px) solid var(--ap-line);
 }
 
 .sites[hidden] { display: none; }
@@ -476,7 +476,7 @@ a { color: var(--ap-accent); }
     font-size: var(--ap-fs-sm);
     color: var(--ap-text-2);
     background: var(--ap-bg);
-    border-bottom: 1px solid var(--ap-line);
+    border-bottom: var(--ap-bw, 1px) solid var(--ap-line);
 }
 
 .toast-center { text-align: center; }
@@ -751,7 +751,7 @@ a { color: var(--ap-accent); }
 .status-btn.active,
 .filter-btn.active {
     color: var(--ap-text);
-    background: rgba(255, 255, 255, .13);
+    background: var(--ap-active);
 }
 
 /* Фильтры: одна выбранная белая метка */
@@ -769,11 +769,11 @@ a { color: var(--ap-accent); }
 }
 
 .filter-btn.active {
-    color: #111;
-    background: #fff;
+    color: var(--ap-pill-text);
+    background: var(--ap-pill-bg);
 }
 
-.filter-btn.active:hover { color: #111; background: #fff; }
+.filter-btn.active:hover { color: var(--ap-pill-text); background: var(--ap-pill-bg); }
 
 /* ===== Поиск и список тайтлов ===== */
 #shiki-search-wrapper { flex: none; }
@@ -890,7 +890,7 @@ a { color: var(--ap-accent); }
     align-items: center;
     gap: 10px;
     padding: 7px 0;
-    border-bottom: 1px solid var(--ap-line);
+    border-bottom: var(--ap-bw, 1px) solid var(--ap-line);
 }
 
 .anime-row:last-child { border-bottom: none; }
@@ -997,7 +997,7 @@ a { color: var(--ap-accent); }
 .bottom-tabs {
     display: flex;
     flex: none;
-    border-top: 1px solid var(--ap-line);
+    border-top: var(--ap-bw, 1px) solid var(--ap-line);
 }
 
 .bottom-tab {
@@ -1036,7 +1036,7 @@ a { color: var(--ap-accent); }
     font-weight: 600;
     white-space: nowrap;
     background: var(--ap-raised);
-    border: 1px solid var(--ap-line-strong);
+    border: var(--ap-bw, 1px) solid var(--ap-line-strong);
     border-radius: var(--ap-radius-sm);
     box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
     opacity: 0;
@@ -1062,7 +1062,7 @@ a { color: var(--ap-accent); }
     max-height: 250px;
     overflow-y: auto;
     padding: 12px 14px;
-    border-top: 1px solid var(--ap-line);
+    border-top: var(--ap-bw, 1px) solid var(--ap-line);
     background: var(--ap-bg);
 }
 
@@ -1091,7 +1091,7 @@ a { color: var(--ap-accent); }
     justify-content: space-between;
     margin-top: 10px;
     padding-top: 10px;
-    border-top: 1px solid var(--ap-line);
+    border-top: var(--ap-bw, 1px) solid var(--ap-line);
     font-size: var(--ap-fs-sm);
     color: var(--ap-text-2);
 }
@@ -1110,7 +1110,7 @@ a { color: var(--ap-accent); }
     padding-bottom: 8px;
     font-size: var(--ap-fs-sm);
     color: var(--ap-text-2);
-    border-bottom: 1px solid var(--ap-line);
+    border-bottom: var(--ap-bw, 1px) solid var(--ap-line);
 }
 
 .anime-info-header strong {
@@ -1178,7 +1178,7 @@ a { color: var(--ap-accent); }
     display: grid;
     flex: none;
     grid-template-columns: 1fr 1fr;
-    border-top: 1px solid var(--ap-line);
+    border-top: var(--ap-bw, 1px) solid var(--ap-line);
 }
 
 .tracker-link {
@@ -1191,7 +1191,7 @@ a { color: var(--ap-accent); }
     border-radius: 0;
 }
 
-.tracker-link + .tracker-link { border-left: 1px solid var(--ap-line); }
+.tracker-link + .tracker-link { border-left: var(--ap-bw, 1px) solid var(--ap-line); }
 
 .tracker-link:hover {
     color: var(--ap-text);
@@ -1223,7 +1223,7 @@ a { color: var(--ap-accent); }
     padding: 16px;
     text-align: left;
     background: var(--ap-raised);
-    border: 1px solid var(--ap-line);
+    border: var(--ap-bw, 1px) solid var(--ap-line);
     border-radius: var(--ap-radius-lg);
     box-shadow: var(--ap-shadow);
 }
@@ -1302,7 +1302,7 @@ a { color: var(--ap-accent); }
     flex: none;
     margin: 8px 14px 0;
     background: var(--ap-surface);
-    border: 1px solid var(--ap-line);
+    border: var(--ap-bw, 1px) solid var(--ap-line);
     border-radius: var(--ap-radius);
 }
 
@@ -1349,7 +1349,7 @@ a { color: var(--ap-accent); }
     height: 16px;
     margin-top: 1px;
     color: var(--ap-on-accent);
-    border: 1px solid var(--ap-line-strong);
+    border: var(--ap-bw, 1px) solid var(--ap-line-strong);
     border-radius: 50%;
 }
 
@@ -1400,7 +1400,7 @@ html.tour-open .popup { min-height: 560px; }
     width: calc(100% - 24px);
     padding: 10px 12px 10px 8px;
     background: var(--ap-raised);
-    border: 1px solid var(--ap-line-strong);
+    border: var(--ap-bw, 1px) solid var(--ap-line-strong);
     border-radius: var(--ap-radius-lg);
     box-shadow: var(--ap-shadow);
     transition: top .2s ease;

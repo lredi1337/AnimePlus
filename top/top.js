@@ -98,6 +98,9 @@
         const scoreTabs = SCORE_BANDS.map(b => h('button', { class: 'top__tab top__tab--score', type: 'button', 'aria-pressed': String(b === band), 'data-score': b.id }, b.label));
         const badgeOf = (x) => h('span', { class: 'top__site-badge', style: `background:${x.color};color:${window.AgUI.onAccent(x.color)}` }, x.short);
         const hint = h('span', { class: 'top__hint' }, `Тайтл откроется на ${site.name}`);
+        // Загруженные тайтлы по порядку: из них рисуется раскладка стиля
+        const loaded = [];
+        let chooseSite = null;
 
         let headSide = '';
         if (ctx.embed) {
@@ -130,18 +133,20 @@
                     options[(i + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length].focus();
                 }
             });
-            options.forEach(option => option.addEventListener('click', async () => {
-                const x = sites.find(s => s.id === option.dataset.site);
-                setOpen(false);
-                toggle.focus();
+            chooseSite = async (x) => {
                 if (x.id === site.id) return;
                 site = x;
                 origin = await workingOrigin(x);
-                options.forEach(o => o.setAttribute('aria-selected', String(o === option)));
+                options.forEach(o => o.setAttribute('aria-selected', String(o.dataset.site === x.id)));
                 showCurrent();
                 hint.textContent = `Тайтл откроется на ${x.name}`;
                 grid.querySelectorAll('.top__busy, .top__choices').forEach(el => el.remove());
                 rememberPick(x);
+            };
+            options.forEach(option => option.addEventListener('click', () => {
+                setOpen(false);
+                toggle.focus();
+                chooseSite(sites.find(s => s.id === option.dataset.site));
             }));
             hint.hidden = true;
             headSide = picker;
@@ -160,6 +165,113 @@
         );
         // Поверх сайта список прокручивается внутри окна, во вкладке — вся страница
         const scrollBox = ctx.embed ? app.querySelector('.top__body') : null;
+
+        // ---------- Раскладка выбранного стиля (modules/looks) ----------
+        // Только во вкладке: поверх сайта Топ живёт в небольшом окне значка и остаётся обычным, в цветах стиля.
+        // Данные, фильтры, выбор сайта и подгрузка — те же, что у обычной страницы: нажатия передаются её кнопкам
+        const look = { box: h('div', { class: 'lk' }), menu: false, genres: new Map() };
+        // Жанры показывают только раскладки стилей: их догружаем пачкой, когда раскладка видна
+        const loadGenres = async (list) => {
+            if (!ctx.pick || !window.AgLookPages || !window.AgLookPages.current()) return;
+            const ids = list.map(x => x.item.id).filter(id => !look.genres.has(id));
+            if (!ids.length) return;
+            ids.forEach(id => look.genres.set(id, []));
+            const res = await window.agSendMessage({ action: 'get_anime_genres', ids });
+            if (!res) return;
+            ids.forEach(id => { if (Array.isArray(res[String(id)])) look.genres.set(id, res[String(id)]); });
+            repaintLook();
+        };
+        const toast = h('div', { class: 'lk-toast', role: 'status', hidden: '' });
+        app.append(look.box, toast);
+        const posterOf = (item) => (item.image && !/missing/.test(item.image.original || '') ? window.agNormalizePosterUrl(item.image.original) : '');
+        const paintLook = () => {
+            const pages = window.AgLookPages;
+            const tpl = ctx.pick && pages && pages.current();
+            document.body.classList.toggle('is-look', !!tpl);
+            if (!tpl) {
+                look.box.replaceChildren();
+                look.painted = '';
+                return;
+            }
+            const items = loaded.map(({ item, rank }) => pages.topItem(item, rank, posterOf(item), look.genres.get(item.id)));
+            const top = { items, total: hasMore ? null : items.length, more: hasMore && items.length > 0, kind, band: band.id, site, sites, siteMenu: look.menu };
+            const retry = status.querySelector('.top__retry');
+            const note = status.textContent.replace(retry ? retry.textContent : '', '').trim();
+            // Пустой список шаблон объясняет сам
+            const statusHtml = (note && !(top.total === 0)) || retry ? `<div class="lk-status">${pages.h.esc(note)}${retry ? '<button type="button" data-act="retry">Повторить</button>' : ''}</div>` : '';
+            // Другой стиль или новые фильтры — заново, с анимацией; подгрузка, жанры, строка состояния — только изменения
+            const stamp = `${document.documentElement.dataset.look}|${renderToken}`;
+            pages.render(look.box, tpl.top({ top }, pages.h) + statusHtml, stamp !== look.painted);
+            look.painted = stamp;
+            pages.bindImages(look.box);
+            // Постера нет в ответе рейтинга: его дотягивает тот же поиск, что у обычной страницы (agBindPostersIn)
+            const byId = new Map(loaded.map(x => [x.item.id, x.item]));
+            look.box.querySelectorAll('[data-act="open-top"]').forEach((card) => {
+                const item = byId.get(Number(card.dataset.v));
+                const img = card.querySelector('img');
+                if (!item || !img || posterOf(item)) return;
+                img.dataset.agPosterId = String(item.id);
+                img.dataset.agPosterRu = item.russian || '';
+                img.dataset.agPosterEn = item.name || '';
+            });
+            window.agBindPostersIn(look.box);
+        };
+        let lookFrame = 0;
+        const repaintLook = () => {
+            if (lookFrame) return;
+            lookFrame = requestAnimationFrame(() => { lookFrame = 0; paintLook(); });
+        };
+        new MutationObserver(repaintLook).observe(status, { childList: true, characterData: true, subtree: true });
+        document.addEventListener('ag-look', () => { paintLook(); loadGenres(loaded); });
+
+        let toastTimer = 0;
+        const say = (text, link) => {
+            toast.replaceChildren(text, link || '');
+            toast.hidden = false;
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { toast.hidden = true; }, link ? 6000 : 15000);
+        };
+        const openLook = async (id) => {
+            const entry = loaded.find(x => x.item.id === id);
+            if (!entry) return;
+            const { item } = entry;
+            const target = site;
+            say(`Ищем на ${target.name}…`);
+            const url = await findOnSite(target, origin, { id: item.id, titles: [item.name, item.russian].filter(Boolean), year: item.aired_on ? String(item.aired_on).slice(0, 4) : '' });
+            if (target !== site) return;
+            if (url) {
+                toast.hidden = true;
+                window.AgTopPage.navigate(url);
+                return;
+            }
+            say(`Нет на ${target.name}`, h('a', { href: `https://shikimori.io/animes/${item.id}`, target: '_blank', rel: 'noopener' }, 'Открыть на Shikimori ↗'));
+        };
+        look.box.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-act]');
+            if (!el || !look.box.contains(el)) return;
+            const act = el.dataset.act;
+            const v = el.dataset.v || '';
+            if (act === 'kind') tabs.find(t => t.dataset.kind === v).click();
+            else if (act === 'band') scoreTabs.find(t => t.dataset.score === v).click();
+            else if (act === 'more') loadMore();
+            else if (act === 'retry') { const r = status.querySelector('.top__retry'); if (r) r.click(); }
+            else if (act === 'site-menu') { look.menu = !look.menu; paintLook(); }
+            else if (act === 'site') {
+                look.menu = false;
+                const x = sites.find(s => s.id === v);
+                Promise.resolve(x && chooseSite ? chooseSite(x) : null).then(() => {
+                    paintLook();
+                    if (x) say(`Тайтлы будут открываться на ${x.name}`);
+                });
+            } else if (act === 'open-top') {
+                e.preventDefault();
+                openLook(Number(v));
+            }
+        });
+        // Список сайтов закрывается нажатием мимо него
+        document.addEventListener('click', (e) => {
+            if (look.menu && !e.target.closest('.site-menu')) { look.menu = false; paintLook(); }
+        });
 
         if (ctx.embed) {
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape') tellDock({ type: 'close' }); });
@@ -245,6 +357,8 @@
             fresh.forEach(({ item }) => shownIds.add(item.id));
             grid.append(...fresh.map(({ item, rank }) => makeCard(item, rank)));
             window.agBindPostersIn(grid);
+            loaded.push(...fresh);
+            loadGenres(fresh);
 
             // Вся страница выше диапазона — это нормально: начало взято с запасом
             const aboveBand = band.below && items.length > 0 && parseFloat(items[items.length - 1].score) >= band.below;
@@ -252,6 +366,7 @@
             if (hasMore) status.textContent = '';
             else if (shownIds.size === 0) status.textContent = band.id ? 'Тайтлов с такой оценкой нет' : 'Ничего не найдено';
             else status.textContent = band.id ? 'Это все тайтлы с такой оценкой' : 'Это все тайтлы с оценкой';
+            paintLook();
             loadIfNearEnd();
         };
 
@@ -272,6 +387,7 @@
             hasMore = true;
             loading = false;
             shownIds = new Set();
+            loaded.length = 0;
             tabs.forEach(t => t.setAttribute('aria-pressed', String(t.dataset.kind === kind)));
             scoreTabs.forEach(t => t.setAttribute('aria-pressed', String(t.dataset.score === band.id)));
             grid.replaceChildren();
