@@ -63,8 +63,12 @@ const THEMES_QUERY = `query ($id: [Int!]) {
 function themesFromAnime(anime) {
     return ((anime && anime.animethemes) || []).map((t) => {
         const entries = t.animethemeentries || [];
-        const audio = entries.flatMap(e => (e.videos && e.videos.nodes) || []).map(v => v.audio && v.audio.link).find(Boolean);
-        return { type: t.type, slug: t.slug, episodes: (entries[0] && entries[0].episodes) || '', audio };
+        const links = (e) => ((e.videos && e.videos.nodes) || []).map(v => v.audio && v.audio.link).filter(Boolean);
+        const audio = entries.flatMap(links)[0];
+        // Версии ролика (v2, v3) часто с тем же звуком и другими сериями: серии песни из всех таких записей
+        const same = entries.filter((e, i) => i === 0 || links(e).includes(audio));
+        const episodes = [...new Set(same.flatMap(e => String(e.episodes || '').split(',')).map(s => s.trim()).filter(Boolean))].join(', ');
+        return { type: t.type, slug: t.slug, episodes, audio };
     }).filter(t => t.audio && (t.type === 'OP' || t.type === 'ED'));
 }
 

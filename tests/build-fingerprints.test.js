@@ -52,6 +52,20 @@ test('песни тайтла из GraphQL: только OP и ED со звук�
     assert.deepEqual(themesFromAnime(undefined), []);
 });
 
+test('серии песни из всех записей с тем же звуком: версии ролика с одной песней', () => {
+    // «Перерождение дяди» (MAL 49220): ED1 v1 серии 2-7, v2 серия 8, v3 серии 9 и 11, звук один
+    const ed = 'https://a.animethemes.moe/IsekaiOjisan-ED1-NCBD1080.ogg';
+    const anime = { animethemes: [
+        { type: 'ED', slug: 'ED1', animethemeentries: [
+            { episodes: '2-7', videos: { nodes: [{ audio: { link: ed } }] } },
+            { episodes: '8', videos: { nodes: [{ audio: { link: ed } }] } },
+            { episodes: '9, 11', videos: { nodes: [{ audio: { link: ed } }] } },
+            { episodes: '12', videos: { nodes: [{ audio: { link: 'https://a.animethemes.moe/X-ED1v4.ogg' } }] } }
+        ] }
+    ] };
+    assert.deepEqual(themesFromAnime(anime), [{ type: 'ED', slug: 'ED1', episodes: '2-7, 8, 9, 11', audio: ed }]);
+});
+
 test('сборка останавливается после серии ошибок подряд, успех сбрасывает счёт', () => {
     const s = new Stopper(3);
     s.fail(); s.fail(); s.ok(); s.fail(); s.fail();

@@ -358,6 +358,8 @@
                 video,
                 fingerprint: FP,
                 songs,
+                // Чей поток: в том же кадре остаются манифесты прошлых серий той же длины
+                owner: `${title}|${(options.getEpisode && options.getEpisode()) || video.currentSrc}`,
                 wanted: (part) => !found[part] && !repeat[part] && !resolved(part, video),
                 onFound: (r) => acceptHit(r, video.currentTime),
                 onHashes: comparer ? comparer.onHashes : undefined,

@@ -330,3 +330,38 @@ test('один кусок не пришёл: пачка сообщает об о
     }), /timed out/);
     assert.ok(started < 8, `после ошибки новые куски не запрашиваются: начато ${started}`);
 });
+
+// Плеер (Alloha) меняет серию в том же кадре: манифесты прошлых серий остаются в списке запросов страницы,
+// а его размер ограничен, и запрос новой серии туда может уже не попасть. Серии одной длины путаются
+const allohaPlaylist = (n) => `#EXTM3U\n${Array.from({ length: n }, (_, i) => `#EXTINF:6.000,\nseg-${i + 1}-f1-v1-a1.m4s`).join('\n')}\n#EXT-X-ENDLIST`;
+
+async function withPage(urls, run) {
+    const saved = { perf: globalThis.performance, fetch: globalThis.fetch };
+    const entries = urls.map(name => ({ name }));
+    Object.defineProperty(globalThis, 'performance', { value: { ...saved.perf, getEntriesByType: () => entries, now: () => Date.now() }, configurable: true, writable: true });
+    globalThis.fetch = async (url) => ({ ok: true, status: 200, text: async () => allohaPlaylist(237), arrayBuffer: async () => new ArrayBuffer(0) });
+    try {
+        return await run(entries);
+    } finally {
+        Object.defineProperty(globalThis, 'performance', { value: saved.perf, configurable: true, writable: true });
+        globalThis.fetch = saved.fetch;
+    }
+}
+
+test('поток прошлой серии той же длины не берётся для следующей серии в том же кадре', async () => {
+    const ep10 = 'https://cdn.alloha.test/ep10/index-f1-v1-a1.m3u8';
+    const ep11 = 'https://cdn.alloha.test/ep11/index-f1-v1-a1.m3u8';
+    await withPage([ep10], async (entries) => {
+        const first = await ahead.findStream(1422, new Set(), '49220|10');
+        assert.ok(first && first.segments[0].url.startsWith('https://cdn.alloha.test/ep10/'));
+        // Серия 11: её манифест в список не попал, остался только манифест серии 10 той же длины
+        assert.strictEqual(await ahead.findStream(1422, new Set(), '49220|11'), null);
+        // Появился свой манифест: берётся он
+        entries.push({ name: ep11 });
+        const own = await ahead.findStream(1422, new Set(), '49220|11');
+        assert.ok(own && own.segments[0].url.startsWith('https://cdn.alloha.test/ep11/'));
+        // Вернулись к серии 10: её поток снова её
+        const back = await ahead.findStream(1422, new Set(), '49220|10');
+        assert.ok(back && back.segments[0].url.startsWith('https://cdn.alloha.test/ep10/'));
+    });
+});

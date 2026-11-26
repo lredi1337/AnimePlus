@@ -536,8 +536,27 @@
         return null;
     }
 
-    /** Поток этой серии среди запросов самого плеера: длина должна совпасть с длиной видео */
-    async function findStream(duration, seen) {
+    // Плеер (Alloha, Kodik) меняет серию в том же кадре: манифесты прошлых серий остаются среди запросов страницы,
+    // а список ограничен браузером, и запрос новой серии туда может уже не попасть. Серии одной длины тогда путались:
+    // пропуск брал места песен прошлой серии. Поток, найденный для одной серии, другой серии не отдаётся
+    const streamOwners = new Map();
+    const STREAM_OWNERS_LIMIT = 500;
+    const RESOURCE_BUFFER = 3000;
+    let bufferRaised = false;
+    const takenByOther = (keys, owner) => !!owner && keys.some(k => k && streamOwners.has(k) && streamOwners.get(k) !== owner);
+    const claimStream = (keys, owner) => {
+        if (!owner) return;
+        for (const k of keys) {
+            if (!k) continue;
+            streamOwners.delete(k);
+            streamOwners.set(k, owner);
+        }
+        while (streamOwners.size > STREAM_OWNERS_LIMIT) streamOwners.delete(streamOwners.keys().next().value);
+    };
+    const streamKeys = (stream) => [stream.init, stream.segments[0] && stream.segments[0].url];
+
+    /** Поток этой серии среди запросов самого плеера: длина должна совпасть с длиной видео. owner — серия, например «49220|10» */
+    async function findStream(duration, seen, owner = null) {
         const all = performance.getEntriesByType('resource').map(e => e.name).reverse();
         const entries = all.filter(isManifestUrl);
         const fits = (stream) => stream && stream.segments.length && Math.abs(stream.total - duration) <= DURATION_TOLERANCE_SEC;
@@ -547,6 +566,7 @@
             let text;
             try { text = await fetchWith(url, FETCH_TIMEOUT_MS, 'text'); } catch (e) { continue; }
             let stream = null;
+            const keys = [url];
             if (/<MPD\b/.test(text)) {
                 stream = parseDash(text, url);
                 if (stream && stream.index) {
@@ -562,6 +582,7 @@
                 if (isMaster(text)) {
                     mediaUrl = pickLightest(text, url);
                     if (!mediaUrl) continue;
+                    keys.push(mediaUrl);
                     try { media = await fetchWith(mediaUrl, FETCH_TIMEOUT_MS, 'text'); } catch (e) { continue; }
                 }
                 stream = parseMedia(media, mediaUrl);
@@ -573,7 +594,11 @@
                     } catch (e) { /* остаётся качество самого плеера */ }
                 }
             }
-            if (fits(stream)) return stream;
+            if (!fits(stream)) continue;
+            const ids = [...keys, ...streamKeys(stream)];
+            if (takenByOther(ids, owner)) continue;
+            claimStream(ids, owner);
+            return stream;
         }
         // Плейлиста нет: плеер играет обычный файл MP4
         for (const url of all.filter(isMp4Url)) {
@@ -582,7 +607,10 @@
             seen.add(key);
             try {
                 const stream = await fetchMp4Stream(url);
-                if (fits(stream)) return stream;
+                if (fits(stream) && !takenByOther([key], owner)) {
+                    claimStream([key], owner);
+                    return stream;
+                }
             } catch (e) { /* другое зеркало того же файла */ }
         }
         return null;
@@ -623,10 +651,17 @@
     }
 
     /**
-     * options: { video, fingerprint, songs, wanted(part), onFound(result), onState(state), onHashes(part, list, final) }.
+     * options: { video, fingerprint, songs, owner, wanted(part), onFound(result), onState(state), onHashes(part, list, final) }.
+     * owner — серия, которой принадлежит поток (тайтл и номер серии).
      * start() ищет опенинг, tail() эндинг, stop() прекращает всё.
      */
     function create(options) {
+        // Список запросов страницы браузер держит в 250 записей: за серию с её кусками он заполняется,
+        // и манифест следующей серии туда уже не попадает. Анализ заранее тогда не находил поток
+        if (!bufferRaised && performance.setResourceTimingBufferSize) {
+            bufferRaised = true;
+            try { performance.setResourceTimingBufferSize(RESOURCE_BUFFER); } catch (e) { /* остаётся как есть */ }
+        }
         const FP = options.fingerprint;
         const video = options.video;
         const state = { status: 'ожидание', bytes: 0, audioOnly: false, ms: 0 };
@@ -645,7 +680,7 @@
             if (!streamPromise) {
                 streamPromise = (async () => {
                     for (let i = 0; i < FIND_TRIES && !stopped; i++) {
-                        const found = await findStream(video.duration, seen);
+                        const found = await findStream(video.duration, seen, options.owner || null);
                         if (found) {
                             const prepared = await preferAudioOnly(found);
                             state.audioOnly = !!prepared.audioOnly;
@@ -715,6 +750,8 @@
                     await sleep(0);
                 }
                 hasher.finish();
+                // Пока пачка разбиралась, серия могла смениться: её находки к новой серии не относятся
+                if (stopped) break;
                 hits.forEach(r => options.onFound(r));
                 if (options.onHashes && !ahead) await options.onHashes(part, heard, false);
                 state.ms += Math.round(performance.now() - started);
@@ -746,7 +783,7 @@
         };
     }
 
-    const api = { create, fetchRetry, fetchPool, batchFailed, opPlan, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
+    const api = { create, findStream, fetchRetry, fetchPool, batchFailed, opPlan, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
     root.AgLookahead = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
