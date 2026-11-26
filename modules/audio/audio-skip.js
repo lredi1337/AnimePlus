@@ -302,6 +302,8 @@
             if (video && options.getSettings().audioDebug) {
                 video.dataset.agAudio = JSON.stringify({
                     title,
+                    episode: options.getEpisode ? options.getEpisode() : null,
+                    owner: ahead ? ahead.owner : null,
                     songs: songs ? songs.map(s => s.id) : null,
                     listening: listening(video),
                     passive: !!(listeners.get(video) && listeners.get(video).passive),
@@ -358,8 +360,9 @@
                 video,
                 fingerprint: FP,
                 songs,
-                // Чей поток: в том же кадре остаются манифесты прошлых серий той же длины
-                owner: `${title}|${(options.getEpisode && options.getEpisode()) || video.currentSrc}`,
+                // Чей поток: в том же кадре остаются манифесты прошлых серий той же длины. Обычный файл (MP4 AnimeVost)
+                // сам называет серию, и номер серии плеер может не знать. Адрес blob: новый при каждой загрузке, он не годится
+                owner: `${title}|${(options.getEpisode && options.getEpisode()) || ''}|${/^blob:/.test(video.currentSrc) ? '' : video.currentSrc}`,
                 wanted: (part) => !found[part] && !repeat[part] && !resolved(part, video),
                 onFound: (r) => acceptHit(r, video.currentTime),
                 onHashes: comparer ? comparer.onHashes : undefined,

@@ -765,6 +765,7 @@
 
         return {
             state,
+            owner: options.owner || null,
             start() {
                 const t = video.currentTime;
                 const plan = opPlan(video.duration);
