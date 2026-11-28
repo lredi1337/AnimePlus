@@ -17,6 +17,8 @@
     const TAIL_START_BEFORE_END_SEC = 420;
     const BATCH_SEC = 60;
     const BATCH_PAUSE_MS = 300;
+    const BUFFER_MIN_SEC = 20;
+    const BUFFER_WAIT_MS = 1000;
     const FETCH_TIMEOUT_MS = 20000;
     // Куски серии: в пачке один часто отвечает в разы дольше остальных, а повторный запрос приходит быстро.
     // Вторая попытка ждёт дольше: медленному каналу большой кусок всё равно успевают отдать. Замер 2026-11-17:
@@ -49,6 +51,28 @@
     function followStep(batchAt, now) {
         if (batchAt + BATCH_SEC <= now) return 'skip';
         return batchAt > now + FOLLOW_AHEAD_SEC ? 'wait' : 'go';
+    }
+
+    /** Куски для поиска опенинга: от места просмотра до to, после follow только впереди просмотра */
+    function opScan(now, duration, hasSongs) {
+        const plan = opPlan(duration);
+        // Без песен в базе искать дальше нечего: сравнение серий смотрит только первые минуты
+        const to = hasSongs ? plan.end : plan.head;
+        return now < to ? { from: now, to, follow: plan.head } : null;
+    }
+
+    /**
+     * Анализ качает с того же канала, что и плеер. Пока у плеера впереди меньше BUFFER_MIN_SEC, канал его:
+     * на медленной сети иначе серия дольше стартует и подвисает. Замер 2026-11-28, Alloha на 4 Мбит/с:
+     * с анализом старт 6.6 с и подвисания, без него 4.5 с без подвисаний
+     */
+    function bufferStep(ranges, now, duration, paused) {
+        if (paused) return 'go';
+        const need = Math.min(BUFFER_MIN_SEC, Math.max(0, duration - now - 1));
+        for (let i = 0; i < ranges.length; i++) {
+            if (ranges.start(i) <= now + 0.5 && ranges.end(i) > now) return ranges.end(i) - now >= need ? 'go' : 'wait';
+        }
+        return need <= 0 ? 'go' : 'wait';
     }
 
     // ---------- Разбор манифестов ----------
@@ -720,6 +744,14 @@
                     if (step === 'skip') continue;
                     if (state.bytes >= FOLLOW_MAX_BYTES) break;
                 }
+                const lowBuffer = () => bufferStep(video.buffered, video.currentTime, video.duration, video.paused || video.ended) === 'wait';
+                while (lowBuffer() && !stopped && options.wanted(part)) {
+                    report({ status: `${part}: ждёт запас плеера` });
+                    await sleep(BUFFER_WAIT_MS);
+                }
+                if (stopped || !options.wanted(part)) break;
+                // Пока ждали запас, зритель мог уйти дальше этого куска
+                if (ahead && followStep(batch.at, video.currentTime) === 'skip') continue;
                 report({ status: `${part}: ${Math.round(batch.at)} с` });
                 let buffers;
                 try {
@@ -761,17 +793,14 @@
             return report({ status: `${part}: готово` });
         };
 
-        const guarded = (part, from, to) => scan(part, from, to).catch((e) => report({ status: `сбой: ${String(e.message || e).slice(0, 60)}` }));
+        const guarded = (part, from, to, follow) => scan(part, from, to, follow).catch((e) => report({ status: `сбой: ${String(e.message || e).slice(0, 60)}` }));
 
         return {
             state,
             owner: options.owner || null,
             start() {
-                const t = video.currentTime;
-                const plan = opPlan(video.duration);
-                // Без песен в базе искать дальше нечего: сравнение серий смотрит только первые минуты
-                const end = options.songs && options.songs.length ? plan.end : plan.head;
-                return t < end && options.wanted('op') ? guarded('op', t, end, plan.head) : Promise.resolve();
+                const s = opScan(video.currentTime, video.duration, !!(options.songs && options.songs.length));
+                return s && options.wanted('op') ? guarded('op', s.from, s.to, s.follow) : Promise.resolve();
             },
             /** Вызывается при просмотре: эндинг ищем, когда зритель приблизился к концу */
             tail() {
@@ -784,7 +813,7 @@
         };
     }
 
-    const api = { create, findStream, fetchRetry, fetchPool, batchFailed, opPlan, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
+    const api = { create, findStream, fetchRetry, fetchPool, batchFailed, opPlan, opScan, bufferStep, followStep, isManifestUrl, isMp4Url, mp4Key, parseMp4Audio, mp4ToAdts, pickLightest, parseMedia, audioOnlyUrl, parseDash, parseSidx, kodikLightUrl, batchesFor, demuxTs, isTs };
     root.AgLookahead = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

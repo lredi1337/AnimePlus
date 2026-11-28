@@ -193,6 +193,29 @@ test('поиск впереди просмотра: не дальше двух �
     assert.equal(ahead.followStep(300, 330), 'go');
 });
 
+test('анализ заранее не отнимает канал у плеера: ждёт, пока у плеера наберётся запас', () => {
+    const r = (...pairs) => ({ length: pairs.length / 2, start: i => pairs[i * 2], end: i => pairs[i * 2 + 1] });
+    // Серия только началась, у плеера 3 с впереди: ждём
+    assert.equal(ahead.bufferStep(r(0, 3), 0, 1420, false), 'wait');
+    // Запас 25 с: качаем
+    assert.equal(ahead.bufferStep(r(0, 125), 100, 1420, false), 'go');
+    // Запас считается от места просмотра, а не от любого куска: после перемотки старый кусок не в счёт
+    assert.equal(ahead.bufferStep(r(0, 300, 600, 604), 601, 1420, false), 'wait');
+    // На паузе плеер не подвиснет
+    assert.equal(ahead.bufferStep(r(0, 3), 0, 1420, true), 'go');
+    // У самого конца больше остатка запаса не будет
+    assert.equal(ahead.bufferStep(r(0, 1420), 1410, 1420, false), 'go');
+    // Ещё ничего не загружено
+    assert.equal(ahead.bufferStep(r(), 0, 1420, false), 'wait');
+});
+
+test('после первых минут опенинг ищется впереди просмотра, а не качается сразу до середины', () => {
+    assert.deepEqual(ahead.opScan(0, 1435, true), { from: 0, to: 717.5, follow: 300 });
+    // Без песен в базе только первые минуты
+    assert.deepEqual(ahead.opScan(0, 1435, false), { from: 0, to: 300, follow: 300 });
+    assert.equal(ahead.opScan(800, 1435, true), null);
+});
+
 // ---------- Обычный файл MP4 (AnimeVost) ----------
 
 const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
